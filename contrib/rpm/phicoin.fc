@@ -1,0 +1,8 @@
+/usr/bin/phicoin-cli		--	gen_context(system_u:object_r:phicoin_exec_t,s0)
+/usr/sbin/phicoind		--	gen_context(system_u:object_r:phicoin_exec_t,s0)
+/usr/lib(64)?/phicoin/phicoind		--	gen_context(system_u:object_r:phicoin_exec_t,s0)
+
+/etc/phicoin(/.*)?		gen_context(system_u:object_r:phicoin_conf_t,s0)
+/var/lib/phicoin(/.*)?		gen_context(system_u:object_r:phicoin_var_lib_t,s0)
+
+(/var)?/run/phicoind(/.*)?   gen_context(system_u:object_r:phicoin_var_run_t,s0)

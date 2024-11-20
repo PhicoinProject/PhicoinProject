@@ -1,0 +1,13 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=PHICOIN Core
+Comment=Connect to the PHICOIN P2P Network
+Comment[de]=Verbinde mit dem PHICOIN peer-to-peer Netzwerk
+Comment[fr]=PHICOIN, monnaie virtuelle cryptographique pair à pair
+Comment[tr]=PHICOIN, eşten eşe kriptografik sanal para birimi
+Exec=phicoin-qt %u
+Terminal=false
+Type=Application
+Icon=phicoin128
+MimeType=x-scheme-handler/phicoin;
+Categories=Office;Finance;

@@ -1,0 +1,6 @@
+usr/local/bin/phicoin-qt usr/bin
+share/pixmaps/phicoin32.xpm usr/share/pixmaps
+share/pixmaps/phicoin16.xpm usr/share/pixmaps
+share/pixmaps/phicoin128.png usr/share/pixmaps
+debian/phicoin-qt.desktop usr/share/applications
+debian/phicoin-qt.protocol usr/share/kde4/services/

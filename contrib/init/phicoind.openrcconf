@@ -1,0 +1,33 @@
+# /etc/conf.d/phicoind: config file for /etc/init.d/phicoind
+
+# Config file location
+#PHICOIND_CONFIGFILE="/etc/phicoin/phicoin.conf"
+
+# What directory to write pidfile to?  (created and owned by $PHICOIND_USER)
+#PHICOIND_PIDDIR="/var/run/phicoind"
+
+# What filename to give the pidfile
+#PHICOIND_PIDFILE="${PHICOIND_PIDDIR}/phicoind.pid"
+
+# Where to write phicoind data (be mindful that the blockchain is large)
+#PHICOIND_DATADIR="/var/lib/phicoind"
+
+# User and group to own phicoind process
+#PHICOIND_USER="phicoin"
+#PHICOIND_GROUP="phicoin"
+
+# Path to phicoind executable
+#PHICOIND_BIN="/usr/bin/phicoind"
+
+# Nice value to run phicoind under
+#PHICOIND_NICE=0
+
+# Additional options (avoid -conf and -datadir, use flags above)
+#PHICOIND_OPTS=""
+
+# The timeout in seconds OpenRC will wait for phicoind to terminate
+# after a SIGTERM has been raised.
+# Note that this will be mapped as argument to start-stop-daemon's
+# '--retry' option, which means you can specify a retry schedule
+# here. For more information see man 8 start-stop-daemon.
+PHICOIND_SIGTERM_TIMEOUT=60

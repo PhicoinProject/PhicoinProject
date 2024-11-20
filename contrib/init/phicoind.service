@@ -1,0 +1,22 @@
+[Unit]
+Description=PHICOIN's distributed currency daemon
+After=network.target
+
+[Service]
+User=phicoin
+Group=phicoin
+
+Type=forking
+PIDFile=/var/lib/phicoind/phicoind.pid
+ExecStart=/usr/bin/phicoind -daemon -pid=/var/lib/phicoind/phicoind.pid \
+-conf=/etc/phicoin/phicoin.conf -datadir=/var/lib/phicoind -disablewallet
+
+Restart=always
+PrivateTmp=true
+TimeoutStopSec=60s
+TimeoutStartSec=2s
+StartLimitInterval=120s
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
