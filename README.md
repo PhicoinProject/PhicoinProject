@@ -1,11 +1,13 @@
 
-## The PoW High-Performance Infrastructure (PHI)
+# The PoW High-Performance Infrastructure (PHI)
+![last_frame](https://github.com/user-attachments/assets/142316da-019d-4c8e-af5d-80d286349e6e)
 
 ### General Information
 - **Full Name:** PHICOIN  
 - **Description:** A PoW High-Performance Infrastructure  
 - **Genesis Block:** "The Times 11/06/2024: Donald Trump wins US election 2024 to become 47th president."  
-- **Symbol:** Φ  
+- **Symbol:** PHI
+- **Coin Symbol:** Φ 
 
 ### Blockchain Specifications
 - **Block Time:** 15 seconds  
