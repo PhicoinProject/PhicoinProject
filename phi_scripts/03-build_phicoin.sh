@@ -11,7 +11,7 @@ OS=$1
 # make clean
 
 
-make -sj32
+make -sj16
 
 case "$OS" in
     "linux")

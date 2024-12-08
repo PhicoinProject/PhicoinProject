@@ -4170,7 +4170,7 @@ fi
 
 # Define the identity of the package.
  PACKAGE='phicoin'
- VERSION='1.1.1.1test1'
+ VERSION='1.1.2'
 
 
 # Some tools Automake needs.
