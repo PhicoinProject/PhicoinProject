@@ -32727,7 +32727,7 @@ printf "%s\n" "#define CLIENT_VERSION_MINOR 1" >>confdefs.h
 printf "%s\n" "#define CLIENT_VERSION_REVISION 1" >>confdefs.h
 
 
-printf "%s\n" "#define CLIENT_VERSION_BUILD 1" >>confdefs.h
+printf "%s\n" "#define CLIENT_VERSION_BUILD 2" >>confdefs.h
 
 
 printf "%s\n" "#define CLIENT_VERSION_IS_RELEASE true" >>confdefs.h
@@ -32751,7 +32751,7 @@ CLIENT_VERSION_MINOR=1
 
 CLIENT_VERSION_REVISION=1
 
-CLIENT_VERSION_BUILD=1
+CLIENT_VERSION_BUILD=2
 
 CLIENT_VERSION_IS_RELEASE=true
 
