@@ -82,7 +82,7 @@ class NetTest(PHICOINTestFramework):
         assert_equal(added_nodes[0]['addednode'], ip_port)
         # check that a non-existent node returns an error
         assert_raises_rpc_error(-24, "Node has not been added",
-                              self.nodes[0].getaddednodeinfo, '1.1.1.1')
+                              self.nodes[0].getaddednodeinfo, '1.1.2')
 
     def _test_getpeerinfo(self):
         peer_info = [x.getpeerinfo() for x in self.nodes]

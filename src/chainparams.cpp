@@ -179,10 +179,10 @@ public:
 
         // The best chain should have at least this much work
 
-        consensus.nMinimumChainWork = uint256S("00000000000000000000000000000000000000000000000000474d90eb0d5968"); // #100000
+        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000079e444cb1817ea"); // #150000
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("0000004e0269fd02be6117da3142a3bbe3d4672051b4c4b62479223583b94b68"); // 
+        consensus.defaultAssumeValid = uint256S("00000000033645bc5ed36cdd28995ac92d9ab2f4d800fb84fbf91f4f494b520f"); // 
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -238,15 +238,13 @@ public:
             {
                 {10000, uint256S("00000004f64df39c212a50fd51dd5fa4df6740c6383c0a7a3fa46353b46942b7")},
                 {100000, uint256S("00000000002894ddd533d1a7d470ce00ae648b7c4397448bbd5b59f6440be71d")},
+                {150000, uint256S("00000000033645bc5ed36cdd28995ac92d9ab2f4d800fb84fbf91f4f494b520f")},
             }};
 
         chainTxData = ChainTxData{
-            1733609873, // UNIX timestamp of the latest known number of transactions 
-                        // (from the "time" field in the `getchaintxstats` output).
-            131291,     // Total number of transactions from the genesis block to this timestamp
-                        // (from the "txcount" field in the `getchaintxstats` output).
-            0.07733367889992018 // Estimated number of transactions per second after this timestamp
-                                // (from the "txrate" field in the `getchaintxstats` output).
+            1734332195, // Update to the latest UNIX timestamp
+            182694,     // Update to the latest total number of transactions
+            0.07549100225201959 // Update to the latest estimated transactions per second
         };
 
 
