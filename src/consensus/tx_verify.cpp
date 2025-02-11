@@ -206,15 +206,15 @@ bool CheckTransaction(const CTransaction& tx, CValidationState &state, bool fChe
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-txouttotal-toolarge");
 
         // check blacklist
-        if (chainActive.Tip() && chainActive.Tip()->nHeight + 1 >= BLACKLIST_HEIGHT) {
-            CTxDestination dest;
-            if (ExtractDestination(txout.scriptPubKey, dest)) {
-                std::string address = EncodeDestination(dest);
-                if (std::find(BLACKLISTED_ADDRESSES.begin(), BLACKLISTED_ADDRESSES.end(), address) != BLACKLISTED_ADDRESSES.end()) {
-                    return state.DoS(100, false, REJECT_INVALID, "Bad address detected in transaction output");
-                }
-            }
-        }
+        // if (chainActive.Tip() && chainActive.Tip()->nHeight + 1 >= BLACKLIST_HEIGHT) {
+            // CTxDestination dest;
+            // if (ExtractDestination(txout.scriptPubKey, dest)) {
+            //     std::string address = EncodeDestination(dest);
+            //     if (std::find(BLACKLISTED_ADDRESSES.begin(), BLACKLISTED_ADDRESSES.end(), address) != BLACKLISTED_ADDRESSES.end()) {
+            //         return state.DoS(100, false, REJECT_INVALID, "Bad address detected in transaction output");
+            //     }
+            // }
+        // }
 
         /** PHI START */
         // Find and handle all new OP_PHI_ASSET null data transactions
