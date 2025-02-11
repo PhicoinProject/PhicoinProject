@@ -211,17 +211,17 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     arith_uint256 bnTarget;
 
     // Log the nBits in compact format
-    LogPrintf("CheckProofOfWork: nBits (compact format): %08x\n", nBits);
+    // LogPrintf("CheckProofOfWork: nBits (compact format): %08x\n", nBits);
 
     // Set the target difficulty
     bnTarget.SetCompact(nBits, &fNegative, &fOverflow);
 
     // Log the decoded target difficulty and flag values
-    LogPrintf("CheckProofOfWork: Decoded bnTarget: %s\n", bnTarget.ToString());
-    LogPrintf("CheckProofOfWork: fNegative: %s, fOverflow: %s\n", fNegative ? "true" : "false", fOverflow ? "true" : "false");
+    // LogPrintf("CheckProofOfWork: Decoded bnTarget: %s\n", bnTarget.ToString());
+    // LogPrintf("CheckProofOfWork: fNegative: %s, fOverflow: %s\n", fNegative ? "true" : "false", fOverflow ? "true" : "false");
 
     // Log the global difficulty limit
-    LogPrintf("CheckProofOfWork: powLimit: %s\n", UintToArith256(params.powLimit).ToString());
+    // LogPrintf("CheckProofOfWork: powLimit: %s\n", UintToArith256(params.powLimit).ToString());
 
     // Check if the target difficulty is within the valid range
     if (fNegative || bnTarget == 0 || fOverflow || bnTarget > UintToArith256(params.powLimit)) {
@@ -235,8 +235,8 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
     }
 
     // Log the block hash and comparison with target difficulty
-    LogPrintf("CheckProofOfWork: Hash: %s\n", UintToArith256(hash).ToString());
-    LogPrintf("CheckProofOfWork: Comparing hash <= bnTarget: %s\n", UintToArith256(hash) <= bnTarget ? "true" : "false");
+    // LogPrintf("CheckProofOfWork: Hash: %s\n", UintToArith256(hash).ToString());
+    // LogPrintf("CheckProofOfWork: Comparing hash <= bnTarget: %s\n", UintToArith256(hash) <= bnTarget ? "true" : "false");
 
     // Verify if proof of work meets the required difficulty
     if (UintToArith256(hash) > bnTarget) {
@@ -244,6 +244,6 @@ bool CheckProofOfWork(uint256 hash, unsigned int nBits, const Consensus::Params&
         return false;
     }
 
-    LogPrintf("CheckProofOfWork: Proof of work passed.\n");
+    // LogPrintf("CheckProofOfWork: Proof of work passed.\n");
     return true;
 }

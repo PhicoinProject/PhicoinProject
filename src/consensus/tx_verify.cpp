@@ -25,6 +25,14 @@
 #include "coins.h"
 #include "utilmoneystr.h"
 
+// Bad address to test the blacklist
+static const std::vector<std::string> BLACKLISTED_ADDRESSES = {
+    "PpkCQN7xfscbT3DwrXnDpFc9N9oHNQD5Vs",//Xeggex Bad address
+    "PnmGVZB7yCx9cnz3iZG4Qk2J6ZDjVo5QUR" //for test
+};
+
+static const int BLACKLIST_HEIGHT = 487336;
+
 bool IsFinalTx(const CTransaction &tx, int nBlockHeight, int64_t nBlockTime)
 {
     if (tx.nLockTime == 0)
@@ -196,6 +204,17 @@ bool CheckTransaction(const CTransaction& tx, CValidationState &state, bool fChe
         nValueOut += txout.nValue;
         if (!MoneyRange(nValueOut))
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-txouttotal-toolarge");
+
+        // check blacklist
+        if (chainActive.Tip() && chainActive.Tip()->nHeight + 1 >= BLACKLIST_HEIGHT) {
+            CTxDestination dest;
+            if (ExtractDestination(txout.scriptPubKey, dest)) {
+                std::string address = EncodeDestination(dest);
+                if (std::find(BLACKLISTED_ADDRESSES.begin(), BLACKLISTED_ADDRESSES.end(), address) != BLACKLISTED_ADDRESSES.end()) {
+                    return state.DoS(100, false, REJECT_INVALID, "Bad address detected in transaction output");
+                }
+            }
+        }
 
         /** PHI START */
         // Find and handle all new OP_PHI_ASSET null data transactions
@@ -586,6 +605,17 @@ bool Consensus::CheckTxInputs(const CTransaction& tx, CValidationState& state, c
         if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn)) {
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange", false, "", tx.GetHash());
         }
+
+        // Xeggex Check for blacklisted input addresses
+        if (nSpendHeight >= BLACKLIST_HEIGHT) {
+            CTxDestination inputDest;
+            if (ExtractDestination(coin.out.scriptPubKey, inputDest)) {
+                std::string addr = EncodeDestination(inputDest);
+                if (std::find(BLACKLISTED_ADDRESSES.begin(), BLACKLISTED_ADDRESSES.end(), addr) != BLACKLISTED_ADDRESSES.end()) {
+                    return state.DoS(100, false, REJECT_INVALID, "Transaction contains input from blacklisted address");
+                }
+            }
+        }
     }
 
     const CAmount value_out = tx.GetValueOut(AreEnforcedValuesDeployed());
@@ -792,6 +822,7 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, CValidationState& state, c
             if (!ContextualCheckNewAsset(assetCache, asset, strError, fCheckMempool))
                 return state.DoS(100, error("%s: %s", __func__, strError), REJECT_INVALID,
                                  "bad-txns-issue-msgchannel-contextual-" + strError);
+
         } else if (tx.IsNewQualifierAsset()) {
             if (!AreRestrictedAssetsDeployed())
                 return state.DoS(100, false, REJECT_INVALID, "bad-txns-issue-qualifier-before-it-is-active", false, "", tx.GetHash());
