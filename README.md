@@ -4,7 +4,7 @@
 
 ### General Information
 - **Full Name:** PHICOIN  
-- **Description:** A PoW High-Performance Infrastructure  
+- **Description:** A PoW High-performance Infrastructure  
 - **Genesis Block:** "The Times 11/06/2024: Donald Trump wins US election 2024 to become 47th president."  
 - **Symbol:** PHI
 - **Coin Symbol:** Φ 
