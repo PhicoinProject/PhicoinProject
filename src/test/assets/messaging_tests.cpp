@@ -63,6 +63,13 @@ BOOST_FIXTURE_TEST_SUITE(messaging_tests, BasicTestingSetup)
         std::string ipfs1 = "QmVUXZ1UiwGVuKMPuBagveHexGiRRTQLN8JDrBKauECSFQ";
         std::string ipfs2 = "QmX6972nFtqu1Y15qy1jyQm5mkDQx7JSoF2LEAqtnvGYyv";
 
+        // CIDv1 test cases
+        std::string cidv1_base32_dagpb = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+        std::string cidv1_base32_raw = "bafkreihqmkkhyq35uwiis5ed5mtudmv5abzdzzgop2urwp44uxutczahv4";
+        std::string cidv1_base32_dagcbor = "bafzbeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+        std::string cidv1_base58btc = "zdj7WeAmwFvsXfKsCxju1Q7Toshc6UybtBJakxZPMz7k3xynL";
+        std::string cidv1_base36 = "k2k4r8jvtpedxfds3b2r5o8b5x3a9t6p3q7e9";
+
         auto decoded1 = DecodeAssetData(hash1);
         auto decoded2 = DecodeAssetData(hash2);
 
@@ -74,6 +81,13 @@ BOOST_FIXTURE_TEST_SUITE(messaging_tests, BasicTestingSetup)
         BOOST_CHECK_MESSAGE(IsHex(hash2) && hash2.length() == 64, "Test 2 Failed "); // need to check the inside of CheckEncoded for regular hashes
         BOOST_CHECK_MESSAGE(CheckEncoded(ipfsdecoded1, error), "Test 3 Failed - " +  error);
         BOOST_CHECK_MESSAGE(CheckEncoded(ipfsdecoded2, error), "Test 4 Failed - " +  error);
+
+        // Test CIDv1 formats
+        BOOST_CHECK_MESSAGE(CheckEncoded(cidv1_base32_dagpb, error), "CIDv1 base32 dag-pb test failed - " + error);
+        BOOST_CHECK_MESSAGE(CheckEncoded(cidv1_base32_raw, error), "CIDv1 base32 raw test failed - " + error);
+        BOOST_CHECK_MESSAGE(CheckEncoded(cidv1_base32_dagcbor, error), "CIDv1 base32 dag-cbor test failed - " + error);
+        BOOST_CHECK_MESSAGE(CheckEncoded(cidv1_base58btc, error), "CIDv1 base58btc test failed - " + error);
+        BOOST_CHECK_MESSAGE(CheckEncoded(cidv1_base36, error), "CIDv1 base36 test failed - " + error);
 
     }
 

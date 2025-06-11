@@ -504,24 +504,31 @@ bool CreateAssetDialog::checkIPFSHash(QString hash)
         std::string error;
         if (!CheckEncoded(DecodeAssetData(hash.toStdString()), error)) {
             ui->ipfsText->setStyleSheet("border: 2px solid red");
-            showMessage(tr("IPFS/Txid Hash must start with 'Qm' and be 46 characters or Txid Hash must have 64 hex characters"));
+            showMessage(tr("IPFS hash must be valid CIDv0 (46 chars, starts with 'Qm'), CIDv1 (various encodings), or hex txid (64 chars)"));
             disableCreateButton();
             return false;
         }
-        else if (hash.size() != 46 && hash.size() != 64) {
+        // Additional length checks for specific formats
+        else if (hash.size() == 46 && !hash.startsWith("Qm")) {
             ui->ipfsText->setStyleSheet("border: 2px solid red");
-            showMessage(tr("IPFS/Txid Hash must have size of 46 characters, or 64 hex characters"));
+            showMessage(tr("46-character IPFS hash must start with 'Qm' (CIDv0 format)"));
+            disableCreateButton();
+            return false;
+        }
+        else if (hash.size() == 64 && !hash.contains(QRegExp("^[0-9a-fA-F]+$"))) {
+            ui->ipfsText->setStyleSheet("border: 2px solid red");
+            showMessage(tr("64-character hash must be valid hexadecimal (transaction ID)"));
             disableCreateButton();
             return false;
         }
         else if (DecodeAssetData(hash.toStdString()).empty()) {
-            showMessage(tr("IPFS/Txid hash is not valid. Please use a valid IPFS/Txid hash"));
+            showMessage(tr("IPFS hash is not valid. Please use a valid IPFS CIDv0/CIDv1 hash or transaction ID"));
             disableCreateButton();
             return false;
         }
     }
 
-    // No problems where found with the hash, reset the border, and hide the messages.
+    // No problems were found with the hash, reset the border, and hide the messages.
     hideMessage();
     ui->ipfsText->setStyleSheet("");
     ui->openIpfsButton->setDisabled(false);
@@ -656,9 +663,29 @@ void CreateAssetDialog::openIpfsBrowser()
     QString ipfshash = ui->ipfsText->text();
     QString ipfsbrowser = model->getOptionsModel()->getIpfsUrl();
 
-    // If the ipfs hash isn't there or doesn't start with Qm, disable the action item
-    if (ipfshash.count() > 0 && ipfshash.indexOf("Qm") == 0 && ipfsbrowser.indexOf("http") == 0)
-    {
+    // Check if the IPFS hash is valid for browsing (CIDv0, CIDv1, or any valid IPFS hash)
+    bool isValidForBrowsing = false;
+    if (ipfshash.count() > 0 && ipfsbrowser.indexOf("http") == 0) {
+        // Support CIDv0 (starts with Qm)
+        if (ipfshash.indexOf("Qm") == 0) {
+            isValidForBrowsing = true;
+        }
+        // Support CIDv1 base32 formats (starts with baf*)
+        else if (ipfshash.indexOf("bafy") == 0 || ipfshash.indexOf("bafk") == 0 || 
+                 ipfshash.indexOf("bafz") == 0 || ipfshash.indexOf("bafi") == 0) {
+            isValidForBrowsing = true;
+        }
+        // Support CIDv1 base58btc (starts with z)
+        else if (ipfshash.indexOf("z") == 0 && ipfshash.length() > 40) {
+            isValidForBrowsing = true;
+        }
+        // Support CIDv1 base36 (starts with k)
+        else if (ipfshash.indexOf("k") == 0 && ipfshash.length() > 20) {
+            isValidForBrowsing = true;
+        }
+    }
+
+    if (isValidForBrowsing) {
         QUrl ipfsurl = QUrl::fromUserInput(ipfsbrowser.replace("%s", ipfshash));
 
         // Create the box with everything.

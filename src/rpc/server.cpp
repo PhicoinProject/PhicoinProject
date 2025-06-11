@@ -650,25 +650,66 @@ CRPCTable tableRPC;
 void CheckIPFSTxidMessage(const std::string &message, int64_t expireTime)
 {
     size_t msglen = message.length();
-    if (msglen == 46 || msglen == 64) {
-        if (msglen == 64 && !AreMessagesDeployed()) {
+    
+    // Check for CIDv0 format (46 characters starting with "Qm")
+    if (msglen == 46 && message.substr(0, 2) == "Qm") {
+        // Valid CIDv0 format
+        if (expireTime < 0)
+            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+        return;
+    }
+    
+    // Check for traditional 64-character hex format
+    if (msglen == 64) {
+        if (!AreMessagesDeployed()) {
             throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid txid hash, only ipfs hashes available until RIP5 is activated"));
         }
-    } else {
-        if (msglen)
-            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid IPFS hash (must be 46 characters), Txid hashes (must be 64 characters)"));
+        if (!IsHex(message)) {
+            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid IPFS/Txid hash - must be valid hex"));
+        }
+        if (expireTime < 0)
+            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+        return;
     }
-
-    bool fNotIPFS = false;
-    if (message.substr(0, 2) != "Qm") {
-        fNotIPFS = true;
-        if (!AreMessagesDeployed())
-            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid ipfs hash. Please use a valid ipfs hash. They usually start with Qm"));
+    
+    // Check for CIDv1 formats with various encodings
+    if (msglen >= 4) {
+        std::string prefix = message.substr(0, 4);
+        if (prefix == "bafy" || prefix == "bafk" || prefix == "bafz" || prefix == "bafi") {
+            // Valid CIDv1 base32 format
+            if (expireTime < 0)
+                throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+            return;
+        }
     }
-
-    if (fNotIPFS && !IsHex(message))
-        throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid IPFS/Txid hash"));
-
-    if (expireTime < 0)
-        throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+    
+    // Check for CIDv1 base36 encoding (starts with 'k')
+    if (msglen > 20 && message[0] == 'k') {
+        // Valid CIDv1 base36 format
+        if (expireTime < 0)
+            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+        return;
+    }
+    
+    // Check for CIDv1 base58btc encoding (starts with 'z')
+    if (msglen > 40 && message[0] == 'z') {
+        // Valid CIDv1 base58btc format
+        if (expireTime < 0)
+            throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+        return;
+    }
+    
+    // Check for CIDv1 base16 encoding (starts with 'f' followed by hex)
+    if (msglen > 50 && message[0] == 'f') {
+        std::string hexPart = message.substr(1);
+        if (IsHex(hexPart)) {
+            // Valid CIDv1 base16 format
+            if (expireTime < 0)
+                throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Expire time must be a positive number"));
+            return;
+        }
+    }
+    
+    // If we reach here, the hash format is invalid
+    throw JSONRPCError(RPC_INVALID_PARAMS, std::string("Invalid IPFS hash format. Supported formats: CIDv0 (46 chars, starts with 'Qm'), CIDv1 (various encodings), or hex txid (64 chars when messages deployed)"));
 }

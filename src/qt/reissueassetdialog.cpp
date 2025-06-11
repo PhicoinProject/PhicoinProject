@@ -832,23 +832,32 @@ bool ReissueAssetDialog::checkIPFSHash(QString hash)
         std::string error;
         if (!CheckEncoded(DecodeAssetData(hash.toStdString()), error)) {
             ui->ipfsText->setStyleSheet(STYLE_INVALID);
-            showMessage(tr("IPFS/Txid Hash must start with 'Qm' and be 46 characters or Txid Hash must have 64 hex characters"));
+            showMessage(tr("IPFS hash must be valid CIDv0 (46 chars, starts with 'Qm'), CIDv1 (various encodings), or hex txid (64 chars)"));
             disableReissueButton();
             return false;
-        } else if (hash.size() != 46 && hash.size() != 64) {
+        } 
+        // Additional validation for specific formats
+        else if (hash.size() == 46 && !hash.startsWith("Qm")) {
             ui->ipfsText->setStyleSheet(STYLE_INVALID);
-            showMessage(tr("IPFS/Txid Hash must have size of 46 characters, or 64 hex characters"));
+            showMessage(tr("46-character IPFS hash must start with 'Qm' (CIDv0 format)"));
             disableReissueButton();
             return false;
-        } else if (DecodeAssetData(ui->ipfsText->text().toStdString()).empty()) {
+        } 
+        else if (hash.size() == 64 && !hash.contains(QRegExp("^[0-9a-fA-F]+$"))) {
             ui->ipfsText->setStyleSheet(STYLE_INVALID);
-            showMessage(tr("IPFS/Txid hash is not valid. Please use a valid IPFS/Txid hash"));
+            showMessage(tr("64-character hash must be valid hexadecimal (transaction ID)"));
+            disableReissueButton();
+            return false;
+        } 
+        else if (DecodeAssetData(ui->ipfsText->text().toStdString()).empty()) {
+            ui->ipfsText->setStyleSheet(STYLE_INVALID);
+            showMessage(tr("IPFS hash is not valid. Please use a valid IPFS CIDv0/CIDv1 hash or transaction ID"));
             disableReissueButton();
             return false;
         }
     }
 
-    // No problems where found with the hash, reset the border, and hide the messages.
+    // No problems were found with the hash, reset the border, and hide the messages.
     hideMessage();
     ui->ipfsText->setStyleSheet("");
 

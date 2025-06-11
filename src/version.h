@@ -10,7 +10,7 @@
  * network protocol versioning
  */
 //  phicoin v2 protocol version for DDNS
-static const int PROTOCOL_VERSION = 800000;
+static const int PROTOCOL_VERSION = 80000;
 
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
@@ -65,7 +65,7 @@ static const int MESSAGING_RESTRICTED_ASSETS_VERSION = 70026;
 static const int PROTOCOL_VERSION_ENFORCEMENT_HEIGHT = 1213632;
 
 //! PHICOIN v2 protocol version - major upgrade with enhanced features  
-static const int PHICOIN_V2_VERSION = 800000;
+static const int PHICOIN_V2_VERSION = 80000;
 
 
 

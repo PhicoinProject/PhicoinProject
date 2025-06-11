@@ -4443,17 +4443,51 @@ bool CheckAmountWithUnits(const CAmount& nAmount, const int8_t nUnits)
 
 bool CheckEncoded(const std::string& hash, std::string& strError) {
     std::string encodedStr = EncodeAssetData(hash);
+    
+    // Check for traditional CIDv0 format: 46 characters starting with "Qm"
     if (encodedStr.substr(0, 2) == "Qm" && encodedStr.size() == 46) {
         return true;
     }
 
+    // Check for CIDv1 formats with various encodings
+    // CIDv1 with base32 encoding (most common): starts with "bafy" (dag-pb) or "bafk" (raw)
+    if (encodedStr.size() >= 4) {
+        std::string prefix = encodedStr.substr(0, 4);
+        if (prefix == "bafy" || prefix == "bafk" || prefix == "bafz" || prefix == "bafi") {
+            // Common CIDv1 base32 prefixes for different multicodecs
+            // bafy* = dag-pb, bafk* = raw, bafz* = dag-cbor, bafi* = dag-json
+            return true;
+        }
+    }
+    
+    // Check for CIDv1 with base36 encoding: starts with "k" or similar patterns
+    if (encodedStr.size() >= 1 && encodedStr[0] == 'k' && encodedStr.size() > 20) {
+        // CIDv1 base36 encoding pattern
+        return true;
+    }
+    
+    // Check for CIDv1 with base58btc encoding: starts with "z"
+    if (encodedStr.size() >= 1 && encodedStr[0] == 'z' && encodedStr.size() > 40) {
+        // CIDv1 base58btc encoding pattern
+        return true;
+    }
+    
+    // Check for CIDv1 with base16 (hex) encoding: starts with "f" followed by hex chars
+    if (encodedStr.size() >= 2 && encodedStr[0] == 'f' && encodedStr.size() > 50) {
+        std::string hexPart = encodedStr.substr(1);
+        if (IsHex(hexPart)) {
+            return true;
+        }
+    }
+
+    // Legacy support: Check for hex-encoded transaction ID when messages are deployed
     if (AreMessagesDeployed()) {
         if (IsHex(encodedStr) && encodedStr.length() == 64) {
             return true;
         }
     }
 
-    strError = _("Invalid parameter: ipfs_hash is not valid, or txid hash is not the right length");
+    strError = _("Invalid parameter: IPFS hash must be a valid CIDv0 (46 chars starting with 'Qm'), CIDv1 (various encodings), or transaction hash (64 hex chars when messages deployed)");
 
     return false;
 }
