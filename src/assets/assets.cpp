@@ -42,7 +42,7 @@ std::map<uint256, std::string> mapReissuedTx;
 std::map<std::string, uint256> mapReissuedAssets;
 
 // excluding owner tag ('!')
-static const auto MAX_NAME_LENGTH = 31;
+static const auto MAX_NAME_LENGTH = 254;
 static const auto MAX_CHANNEL_NAME_LENGTH = 12;
 
 // min lengths are expressed by quantifiers
@@ -207,7 +207,7 @@ bool IsAssetNameValid(const std::string& name, AssetType& assetType, std::string
 {
     // Do a max length check first to stop the possibility of a stack exhaustion.
     // We check for a value that is larger than the max asset name
-    if (name.length() > 40)
+    if (name.length() > 255)
         return false;
 
     assetType = AssetType::INVALID;
@@ -834,7 +834,40 @@ bool ReissueAssetFromScript(const CScript& scriptPubKey, CReissueAsset& reissue,
     strAddress = EncodeDestination(destination);
 
     std::vector<unsigned char> vchReissueAsset;
-    vchReissueAsset.insert(vchReissueAsset.end(), scriptPubKey.begin() + nStartingIndex, scriptPubKey.end());
+
+    auto it = scriptPubKey.begin() + nStartingIndex;
+    auto scriptEnd = scriptPubKey.end();
+
+
+    if (it >= scriptEnd) {
+        return false;
+    }
+
+    if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA1) {
+        uint8_t len = scriptPubKey[nStartingIndex];
+        if (it + 1 + len > scriptEnd) {
+            return false; 
+        }
+        vchReissueAsset.insert(vchReissueAsset.end(), it + 1, it + 1 + len);
+    } else if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA2) {
+
+        if (it + 2 > scriptEnd) {
+            return false;
+        }
+        uint16_t len = ReadLE16(&scriptPubKey[nStartingIndex]);
+        if (it + 2 + len > scriptEnd) {
+            return false; 
+        }
+        vchReissueAsset.insert(vchReissueAsset.end(), it + 2, it + 2 + len);
+    } else {
+  
+        uint8_t len = scriptPubKey[nStartingIndex - 1];
+        if (it + len > scriptEnd) {
+            return false;
+        }
+        vchReissueAsset.insert(vchReissueAsset.end(), it, it + len);
+    }
+    
     CDataStream ssReissue(vchReissueAsset, SER_NETWORK, PROTOCOL_VERSION);
 
     try {

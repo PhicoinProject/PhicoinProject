@@ -653,7 +653,7 @@
                <string>A-Z 0-9 and . or _ as the second character</string>
               </property>
               <property name="maxLength">
-               <number>30</number>
+               <number>254</number>
               </property>
               <property name="placeholderText">
                <string>The name of the asset you would like to create</string>

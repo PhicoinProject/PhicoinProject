@@ -246,17 +246,31 @@ bool CScript::IsAssetScript(int& nType, bool& isOwner) const
 bool CScript::IsAssetScript(int& nType, bool& fIsOwner, int& nStartingIndex) const
 {
     if (this->size() > 31) {
-        if ((*this)[25] == OP_PHI_ASSET) { // OP_PHI_ASSET is always in the 25 index of the script if it exists
+        if ((*this)[25] == OP_PHI_ASSET) { // OP_PHI_ASSET is always in the 25 index
             int index = -1;
-            if ((*this)[27] == PHI_R) { // Check to see if PHI starts at 27 ( this->size() < 105)
-                if ((*this)[28] == PHI_V)
-                    if ((*this)[29] == PHI_N)
-                        index = 30;
-            } else {
-                if ((*this)[28] == PHI_R) // Check to see if PHI starts at 28 ( this->size() >= 105)
+            
+            if ((*this)[26] < OP_PUSHDATA1) {
+                if ((*this)[27] == PHI_R) {
+                    if ((*this)[28] == PHI_V)
+                        if ((*this)[29] == PHI_N)
+                            index = 30;
+                }
+            }
+            else if ((*this)[26] == OP_PUSHDATA1) {
+                // OP_PUSHDATA1 + 1
+                if ((*this)[28] == PHI_R) {
                     if ((*this)[29] == PHI_V)
                         if ((*this)[30] == PHI_N)
                             index = 31;
+                }
+            }
+            else if ((*this)[26] == OP_PUSHDATA2) {
+                // OP_PUSHDATA2 + 2
+                if ((*this)[29] == PHI_R) {
+                    if ((*this)[30] == PHI_V)
+                        if ((*this)[31] == PHI_N)
+                            index = 32;
+                }
             }
 
             if (index > 0) {

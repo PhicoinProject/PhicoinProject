@@ -481,12 +481,16 @@ public:
             WriteLE16(_data, b.size());
             insert(end(), _data, _data + sizeof(_data));
         }
-        else
+        else if (b.size() <= 0xffffffff)
         {
             insert(end(), OP_PUSHDATA4);
             uint8_t _data[4];
             WriteLE32(_data, b.size());
             insert(end(), _data, _data + sizeof(_data));
+        }
+        else
+        {
+            throw std::runtime_error("Data size too large - exceeds maximum pushdata size");
         }
         insert(end(), b.begin(), b.end());
         return *this;

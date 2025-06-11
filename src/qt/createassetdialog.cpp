@@ -1086,9 +1086,9 @@ QString CreateAssetDialog::GetAssetName()
 void CreateAssetDialog::UpdateAssetNameMaxSize()
 {
     if (type == IntFromAssetType(AssetType::ROOT) || type == IntFromAssetType(AssetType::QUALIFIER) || type == IntFromAssetType(AssetType::RESTRICTED)) {
-        ui->nameText->setMaxLength(30);
+        ui->nameText->setMaxLength(254);
     } else if (type == IntFromAssetType(AssetType::SUB) || type == IntFromAssetType(AssetType::UNIQUE) || type == IntFromAssetType(AssetType::SUB_QUALIFIER)) {
-        ui->nameText->setMaxLength(30 - (ui->assetList->currentText().size() + 1));
+        ui->nameText->setMaxLength(254 - (ui->assetList->currentText().size() + 1));
     }
 }
 
