@@ -9,8 +9,8 @@
 /**
  * network protocol versioning
  */
-
-static const int PROTOCOL_VERSION = 70028;
+//  phicoin v2 protocol version for DDNS
+static const int PROTOCOL_VERSION = 800000;
 
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
@@ -59,6 +59,18 @@ static const int ASSETDATA_VERSION_UPDATED = 70020;
 
 //! In this version, 'rip5 (messaging and restricted assets)' was introduced
 static const int MESSAGING_RESTRICTED_ASSETS_VERSION = 70026;
+
+//! Block height at which PROTOCOL_VERSION enforcement begins (7 days from block 1173312)
+//! After this height, clients with protocol version < PROTOCOL_VERSION will be rejected
+static const int PROTOCOL_VERSION_ENFORCEMENT_HEIGHT = 1213632;
+
+//! PHICOIN v2 protocol version - major upgrade with enhanced features  
+static const int PHICOIN_V2_VERSION = 800000;
+
+
+
+
+
 
 
 #endif // PHICOIN_VERSION_H

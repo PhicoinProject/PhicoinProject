@@ -72,6 +72,78 @@ static const int STALE_RELAY_AGE_LIMIT = 30 * 24 * 60 * 60;
 /// limiting block relay. Set to one week, denominated in seconds.
 static const int HISTORICAL_BLOCK_AGE = 7 * 24 * 60 * 60;
 
+// Function to parse PHICOIN client version from user agent string
+// Expected format: "/PHICOIN:x.y.z/" or similar
+bool ParseClientVersion(const std::string& userAgent, int& major, int& minor, int& revision) {
+    major = minor = revision = 0;
+    
+    // Look for various PHICOIN version patterns (case insensitive)
+    size_t pos = std::string::npos;
+    size_t skip_len = 0;
+    
+    // Try different patterns
+    if ((pos = userAgent.find("PHICOIN:")) != std::string::npos) {
+        skip_len = 8; // Skip "PHICOIN:"
+    } else if ((pos = userAgent.find("Phicoin:")) != std::string::npos) {
+        skip_len = 8; // Skip "Phicoin:"
+    } else if ((pos = userAgent.find("phicoin:")) != std::string::npos) {
+        skip_len = 8; // Skip "phicoin:"
+    } else if ((pos = userAgent.find("Phicoin-seeder:")) != std::string::npos) {
+        skip_len = 15; // Skip "Phicoin-seeder:"
+    } else if ((pos = userAgent.find("PHICOIN-SEEDER:")) != std::string::npos) {
+        skip_len = 15; // Skip "PHICOIN-SEEDER:"
+    } else if ((pos = userAgent.find("phicoin-seeder:")) != std::string::npos) {
+        skip_len = 15; // Skip "phicoin-seeder:"
+    } else {
+        return false; // No recognized pattern found
+    }
+    
+    pos += skip_len;
+    size_t end = userAgent.find("/", pos);
+    if (end == std::string::npos) {
+        end = userAgent.find(" ", pos);
+        if (end == std::string::npos) {
+            end = userAgent.length();
+        }
+    }
+    
+    std::string version = userAgent.substr(pos, end - pos);
+    
+    // Parse version string "x.y.z"
+    size_t dot1 = version.find('.');
+    if (dot1 == std::string::npos) return false;
+    
+    size_t dot2 = version.find('.', dot1 + 1);
+    if (dot2 == std::string::npos) return false;
+    
+    try {
+        major = std::stoi(version.substr(0, dot1));
+        minor = std::stoi(version.substr(dot1 + 1, dot2 - dot1 - 1));
+        revision = std::stoi(version.substr(dot2 + 1));
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
+// Function to check if client version is below minimum required (1.1.3)
+bool IsClientVersionBelowMinimum(const std::string& userAgent) {
+    int major, minor, revision;
+    if (!ParseClientVersion(userAgent, major, minor, revision)) {
+        // If we can't parse the version, assume it's an old/unknown client
+        return true;
+    }
+    
+    // Check if version is below 1.1.3
+    if (major < 1) return true;
+    if (major == 1) {
+        if (minor < 1) return true;
+        if (minor == 1 && revision < 3) return true;
+    }
+    
+    return false;
+}
+
 // Internal stuff
 namespace {
     /** Number of nodes with fSyncStarted. */
@@ -1626,6 +1698,24 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return false;
         }
 
+        // Network upgrade enforcement: After block height PROTOCOL_VERSION_ENFORCEMENT_HEIGHT,
+        // only accept clients with protocol version >= PROTOCOL_VERSION (800000)
+        {
+            LOCK(cs_main);
+            if (chainActive.Height() >= PROTOCOL_VERSION_ENFORCEMENT_HEIGHT && nVersion < PROTOCOL_VERSION) {
+                LogPrintf("peer=%d using obsolete protocol version %i after network upgrade at height %d; disconnecting to enforce PROTOCOL_VERSION %d\n", 
+                         pfrom->GetId(), nVersion, PROTOCOL_VERSION_ENFORCEMENT_HEIGHT, PROTOCOL_VERSION);
+                connman->PushMessage(pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, strCommand, REJECT_OBSOLETE,
+                                   strprintf("Network upgrade: Protocol version must be %d or greater after block height %d. Your version: %d", 
+                                           PROTOCOL_VERSION, PROTOCOL_VERSION_ENFORCEMENT_HEIGHT, nVersion)));
+                
+                // Give high misbehavior score to immediately ban outdated clients after upgrade
+                Misbehaving(pfrom->GetId(), 100);
+                pfrom->fDisconnect = true;
+                return false;
+            }
+        }
+
         if (nVersion == 10300)
             nVersion = 300;
         if (!vRecv.empty())
@@ -1634,6 +1724,21 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             vRecv >> LIMITED_STRING(strSubVer, MAX_SUBVERSION_LENGTH);
             cleanSubVer = SanitizeString(strSubVer);
         }
+        
+        // Check client version from User Agent - reject clients below v1.1.3
+        if (IsClientVersionBelowMinimum(cleanSubVer)) {
+            LogPrintf("peer=%d using client version below v1.1.3 (User Agent: %s); disconnecting to enforce minimum version requirement\n", pfrom->GetId(), cleanSubVer);
+            connman->PushMessage(pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, strCommand, REJECT_OBSOLETE,
+                               std::string("Client version must be v1.1.3 or higher. Your version: " + cleanSubVer)));
+            
+            // Add misbehavior score to immediately ban old version clients
+            LOCK(cs_main);
+            Misbehaving(pfrom->GetId(), 100); // Give 100 points to immediately ban outdated clients
+            
+            pfrom->fDisconnect = true;
+            return false;
+        }
+        
         if (!vRecv.empty()) {
             vRecv >> nStartingHeight;
         }
