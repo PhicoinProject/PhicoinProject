@@ -1923,7 +1923,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
                             vAssetTxIndex.emplace_back(o);
                     }
                 }
-                /** PHI START */
+                /** PHI END */
             } else {
                 if(AreRestrictedAssetsDeployed()) {
                     if (assetsCache) {
@@ -2419,6 +2419,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         //  relative to a piece of software is an objective fact these defaults can be easily reviewed.
         // This setting doesn't force the selection of any particular chain but makes validating some faster by
         //  effectively caching the result of part of the verification.
+        // This setting doesn't force the selection of any particular chain but makes validating some faster by
+        //  effectively caching the result of part of the verification.
         BlockMap::const_iterator  it = mapBlockIndex.find(hashAssumeValid);
         if (it != mapBlockIndex.end()) {
             if (it->second->GetAncestor(pindex->nHeight) == pindex &&
@@ -2744,39 +2746,51 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                block.vtx[0]->GetValueOut(AreEnforcedValuesDeployed()), blockReward),
                                REJECT_INVALID, "bad-cb-amount");
     /** PHI START */
-	//DevAutonomousAddress Assign 10%
-	std::string  GetDevAutonomousAddress 	= GetParams().DevAddress();
-	CTxDestination destDevAutonomous 		= DecodeDestination(GetDevAutonomousAddress);
+    //DevAutonomousAddress Assign 5%
+    std::string  GetDevAutonomousAddress = GetParams().DevAddress();
+    CTxDestination destDevAutonomous = DecodeDestination(GetDevAutonomousAddress);
     if (!IsValidDestination(destDevAutonomous)) {
-		LogPrintf("IsValidDestination: Invalid Aipg address %s \n", GetDevAutonomousAddress);
+        LogPrintf("IsValidDestination: Invalid Aipg address %s \n", GetDevAutonomousAddress);
     }
-	// Parse PHI address
-    CScript scriptPubKeyDevAutonomous 	= GetScriptForDestination(destDevAutonomous);
-	
-	CAmount nDevAutonomousAmount 			= 5;
-	CAmount nSubsidy 							= GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
-	CAmount nDevAutonomousAmountValue		= nSubsidy*nDevAutonomousAmount/100;
-	/* Remove Log to console
-	LogPrintf("==>block.vtx[0]->vout[1].nValue:    %ld \n", block.vtx[0]->vout[1].nValue);
-	LogPrintf("==>nDevAutonomousAmountValue: %ld \n", nDevAutonomousAmountValue);
-	LogPrintf("==>block.vtx[0]->vout[1].scriptPubKey: %s \n", block.vtx[0]->vout[1].scriptPubKey[3]);
-	LogPrintf("==>GetDevAutonomousAddress:   %s \n", GetDevAutonomousAddress);
-	LogPrintf("==>scriptPubKeyDevAutonomous    Actual: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey));
-	LogPrintf("==>scriptPubKeyDevAutonomous Should Be: %s \n", HexStr(scriptPubKeyDevAutonomous));
-	*/
-	//Check 5% Amount
-	if(block.vtx[0]->vout[1].nValue < nDevAutonomousAmountValue )		{
-		return state.DoS(100,
-                         error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[1].nValue, nDevAutonomousAmountValue),
-                         REJECT_INVALID, "bad-cb-community-autonomous-amount");
-	}
+    // Parse PHI address
+    CScript scriptPubKeyDevAutonomous = GetScriptForDestination(destDevAutonomous);
+    
+    CAmount nDevAutonomousAmount = 5;
+    CAmount nStakePoolAmount = 45;
+    CAmount nSubsidy = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
+    CAmount nDevAutonomousAmountValue = nSubsidy*nDevAutonomousAmount/100;
+    CAmount nStakePoolAmountValue = nSubsidy*nStakePoolAmount/100;
 
-	if( HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous) )		{
-		return state.DoS(100,
-                         error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
-                         REJECT_INVALID, "bad-cb-community-autonomous-address");
-	}
-	/** PHI END */
+    //Check 5% Amount for developer
+    if(block.vtx[0]->vout[2].nValue < nDevAutonomousAmountValue) {
+        return state.DoS(100,
+                     error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[2].nValue, nDevAutonomousAmountValue),
+                     REJECT_INVALID, "bad-cb-community-autonomous-amount");
+    }
+
+    if(HexStr(block.vtx[0]->vout[2].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
+        return state.DoS(100,
+                     error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[2].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
+                     REJECT_INVALID, "bad-cb-community-autonomous-address");
+    }
+
+    //Check 45% Amount for stake pool
+    CTxDestination destStakePool = DecodeDestination(GetParams().StakePoolAddress());
+    CScript scriptPubKeyStakePool = GetScriptForDestination(destStakePool);
+    
+    if(block.vtx[0]->vout[1].nValue < nStakePoolAmountValue) {
+        return state.DoS(100,
+                     error("ConnectBlock(): coinbase Stake Pool Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[1].nValue, nStakePoolAmountValue),
+                     REJECT_INVALID, "bad-cb-stake-pool-amount");
+    }
+
+    if(HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyStakePool)) {
+        return state.DoS(100,
+                     error("ConnectBlock(): coinbase Stake Pool Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyStakePool)),
+                     REJECT_INVALID, "bad-cb-stake-pool-address");
+    }
+    /** PHI END */
+
     if (!control.Wait())
         return state.DoS(100, error("%s: CheckQueue failed", __func__), REJECT_INVALID, "block-validation-failed");
     int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
@@ -3699,7 +3713,7 @@ bool PreciousBlock(CValidationState& state, const CChainParams& params, CBlockIn
         nLastPreciousChainwork = chainActive.Tip()->nChainWork;
         setBlockIndexCandidates.erase(pindex);
         pindex->nSequenceId = nBlockReverseSequenceId;
-        if (nBlockReverseSequenceId > std::numeric_limits<int32_t>::min()) {
+        if (nBlockReverseSequenceId > std::numeric_limits<int31_t>::min()) {
             // We can't keep reducing the counter if somebody really wants to
             // call preciousblock 2**31-1 times on the same set of tips...
             nBlockReverseSequenceId--;
@@ -5117,7 +5131,7 @@ bool RewindBlockIndex(const CChainParams& params)
         nHeight++;
     }
 
-    // nHeight is now the height of the first insufficiently-validated block, or tipheight + 1
+    // nHeight is now the height of the first insufficiently validated block, or tipheight + 1
     CValidationState state;
     CBlockIndex* pindex = chainActive.Tip();
     while (chainActive.Height() >= nHeight) {

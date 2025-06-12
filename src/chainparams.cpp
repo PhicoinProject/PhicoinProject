@@ -276,6 +276,7 @@ public:
 
 
         strDevAddress = "PfGy9w5jysV8aVw9eRjDqsydHJdnuxSV89";
+        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
         // DGW Activation
         nDGWActivationBlock = 1;
 
@@ -433,6 +434,7 @@ public:
         strAddNullQualifierTagBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 
         strDevAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
+        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
         // Global Burn Address
         strGlobalBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 
@@ -578,6 +580,7 @@ public:
         strIssueRestrictedAssetBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
         strAddNullQualifierTagBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
         strDevAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
+        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
         // Global Burn Address
         strGlobalBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 
