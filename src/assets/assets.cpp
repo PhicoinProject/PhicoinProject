@@ -42,12 +42,16 @@ std::map<uint256, std::string> mapReissuedTx;
 std::map<std::string, uint256> mapReissuedAssets;
 
 // excluding owner tag ('!')
-static const auto MAX_NAME_LENGTH = 254;
+static const auto MAX_NAME_LENGTH = 256;
 static const auto MAX_CHANNEL_NAME_LENGTH = 12;
 
 // min lengths are expressed by quantifiers
-static const std::regex ROOT_NAME_CHARACTERS("^[A-Z0-9._]{3,}$");
-static const std::regex SUB_NAME_CHARACTERS("^[A-Z0-9._]+$");
+// DNS RFC compliant patterns for domain-like assets
+// ROOT assets (gTLD): 1-63 characters, cannot start/end with hyphen
+static const std::regex ROOT_NAME_CHARACTERS("^([A-Z0-9]|[A-Z0-9][A-Z0-9-]{0,61}[A-Z0-9])$");
+// SUB assets (subdomain): 1-63 characters, cannot start/end with hyphen  
+static const std::regex SUB_NAME_CHARACTERS("^([A-Z0-9]|[A-Z0-9][A-Z0-9-]{0,61}[A-Z0-9])$");
+
 static const std::regex UNIQUE_TAG_CHARACTERS("^[-A-Za-z0-9@$%&*()[\\]{}_.?:]+$");
 static const std::regex MSG_CHANNEL_TAG_CHARACTERS("^[A-Za-z0-9_]+$");
 static const std::regex VOTE_TAG_CHARACTERS("^[A-Z0-9._]+$");
@@ -77,14 +81,12 @@ static const std::regex QUALIFIER_INDICATOR("^[#][A-Z0-9._]{3,}$"); // Starts wi
 static const std::regex SUB_QUALIFIER_INDICATOR("^#[A-Z0-9._]+\\/#[A-Z0-9._]+$"); // Starts with #
 static const std::regex RESTRICTED_INDICATOR("^[\\$][A-Z0-9._]{3,}$"); // Starts with $
 
-static const std::regex PHICOIN_NAMES("^PHI$|^PHICOIN$|^PHICOIN$|^#PHI$|^#PHICOIN$|^#PHICOIN$");
+static const std::regex PHICOIN_NAMES("^PHICOIN$|^#PHICOIN$");
 
 bool IsRootNameValid(const std::string& name)
 {
+    // DNS RFC compliant validation - position restrictions are built into the regex
     return std::regex_match(name, ROOT_NAME_CHARACTERS)
-        && !std::regex_match(name, DOUBLE_PUNCTUATION)
-        && !std::regex_match(name, LEADING_PUNCTUATION)
-        && !std::regex_match(name, TRAILING_PUNCTUATION)
         && !std::regex_match(name, PHICOIN_NAMES);
 }
 
@@ -116,10 +118,8 @@ bool IsSubQualifierNameValid(const std::string& name)
 
 bool IsSubNameValid(const std::string& name)
 {
-    return std::regex_match(name, SUB_NAME_CHARACTERS)
-        && !std::regex_match(name, DOUBLE_PUNCTUATION)
-        && !std::regex_match(name, LEADING_PUNCTUATION)
-        && !std::regex_match(name, TRAILING_PUNCTUATION);
+    // DNS RFC compliant validation - position restrictions are built into the regex
+    return std::regex_match(name, SUB_NAME_CHARACTERS);
 }
 
 bool IsUniqueTagValid(const std::string& tag)
@@ -207,7 +207,7 @@ bool IsAssetNameValid(const std::string& name, AssetType& assetType, std::string
 {
     // Do a max length check first to stop the possibility of a stack exhaustion.
     // We check for a value that is larger than the max asset name
-    if (name.length() > 255)
+    if (name.length() > 266)
         return false;
 
     assetType = AssetType::INVALID;

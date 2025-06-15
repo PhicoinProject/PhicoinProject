@@ -3713,7 +3713,7 @@ bool PreciousBlock(CValidationState& state, const CChainParams& params, CBlockIn
         nLastPreciousChainwork = chainActive.Tip()->nChainWork;
         setBlockIndexCandidates.erase(pindex);
         pindex->nSequenceId = nBlockReverseSequenceId;
-        if (nBlockReverseSequenceId > std::numeric_limits<int31_t>::min()) {
+        if (nBlockReverseSequenceId > std::numeric_limits<int32_t>::min()) {
             // We can't keep reducing the counter if somebody really wants to
             // call preciousblock 2**31-1 times on the same set of tips...
             nBlockReverseSequenceId--;
