@@ -126,7 +126,7 @@ bool ParseClientVersion(const std::string& userAgent, int& major, int& minor, in
     }
 }
 
-// Function to check if client version is below minimum required (1.1.3)
+// Function to check if client version is below minimum required (2.0.0)
 bool IsClientVersionBelowMinimum(const std::string& userAgent) {
     int major, minor, revision;
     if (!ParseClientVersion(userAgent, major, minor, revision)) {
@@ -134,12 +134,8 @@ bool IsClientVersionBelowMinimum(const std::string& userAgent) {
         return true;
     }
     
-    // Check if version is below 1.1.3
-    if (major < 1) return true;
-    if (major == 1) {
-        if (minor < 1) return true;
-        if (minor == 1 && revision < 3) return true;
-    }
+    // Check if version is below 2.0.0
+    if (major < 2) return true;
     
     return false;
 }
@@ -1725,11 +1721,11 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             cleanSubVer = SanitizeString(strSubVer);
         }
         
-        // Check client version from User Agent - reject clients below v1.1.3
+        // Check client version from User Agent - reject clients below v2.0.0
         if (IsClientVersionBelowMinimum(cleanSubVer)) {
-            LogPrintf("peer=%d using client version below v1.1.3 (User Agent: %s); disconnecting to enforce minimum version requirement\n", pfrom->GetId(), cleanSubVer);
+            LogPrintf("peer=%d using client version below v2.0.0 (User Agent: %s); disconnecting to enforce minimum version requirement\n", pfrom->GetId(), cleanSubVer);
             connman->PushMessage(pfrom, CNetMsgMaker(INIT_PROTO_VERSION).Make(NetMsgType::REJECT, strCommand, REJECT_OBSOLETE,
-                               std::string("Client version must be v1.1.3 or higher. Your version: " + cleanSubVer)));
+                               std::string("Client version must be v2.0.0 or higher. Your version: " + cleanSubVer)));
             
             // Add misbehavior score to immediately ban old version clients
             LOCK(cs_main);

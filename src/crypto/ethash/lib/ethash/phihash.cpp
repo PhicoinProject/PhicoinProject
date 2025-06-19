@@ -1,22 +1,19 @@
 #include <crypto/ethash/include/ethash/phihash.hpp>
-#include <crypto/ethash/lib/ethash/pcg32.hpp>
 
 #include "crypto/ethash/lib/ethash/bit_manipulation.h"
 #include "crypto/ethash/lib/ethash/endianness.hpp"
 #include "crypto/ethash/lib/ethash/ethash-internal.hpp"
 #include "crypto/ethash/lib/ethash/kiss99.hpp"
 #include <crypto/ethash/include/ethash/keccak.hpp>
-#include <limits>
-#include <cmath>
+
 #include <array>
-#include <functional>
 
 
 namespace phihash
 {
 namespace
 {
-/// A variant of Keccak hash function for PhiHash.
+/// A variant of Keccak hash function for ProgPoW.
 ///
 /// This Keccak hash function uses 800-bit permutation (Keccak-f[800]) with 576 bitrate.
 /// It take exactly 576 bits of input (split across 3 arguments) and adds no padding.
@@ -51,7 +48,7 @@ public:
     uint32_t next_dst() noexcept { return dst_seq[(dst_counter++) % num_regs]; }
     uint32_t next_src() noexcept { return src_seq[(src_counter++) % num_regs]; }
 
-    pcg32 rng;
+    kiss99 rng;
 
 private:
     size_t dst_counter = 0;
@@ -61,15 +58,16 @@ private:
 };
 
 mix_rng_state::mix_rng_state(uint32_t* hash_seed) noexcept
-    : rng{0, 0} 
 {
     const auto seed_lo = static_cast<uint32_t>(hash_seed[0]);
     const auto seed_hi = static_cast<uint32_t>(hash_seed[1]);
 
     const auto z = fnv1a(fnv_offset_basis, seed_lo);
     const auto w = fnv1a(z, seed_hi);
+    const auto jsr = fnv1a(w, seed_lo);
+    const auto jcong = fnv1a(jsr, seed_hi);
 
-    rng = pcg32{z, w};
+    rng = kiss99{z, w, jsr, jcong};
 
     // Create random permutations of mix destinations / sources.
     // Uses Fisher-Yates shuffle.
@@ -90,45 +88,33 @@ mix_rng_state::mix_rng_state(uint32_t* hash_seed) noexcept
 NO_SANITIZE("unsigned-integer-overflow")
 inline uint32_t random_math(uint32_t a, uint32_t b, uint32_t selector) noexcept
 {
-    using MathOp = uint32_t(*)(uint32_t, uint32_t);
-   
-    auto add = [](uint32_t x, uint32_t y) { return x + y; };
-    auto multiply = [](uint32_t x, uint32_t y) { return x * y; };
-    auto subtract = [](uint32_t x, uint32_t y) { return x - y; };
-    auto min_op = [](uint32_t x, uint32_t y) { return std::min(x, y); };
-    auto max_op = [](uint32_t x, uint32_t y) { return std::max(x, y); };
-    auto rotl = [](uint32_t x, uint32_t y) { return rotl32(x, y & 31); };
-    auto rotr = [](uint32_t x, uint32_t y) { return rotr32(x, y & 31); };
-    auto bitwise_and = [](uint32_t x, uint32_t y) { return x & y; };
-    auto bitwise_or = [](uint32_t x, uint32_t y) { return x | y; };
-    auto bitwise_xor = [](uint32_t x, uint32_t y) { return x ^ y; };
-
-    auto tanh = [](uint32_t x, uint32_t y) {
-        constexpr float PHI = 0.61803398875f;
-        float sum = static_cast<float>(x) + static_cast<float>(y);
-        float result = std::tanh(sum * PHI);
-        float frac_part = result - std::floor(result);
-        return static_cast<uint32_t>(frac_part * (1ULL << 32));
-    };
-
-    static const MathOp operations[] = {
-        add,                // case 0
-        multiply,           // case 1
-        subtract,           // case 2
-        min_op,             // case 3
-        max_op,             // case 4
-        rotl,               // case 5
-        rotr,               // case 6
-        bitwise_and,        // case 7
-        bitwise_or,         // case 8
-        bitwise_xor,        // case 9
-        tanh                // case 10
-    };
-
-    uint32_t op_index = selector % 11; 
-    return operations[op_index](a, b);
+    switch (selector % 11)
+    {
+    default:
+    case 0:
+        return a + b;
+    case 1:
+        return a * b;
+    case 2:
+        return mul_hi32(a, b);
+    case 3:
+        return std::min(a, b);
+    case 4:
+        return rotl32(a, b);
+    case 5:
+        return rotr32(a, b);
+    case 6:
+        return a & b;
+    case 7:
+        return a | b;
+    case 8:
+        return a ^ b;
+    case 9:
+        return clz32(a) + clz32(b);
+    case 10:
+        return popcount32(a) + popcount32(b);
+    }
 }
-
 
 /// Merge data from `b` and `a`.
 /// Assuming `a` has high entropy, only do ops that retain entropy even if `b`
@@ -154,23 +140,33 @@ inline void random_merge(uint32_t& a, uint32_t b, uint32_t selector) noexcept
     }
 }
 
-static const uint32_t phicoin_phihash[15] = {
+static const uint32_t round_constants[22] = {
+        0x00000001,0x00008082,0x0000808A,
+        0x80008000,0x0000808B,0x80000001,
+        0x80008081,0x00008009,0x0000008A,
+        0x00000088,0x80008009,0x8000000A,
+        0x8000808B,0x0000008B,0x00008089,
+        0x00008003,0x00008002,0x00000080,
+        0x0000800A,0x8000000A,0x80008081,
+        0x00008080,
+};
 
-        0x00000049, // I
-        0x0000004C, // L
-        0x0000004F, // O
-        0x00000056, // V
-        0x00000045, // E
-        0x00000050, // P
-        0x0000004F, // O
-        0x00000057, // W
-        0x00000050, // P
-        0x00000048, // H
-        0x00000049, // I
-        0x00000043, // C
-        0x0000004F, // O
-        0x00000049, // I
-        0x0000004E, // N
+static const uint32_t ravencoin_kawpow[15] = {
+        0x00000072, //R
+        0x00000041, //A
+        0x00000056, //V
+        0x00000045, //E
+        0x0000004E, //N
+        0x00000043, //C
+        0x0000004F, //O
+        0x00000049, //I
+        0x0000004E, //N
+        0x0000004B, //K
+        0x00000041, //A
+        0x00000057, //W
+        0x00000050, //P
+        0x0000004F, //O
+        0x00000057, //W
 };
 
 using lookup_fn = hash2048 (*)(const epoch_context&, uint32_t);
@@ -253,21 +249,24 @@ mix_array init_mix(uint32_t* hash_seed)
     mix_array mix;
     for (uint32_t l = 0; l < mix.size(); ++l)
     {
-        pcg32 rng{z, w};
+        const uint32_t jsr = fnv1a(w, l);
+        const uint32_t jcong = fnv1a(jsr, l);
+        kiss99 rng{z, w, jsr, jcong};
 
         for (auto& row : mix[l])
             row = rng();
     }
     return mix;
 }
+
 hash256 hash_mix(
     const epoch_context& context, int block_number, uint32_t * seed, lookup_fn lookup) noexcept
 {
     auto mix = init_mix(seed);
     auto number = uint64_t(block_number / period_length);
     uint32_t new_state[2];
-    new_state[0] = (uint32_t)number;
-    new_state[1] = (uint32_t)(number >> 32);
+    new_state[0] = number;
+    new_state[1] = number >> 32;
     mix_rng_state state{new_state};
 
     for (uint32_t i = 0; i < 64; ++i)
@@ -301,20 +300,20 @@ result hash(const epoch_context& context, int block_number, const hash256& heade
     uint32_t state2[8];
 
     {
+        // Absorb phase for initial round of keccak
         uint32_t state[25] = {0x0};     // Keccak's state
 
-        // Absorb phase for initial round of keccak
         // 1st fill with header data (8 words)
         for (int i = 0; i < 8; i++)
             state[i] = header_hash.word32s[i];
 
         // 2nd fill with nonce (2 words)
-        state[8] = (uint32_t)nonce;
-        state[9] = (uint32_t)(nonce >> 32);
+        state[8] = nonce;
+        state[9] = nonce >> 32;
 
         // 3rd apply ravencoin input constraints
         for (int i = 10; i < 25; i++)
-            state[i] = phicoin_phihash[i-10];
+            state[i] = ravencoin_kawpow[i-10];
 
         keccak_phihash_64(state);
 
@@ -326,9 +325,10 @@ result hash(const epoch_context& context, int block_number, const hash256& heade
     hash_seed[1] = state2[1];
     const hash256 mix_hash = hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048);
 
+    // Absorb phase for last round of keccak (256 bits)
+
     uint32_t state[25] = {0x0};     // Keccak's state
 
-    // Absorb phase for last round of keccak (256 bits)
     // 1st initial 8 words of state are kept as carry-over from initial keccak
     for (int i = 0; i < 8; i++)
         state[i] = state2[i];
@@ -339,7 +339,7 @@ result hash(const epoch_context& context, int block_number, const hash256& heade
 
     // 3rd apply ravencoin input constraints
     for (int i = 16; i < 25; i++)
-        state[i] = phicoin_phihash[i - 16];
+        state[i] = ravencoin_kawpow[i - 16];
 
     // Run keccak loop
     keccak_phihash_256(state);
@@ -373,20 +373,21 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
     uint32_t state2[8];
 
     {
+        // Absorb phase for initial round of keccak
+
         uint32_t state[25] = {0x0};     // Keccak's state
 
-        // Absorb phase for initial round of keccak
         // 1st fill with header data (8 words)
         for (int i = 0; i < 8; i++)
             state[i] = header_hash.word32s[i];
 
         // 2nd fill with nonce (2 words)
-        state[8] = (uint32_t)nonce;
-        state[9] = (uint32_t)(nonce >> 32);
+        state[8] = nonce;
+        state[9] = nonce >> 32;
 
         // 3rd apply ravencoin input constraints
         for (int i = 10; i < 25; i++)
-            state[i] = phicoin_phihash[i-10];
+            state[i] = ravencoin_kawpow[i-10];
 
         keccak_phihash_64(state);
 
@@ -399,9 +400,10 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
 
     const hash256 mix_hash = hash_mix(context, block_number, hash_seed, lazy_lookup);
 
+    // Absorb phase for last round of keccak (256 bits)
+
     uint32_t state[25] = {0x0};     // Keccak's state
 
-    // Absorb phase for last round of keccak (256 bits)
     // 1st initial 8 words of state are kept as carry-over from initial keccak
     for (int i = 0; i < 8; i++)
         state[i] = state2[i];
@@ -412,7 +414,7 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
 
     // 3rd apply ravencoin input constraints
     for (int i = 16; i < 25; i++)
-        state[i] = phicoin_phihash[i - 16];
+        state[i] = ravencoin_kawpow[i - 16];
 
     // Run keccak loop
     keccak_phihash_256(state);
@@ -420,30 +422,32 @@ result hash(const epoch_context_full& context, int block_number, const hash256& 
     hash256 output;
     for (int i = 0; i < 8; ++i)
         output.word32s[i] = le::uint32(state[i]);
-
     return {output, mix_hash};
 }
 
 bool verify(const epoch_context& context, int block_number, const hash256& header_hash,
     const hash256& mix_hash, uint64_t nonce, const hash256& boundary) noexcept
 {
+
     uint32_t hash_seed[2];  // KISS99 initiator
     uint32_t state2[8];
 
     {
         // Absorb phase for initial round of keccak
-        // 1st fill with header data (8 words)
+
         uint32_t state[25] = {0x0};     // Keccak's state
+
+        // 1st fill with header data (8 words)
         for (int i = 0; i < 8; i++)
             state[i] = header_hash.word32s[i];
 
         // 2nd fill with nonce (2 words)
-        state[8] = (uint32_t)nonce;
-        state[9] = (uint32_t)(nonce >> 32);
+        state[8] = nonce;
+        state[9] = nonce >> 32;
 
         // 3rd apply ravencoin input constraints
         for (int i = 10; i < 25; i++)
-            state[i] = phicoin_phihash[i-10];
+            state[i] = ravencoin_kawpow[i-10];
 
         keccak_phihash_64(state);
 
@@ -454,13 +458,13 @@ bool verify(const epoch_context& context, int block_number, const hash256& heade
     hash_seed[0] = state2[0];
     hash_seed[1] = state2[1];
 
+    // Absorb phase for last round of keccak (256 bits)
+
     uint32_t state[25] = {0x0};     // Keccak's state
 
-    // Absorb phase for last round of keccak (256 bits)
     // 1st initial 8 words of state are kept as carry-over from initial keccak
     for (int i = 0; i < 8; i++)
         state[i] = state2[i];
-
 
     // 2nd subsequent 8 words are carried from digest/mix
     for (int i = 8; i < 16; i++)
@@ -468,7 +472,7 @@ bool verify(const epoch_context& context, int block_number, const hash256& heade
 
     // 3rd apply ravencoin input constraints
     for (int i = 16; i < 25; i++)
-        state[i] = phicoin_phihash[i - 16];
+        state[i] = ravencoin_kawpow[i - 16];
 
     // Run keccak loop
     keccak_phihash_256(state);
@@ -476,8 +480,10 @@ bool verify(const epoch_context& context, int block_number, const hash256& heade
     hash256 output;
     for (int i = 0; i < 8; ++i)
         output.word32s[i] = le::uint32(state[i]);
-    if (!is_less_or_equal(output, boundary))
+
+    if (!is_less_or_equal(output, boundary)) {
         return false;
+    }
 
     const hash256 expected_mix_hash =
         hash_mix(context, block_number, hash_seed, calculate_dataset_item_2048);
@@ -504,9 +510,9 @@ hash256 hash_no_verify(const int& block_number, const hash256& header_hash,
         state[8] = nonce;
         state[9] = nonce >> 32;
 
-        // 3rd apply PHICOIN input constraints
+        // 3rd apply ravencoin input constraints
         for (int i = 10; i < 25; i++)
-            state[i] = phicoin_phihash[i-10];
+            state[i] = ravencoin_kawpow[i-10];
 
         keccak_phihash_64(state);
 
@@ -526,9 +532,9 @@ hash256 hash_no_verify(const int& block_number, const hash256& header_hash,
     for (int i = 8; i < 16; i++)
         state[i] = mix_hash.word32s[i-8];
 
-    // 3rd apply PHICOIN input constraints
+    // 3rd apply ravencoin input constraints
     for (int i = 16; i < 25; i++)
-        state[i] = phicoin_phihash[i - 16];
+        state[i] = ravencoin_kawpow[i - 16];
 
     // Run keccak loop
     keccak_phihash_256(state);
@@ -569,4 +575,4 @@ search_result search(const epoch_context_full& context, int block_number,
     return {};
 }
 
-}  // namespace phihash
+}  // namespace progpow

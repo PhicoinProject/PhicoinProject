@@ -30,7 +30,7 @@ static const int PHIHASH_VERSION = 70027;
 //! disconnect from peers older than this proto version
 //!!! Anytime this value is changed please also update the "MY_VERSION" value to match in the
 //!!! ./test/functional/test_framework/mininode.py file. Not doing so will cause verack to fail!
-static const int MIN_PEER_PROTO_VERSION = X16RV2_VERSION;
+static const int MIN_PEER_PROTO_VERSION = PROTOCOL_VERSION;
 
 //! nTime field added to CAddress, starting with this version;
 //! if possible, avoid requesting addresses nodes older than this

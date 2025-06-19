@@ -2746,48 +2746,95 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                block.vtx[0]->GetValueOut(AreEnforcedValuesDeployed()), blockReward),
                                REJECT_INVALID, "bad-cb-amount");
     /** PHI START */
-    //DevAutonomousAddress Assign 5%
-    std::string  GetDevAutonomousAddress = GetParams().DevAddress();
+    // Get dev address and validate
+    std::string GetDevAutonomousAddress = GetParams().DevAddress();
     CTxDestination destDevAutonomous = DecodeDestination(GetDevAutonomousAddress);
     if (!IsValidDestination(destDevAutonomous)) {
-        LogPrintf("IsValidDestination: Invalid Aipg address %s \n", GetDevAutonomousAddress);
+        LogPrintf("IsValidDestination: Invalid PHI Dev address %s \n", GetDevAutonomousAddress);
     }
-    // Parse PHI address
     CScript scriptPubKeyDevAutonomous = GetScriptForDestination(destDevAutonomous);
     
-    CAmount nDevAutonomousAmount = 5;
-    CAmount nStakePoolAmount = 45;
     CAmount nSubsidy = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
-    CAmount nDevAutonomousAmountValue = nSubsidy*nDevAutonomousAmount/100;
-    CAmount nStakePoolAmountValue = nSubsidy*nStakePoolAmount/100;
-
-    //Check 5% Amount for developer
-    if(block.vtx[0]->vout[2].nValue < nDevAutonomousAmountValue) {
-        return state.DoS(100,
-                     error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[2].nValue, nDevAutonomousAmountValue),
-                     REJECT_INVALID, "bad-cb-community-autonomous-amount");
-    }
-
-    if(HexStr(block.vtx[0]->vout[2].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
-        return state.DoS(100,
-                     error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[2].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
-                     REJECT_INVALID, "bad-cb-community-autonomous-address");
-    }
-
-    //Check 45% Amount for stake pool
-    CTxDestination destStakePool = DecodeDestination(GetParams().StakePoolAddress());
-    CScript scriptPubKeyStakePool = GetScriptForDestination(destStakePool);
     
-    if(block.vtx[0]->vout[1].nValue < nStakePoolAmountValue) {
-        return state.DoS(100,
-                     error("ConnectBlock(): coinbase Stake Pool Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[1].nValue, nStakePoolAmountValue),
-                     REJECT_INVALID, "bad-cb-stake-pool-amount");
-    }
-
-    if(HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyStakePool)) {
-        return state.DoS(100,
-                     error("ConnectBlock(): coinbase Stake Pool Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyStakePool)),
-                     REJECT_INVALID, "bad-cb-stake-pool-address");
+    if (pindex->nHeight == 1) {
+        // Block height 1: Most rewards go to dev address (210,240,000 * COIN), rest to miner
+        // Expected structure: vout[0] = miner, vout[1] = dev, [optional witness commitment]
+        CAmount devSubsidy = 210240000 * COIN;
+        CAmount minerSubsidy = nFees + nSubsidy - devSubsidy;
+        
+        // Check that coinbase has at least 2 outputs for height 1 (may have witness commitment)
+        if (block.vtx[0]->vout.size() < 2) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase for height 1 must have at least 2 outputs. Actual: %d", block.vtx[0]->vout.size()),
+                         REJECT_INVALID, "bad-cb-height1-output-count");
+        }
+        
+        // Check dev subsidy amount (vout[1])
+        if (block.vtx[0]->vout[1].nValue < devSubsidy) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Height 1 Dev Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[1].nValue, devSubsidy),
+                         REJECT_INVALID, "bad-cb-height1-dev-amount");
+        }
+        
+        // Check dev address (vout[1])
+        if (HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Height 1 Dev Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
+                         REJECT_INVALID, "bad-cb-height1-dev-address");
+        }
+        
+        LogPrintf("Height 1 validation: Dev subsidy: %ld, Miner subsidy: %ld\n", devSubsidy, minerSubsidy);
+        
+    } else {
+        // Block height > 1: 50% miner, 45% stake pool, 5% dev
+        // Expected structure: vout[0] = miner, vout[1] = stake pool, vout[2] = dev, [optional witness commitment]
+        CAmount minerSubsidy = (50 * nSubsidy) / 100;  // 50% for miner
+        CAmount stakePoolSubsidy = (45 * nSubsidy) / 100;  // 45% for stake pool
+        CAmount devSubsidy = nSubsidy - minerSubsidy - stakePoolSubsidy;  // 5% for developer
+        
+        // Check that coinbase has at least 3 outputs for height > 1 (may have witness commitment)
+        if (block.vtx[0]->vout.size() < 3) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase for height > 1 must have at least 3 outputs. Actual: %d", block.vtx[0]->vout.size()),
+                         REJECT_INVALID, "bad-cb-normal-output-count");
+        }
+        
+        // Get stake pool address and validate
+        CTxDestination destStakePool = DecodeDestination(GetParams().StakePoolAddress());
+        if (!IsValidDestination(destStakePool)) {
+            LogPrintf("IsValidDestination: Invalid Stake Pool address %s \n", GetParams().StakePoolAddress());
+        }
+        CScript scriptPubKeyStakePool = GetScriptForDestination(destStakePool);
+        
+        // Check stake pool subsidy amount (vout[1])
+        if (block.vtx[0]->vout[1].nValue < stakePoolSubsidy) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Stake Pool Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[1].nValue, stakePoolSubsidy),
+                         REJECT_INVALID, "bad-cb-stake-pool-amount");
+        }
+        
+        // Check stake pool address (vout[1])
+        if (HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyStakePool)) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Stake Pool Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyStakePool)),
+                         REJECT_INVALID, "bad-cb-stake-pool-address");
+        }
+        
+        // Check dev subsidy amount (vout[2])
+        if (block.vtx[0]->vout[2].nValue < devSubsidy) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[2].nValue, devSubsidy),
+                         REJECT_INVALID, "bad-cb-community-autonomous-amount");
+        }
+        
+        // Check dev address (vout[2])
+        if (HexStr(block.vtx[0]->vout[2].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
+            return state.DoS(100,
+                         error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[2].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
+                         REJECT_INVALID, "bad-cb-community-autonomous-address");
+        }
+        
+        LogPrintf("Height %d validation: Miner subsidy: %ld, Stake Pool subsidy: %ld, Dev subsidy: %ld\n", pindex->nHeight, minerSubsidy, stakePoolSubsidy, devSubsidy);
     }
     /** PHI END */
 
