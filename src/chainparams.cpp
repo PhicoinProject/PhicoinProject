@@ -55,7 +55,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "The Times 11/06/2024: Donald Trump wins US election 2024 to become 47th president.";
+    const char* pszTimestamp = "Break The Wall!";
     const CScript genesisOutputScript = CScript() << ParseHex("048e12253ce404c20ff8b0bcff71915d014171e865d2a91a24dde84788762d4815e10e8958f2fdb8f78b464b129b4ea8d071219397db7c24fec7432e5384796485") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -128,8 +128,8 @@ class CMainParams : public CChainParams
 public:
     CMainParams()
     {
-        uint32_t nGenesisTime = 1731824904;
-        uint32_t nAssetTime= 1731911615;
+        uint32_t nGenesisTime = 1750518589;
+        uint32_t nAssetTime= 1750549207;
         strNetworkID = "main";
         consensus.nSubsidyHalvingInterval = 2102400; //  1 y
         consensus.nBIP34Enabled = true;
@@ -179,10 +179,10 @@ public:
 
         // The best chain should have at least this much work
 
-        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000079e444cb1817ea"); // #150000
+        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000000000"); // #150000
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("00000000033645bc5ed36cdd28995ac92d9ab2f4d800fb84fbf91f4f494b520f"); // 
+        consensus.defaultAssumeValid = uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"); // 
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -200,16 +200,16 @@ public:
 
         uint32_t _nBits=0x1e00ffff;
 
+//        FindMainNetGenesisBlock(nGenesisTime,_nBits,"main");
 
 
-        genesis = CreateGenesisBlock(nGenesisTime, 13763736, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        // std::cout << "Genesis Block Hash: " << consensus.hashGenesisBlock.GetHex() << std::endl;
-        // std::cout << "Genesis Merkle Root: " << genesis.hashMerkleRoot.GetHex() << std::endl;
 
-        assert(consensus.hashGenesisBlock == uint256S("0000004e0269fd02be6117da3142a3bbe3d4672051b4c4b62479223583b94b68"));
-        assert(genesis.hashMerkleRoot == uint256S("53e41f880f8571d2d47fe09b94545445f99d2595686d08c26c5c4be874504e3f"));
+
+        assert(consensus.hashGenesisBlock == uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"));
+        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 56); // P
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 16); // H
@@ -236,15 +236,13 @@ public:
 
         checkpointData = (CCheckpointData){
             {
-                {10000, uint256S("00000004f64df39c212a50fd51dd5fa4df6740c6383c0a7a3fa46353b46942b7")},
-                {100000, uint256S("00000000002894ddd533d1a7d470ce00ae648b7c4397448bbd5b59f6440be71d")},
-                {150000, uint256S("00000000033645bc5ed36cdd28995ac92d9ab2f4d800fb84fbf91f4f494b520f")},
+
             }};
 
         chainTxData = ChainTxData{
-            1734332195, // Update to the latest UNIX timestamp
-            182694,     // Update to the latest total number of transactions
-            0.07549100225201959 // Update to the latest estimated transactions per second
+            // 1734332195, // Update to the latest UNIX timestamp
+            // 182694,     // Update to the latest total number of transactions
+            // 0.07549100225201959 // Update to the latest estimated transactions per second
         };
 
 
@@ -276,7 +274,7 @@ public:
 
 
         strDevAddress = "PfGy9w5jysV8aVw9eRjDqsydHJdnuxSV89";
-        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
+        
         // DGW Activation
         nDGWActivationBlock = 1;
 
@@ -303,7 +301,7 @@ public:
     CTestNetParams()
     {
         strNetworkID = "test";
-        uint32_t nGenesisTime =1731824904;
+        uint32_t nGenesisTime =1750518589;
         consensus.nSubsidyHalvingInterval = 1000; //
         consensus.nBIP34Enabled = true;
         consensus.nBIP65Enabled = true; // 
@@ -354,7 +352,7 @@ public:
         consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000000000");//6216
         // 0000000261793a9216e324f3fcd3ad272f9f2525d0f160946c79333dbf94993b
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("000000e813673e9e9f560bd2b94b5c1a4f481234bd03cff70fb059417a8e327c");
+        consensus.defaultAssumeValid = uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401");
         pchMessageStart[0] = 0x84; // T
         pchMessageStart[0] = 0x50; // 'P'
         pchMessageStart[1] = 0x48; // 'H'
@@ -367,13 +365,13 @@ public:
 
         uint32_t _nBits=0x1e00ffff;
 
-        genesis = CreateGenesisBlock(nGenesisTime, 13763736, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
 
         // Test MerkleRoot and GenesisBlock
-        assert(consensus.hashGenesisBlock == uint256S("0000004e0269fd02be6117da3142a3bbe3d4672051b4c4b62479223583b94b68"));
-        assert(genesis.hashMerkleRoot == uint256S("53e41f880f8571d2d47fe09b94545445f99d2595686d08c26c5c4be874504e3f"));
+        assert(consensus.hashGenesisBlock == uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"));
+        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
 
         vSeeds.emplace_back("seed1.test.phicoin.net", false); 
 
@@ -397,7 +395,7 @@ public:
 
         checkpointData = (CCheckpointData){
             {
-                 {0, uint256S("000000e813673e9e9f560bd2b94b5c1a4f481234bd03cff70fb059417a8e327c")},
+                //  {0, uint256S("000000e813673e9e9f560bd2b94b5c1a4f481234bd03cff70fb059417a8e327c")},
 
                 }};
 
@@ -434,7 +432,7 @@ public:
         strAddNullQualifierTagBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 
         strDevAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
-        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
+        
         // Global Burn Address
         strGlobalBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 
@@ -523,14 +521,14 @@ public:
         nDefaultPort = 18966;
         nPruneAfterHeight = 1000;
 
-        uint32_t nGenesisTime = 1731824904; // 
+        uint32_t nGenesisTime = 1750518589; // 
 
         uint32_t _nBits=0x1e00ffff;
-        genesis = CreateGenesisBlock(nGenesisTime, 13763736, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
         assert(consensus.hashGenesisBlock == uint256S("000000e813673e9e9f560bd2b94b5c1a4f481234bd03cff70fb059417a8e327c"));
-        assert(genesis.hashMerkleRoot == uint256S("53e41f880f8571d2d47fe09b94545445f99d2595686d08c26c5c4be874504e3f"));
+        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
 
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
@@ -580,7 +578,7 @@ public:
         strIssueRestrictedAssetBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
         strAddNullQualifierTagBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
         strDevAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
-        strStakePoolAddress = "PoaYSKMemr2cxruTKKkaxRtd2Pt74L2xEL";
+        
         // Global Burn Address
         strGlobalBurnAddress = "Tmkx2JgVtBbPKArQwNH9LvkbhvwfakrEHs";
 

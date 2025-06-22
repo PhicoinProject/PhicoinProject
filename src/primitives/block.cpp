@@ -19,7 +19,7 @@
 
 
 // uint32_t  nPHIHASHActivationTime;
-uint32_t nPHIHASHActivationTime=1709274851;
+uint32_t nPHIHASHActivationTime=1750518590;
 
 BlockNetwork bNetwork = BlockNetwork();
 
@@ -40,8 +40,7 @@ void BlockNetwork::SetNetwork(const std::string& net)
 
 uint256 CBlockHeader::GetHash() const
 {
-    if (nTime < nPHIHASHActivationTime) {
-        
+    if (nTime < nPHIHASHActivationTime) {  
         return HashX16R(BEGIN(nVersion), END(nNonce), hashPrevBlock);
     } else {
         return PHIHASHHash_OnlyMix(*this);
@@ -50,17 +49,8 @@ uint256 CBlockHeader::GetHash() const
 
 uint256 CBlockHeader::GetHashFull(uint256& mix_hash) const
 {
-    if (nTime < nPHIHASHActivationTime) {
-        //uint32_t nTimeToUse = MAINNET_X16RV2ACTIVATIONTIME;
-        // if (bNetwork.fOnTestnet) {
-        //     nTimeToUse = TESTNET_X16RV2ACTIVATIONTIME;
-        // } else if (bNetwork.fOnRegtest) {
-        //     nTimeToUse = REGTEST_X16RV2ACTIVATIONTIME;
-        // }
-        // if (nTime >= nTimeToUse) {
-        //     return HashX16RV2(BEGIN(nVersion), END(nNonce), hashPrevBlock);
-        // }
 
+    if (nTime < nPHIHASHActivationTime) {
         return HashX16R(BEGIN(nVersion), END(nNonce), hashPrevBlock);
     } else {
         return PHIHASHHash(*this, mix_hash);

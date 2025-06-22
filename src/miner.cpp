@@ -182,37 +182,28 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
             throw std::runtime_error(error_message);  
         }
         coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-        coinbaseTx.vout[0].nValue = minerSubsidy;
+        coinbaseTx.vout[0].nValue = nFees + minerSubsidy;
         coinbaseTx.vout[1].scriptPubKey = scriptPubKeyDevAutonomous;
-        coinbaseTx.vout[1].nValue=devSubsidy;
+        coinbaseTx.vout[1].nValue = devSubsidy;
 
         LogPrintf("Height 1: Miner subsidy: %ld, Dev subsidy: %ld to address %s\n", minerSubsidy, devSubsidy, dev_address);
     } else {
-        minerSubsidy = (50 * nSubsidy) / 100;  // 50% for miner
-        CAmount stakePoolSubsidy = (45 * nSubsidy) / 100;  // 45% for stake pool
-        devSubsidy = nSubsidy - minerSubsidy - stakePoolSubsidy;  // 5% for developer
-        coinbaseTx.vout.resize(3);
+        // 其他区块：开发者和矿工各50%
+        minerSubsidy = (50 * nSubsidy) / 100;
+        devSubsidy = nSubsidy - minerSubsidy;
+        coinbaseTx.vout.resize(2);
         CTxDestination destDevAutonomous = DecodeDestination(dev_address);
-        CTxDestination destStakePool = DecodeDestination(GetParams().StakePoolAddress());
         if (!IsValidDestination(destDevAutonomous)) {
             std::string error_message = strprintf("IsValidDestination: Invalid PHI Coin DEV address %s \n", dev_address);
             LogPrintf("%s", error_message); 
             throw std::runtime_error(error_message);  
         }
-        if (!IsValidDestination(destStakePool)) {
-            std::string error_message = strprintf("IsValidDestination: Invalid Stake Pool address %s \n", GetParams().StakePoolAddress());
-            LogPrintf("%s", error_message); 
-            throw std::runtime_error(error_message);  
-        }
-        CScript scriptPubKeyStakePool = GetScriptForDestination(destStakePool);
         coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
         coinbaseTx.vout[0].nValue = nFees + minerSubsidy;
-        coinbaseTx.vout[1].scriptPubKey = scriptPubKeyStakePool;
-        coinbaseTx.vout[1].nValue = stakePoolSubsidy;
-        coinbaseTx.vout[2].scriptPubKey = scriptPubKeyDevAutonomous;
-        coinbaseTx.vout[2].nValue = devSubsidy;
+        coinbaseTx.vout[1].scriptPubKey = scriptPubKeyDevAutonomous;
+        coinbaseTx.vout[1].nValue = devSubsidy;
 
-        LogPrintf("Height %d: Miner subsidy: %ld, Stake Pool subsidy: %ld, Dev subsidy: %ld to address %s\n", nHeight, minerSubsidy, stakePoolSubsidy, devSubsidy, dev_address);
+        LogPrintf("Height %d: Miner subsidy: %ld, Dev subsidy: %ld to address %s\n", nHeight, minerSubsidy, devSubsidy, dev_address);
     }
 
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;

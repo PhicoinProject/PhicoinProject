@@ -1324,6 +1324,7 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (nHeight == 1) {
+
         return 210240005*COIN;
     }
     if (halvings >= 1)
@@ -1923,7 +1924,7 @@ static DisconnectResult DisconnectBlock(const CBlock& block, const CBlockIndex* 
                             vAssetTxIndex.emplace_back(o);
                     }
                 }
-                /** PHI END */
+                /** PHI START */
             } else {
                 if(AreRestrictedAssetsDeployed()) {
                     if (assetsCache) {
@@ -2419,8 +2420,6 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         //  relative to a piece of software is an objective fact these defaults can be easily reviewed.
         // This setting doesn't force the selection of any particular chain but makes validating some faster by
         //  effectively caching the result of part of the verification.
-        // This setting doesn't force the selection of any particular chain but makes validating some faster by
-        //  effectively caching the result of part of the verification.
         BlockMap::const_iterator  it = mapBlockIndex.find(hashAssumeValid);
         if (it != mapBlockIndex.end()) {
             if (it->second->GetAncestor(pindex->nHeight) == pindex &&
@@ -2746,98 +2745,52 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                                block.vtx[0]->GetValueOut(AreEnforcedValuesDeployed()), blockReward),
                                REJECT_INVALID, "bad-cb-amount");
     /** PHI START */
-    // Get dev address and validate
-    std::string GetDevAutonomousAddress = GetParams().DevAddress();
-    CTxDestination destDevAutonomous = DecodeDestination(GetDevAutonomousAddress);
+	//DevAutonomousAddress Assign 10%
+	std::string  GetDevAutonomousAddress 	= GetParams().DevAddress();
+	CTxDestination destDevAutonomous 		= DecodeDestination(GetDevAutonomousAddress);
     if (!IsValidDestination(destDevAutonomous)) {
-        LogPrintf("IsValidDestination: Invalid PHI Dev address %s \n", GetDevAutonomousAddress);
+		LogPrintf("IsValidDestination: Invalid Aipg address %s \n", GetDevAutonomousAddress);
     }
-    CScript scriptPubKeyDevAutonomous = GetScriptForDestination(destDevAutonomous);
-    
-    CAmount nSubsidy = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
-    
-    if (pindex->nHeight == 1) {
-        // Block height 1: Most rewards go to dev address (210,240,000 * COIN), rest to miner
-        // Expected structure: vout[0] = miner, vout[1] = dev, [optional witness commitment]
-        CAmount devSubsidy = 210240000 * COIN;
-        CAmount minerSubsidy = nFees + nSubsidy - devSubsidy;
-        
-        // Check that coinbase has at least 2 outputs for height 1 (may have witness commitment)
-        if (block.vtx[0]->vout.size() < 2) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase for height 1 must have at least 2 outputs. Actual: %d", block.vtx[0]->vout.size()),
-                         REJECT_INVALID, "bad-cb-height1-output-count");
-        }
-        
-        // Check dev subsidy amount (vout[1])
-        if (block.vtx[0]->vout[1].nValue < devSubsidy) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Height 1 Dev Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[1].nValue, devSubsidy),
-                         REJECT_INVALID, "bad-cb-height1-dev-amount");
-        }
-        
-        // Check dev address (vout[1])
-        if (HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Height 1 Dev Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
-                         REJECT_INVALID, "bad-cb-height1-dev-address");
-        }
-        
-        LogPrintf("Height 1 validation: Dev subsidy: %ld, Miner subsidy: %ld\n", devSubsidy, minerSubsidy);
-        
-    } else {
-        // Block height > 1: 50% miner, 45% stake pool, 5% dev
-        // Expected structure: vout[0] = miner, vout[1] = stake pool, vout[2] = dev, [optional witness commitment]
-        CAmount minerSubsidy = (50 * nSubsidy) / 100;  // 50% for miner
-        CAmount stakePoolSubsidy = (45 * nSubsidy) / 100;  // 45% for stake pool
-        CAmount devSubsidy = nSubsidy - minerSubsidy - stakePoolSubsidy;  // 5% for developer
-        
-        // Check that coinbase has at least 3 outputs for height > 1 (may have witness commitment)
-        if (block.vtx[0]->vout.size() < 3) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase for height > 1 must have at least 3 outputs. Actual: %d", block.vtx[0]->vout.size()),
-                         REJECT_INVALID, "bad-cb-normal-output-count");
-        }
-        
-        // Get stake pool address and validate
-        CTxDestination destStakePool = DecodeDestination(GetParams().StakePoolAddress());
-        if (!IsValidDestination(destStakePool)) {
-            LogPrintf("IsValidDestination: Invalid Stake Pool address %s \n", GetParams().StakePoolAddress());
-        }
-        CScript scriptPubKeyStakePool = GetScriptForDestination(destStakePool);
-        
-        // Check stake pool subsidy amount (vout[1])
-        if (block.vtx[0]->vout[1].nValue < stakePoolSubsidy) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Stake Pool Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[1].nValue, stakePoolSubsidy),
-                         REJECT_INVALID, "bad-cb-stake-pool-amount");
-        }
-        
-        // Check stake pool address (vout[1])
-        if (HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyStakePool)) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Stake Pool Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyStakePool)),
-                         REJECT_INVALID, "bad-cb-stake-pool-address");
-        }
-        
-        // Check dev subsidy amount (vout[2])
-        if (block.vtx[0]->vout[2].nValue < devSubsidy) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld", block.vtx[0]->vout[2].nValue, devSubsidy),
+	// Parse PHI address
+    CScript scriptPubKeyDevAutonomous 	= GetScriptForDestination(destDevAutonomous);
+	
+	CAmount nSubsidy = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
+	CAmount nDevAutonomousAmountValue;
+	CAmount minerSubsidy = 0;
+	CAmount devSubsidy = 0;
+	
+	if (pindex->nHeight == 1) {
+		devSubsidy = 210240000 * COIN;
+		minerSubsidy = nSubsidy - devSubsidy;  // 5 * COIN for height 1
+		nDevAutonomousAmountValue = devSubsidy;
+		LogPrint(BCLog::BENCH, "Height 1 validation: Miner subsidy expected: %ld, Dev subsidy expected: %ld\n", minerSubsidy, devSubsidy);
+	} else {
+		minerSubsidy = (50 * nSubsidy) / 100;
+		devSubsidy = nSubsidy - minerSubsidy;
+		nDevAutonomousAmountValue = devSubsidy;
+		LogPrint(BCLog::BENCH, "Height %d validation: Miner subsidy expected: %ld, Dev subsidy expected: %ld\n", pindex->nHeight, minerSubsidy, devSubsidy);
+	}
+	/* Remove Log to console
+	LogPrintf("==>block.vtx[0]->vout[1].nValue:    %ld \n", block.vtx[0]->vout[1].nValue);
+	LogPrintf("==>nDevAutonomousAmountValue: %ld \n", nDevAutonomousAmountValue);
+	LogPrintf("==>block.vtx[0]->vout[1].scriptPubKey: %s \n", block.vtx[0]->vout[1].scriptPubKey[3]);
+	LogPrintf("==>GetDevAutonomousAddress:   %s \n", GetDevAutonomousAddress);
+	LogPrintf("==>scriptPubKeyDevAutonomous    Actual: %s \n", HexStr(block.vtx[0]->vout[1].scriptPubKey));
+	LogPrintf("==>scriptPubKeyDevAutonomous Should Be: %s \n", HexStr(scriptPubKeyDevAutonomous));
+	*/
+	//Check 5% Amount
+	if(block.vtx[0]->vout[1].nValue < nDevAutonomousAmountValue )		{
+		return state.DoS(100,
+                         error("ConnectBlock(): coinbase Community Autonomous Amount Is Invalid. Actual: %ld Should be:%ld ",block.vtx[0]->vout[1].nValue, nDevAutonomousAmountValue),
                          REJECT_INVALID, "bad-cb-community-autonomous-amount");
-        }
-        
-        // Check dev address (vout[2])
-        if (HexStr(block.vtx[0]->vout[2].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous)) {
-            return state.DoS(100,
-                         error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n", HexStr(block.vtx[0]->vout[2].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
-                         REJECT_INVALID, "bad-cb-community-autonomous-address");
-        }
-        
-        LogPrintf("Height %d validation: Miner subsidy: %ld, Stake Pool subsidy: %ld, Dev subsidy: %ld\n", pindex->nHeight, minerSubsidy, stakePoolSubsidy, devSubsidy);
-    }
-    /** PHI END */
+	}
 
+	if( HexStr(block.vtx[0]->vout[1].scriptPubKey) != HexStr(scriptPubKeyDevAutonomous) )		{
+		return state.DoS(100,
+                         error("ConnectBlock(): coinbase Community Autonomous Address Is Invalid. Actual: %s Should Be: %s \n",HexStr(block.vtx[0]->vout[1].scriptPubKey), HexStr(scriptPubKeyDevAutonomous)),
+                         REJECT_INVALID, "bad-cb-community-autonomous-address");
+	}
+	/** PHI END */
     if (!control.Wait())
         return state.DoS(100, error("%s: CheckQueue failed", __func__), REJECT_INVALID, "block-validation-failed");
     int64_t nTime4 = GetTimeMicros(); nTimeVerify += nTime4 - nTime2;
@@ -5178,7 +5131,7 @@ bool RewindBlockIndex(const CChainParams& params)
         nHeight++;
     }
 
-    // nHeight is now the height of the first insufficiently validated block, or tipheight + 1
+    // nHeight is now the height of the first insufficiently-validated block, or tipheight + 1
     CValidationState state;
     CBlockIndex* pindex = chainActive.Tip();
     while (chainActive.Height() >= nHeight) {
