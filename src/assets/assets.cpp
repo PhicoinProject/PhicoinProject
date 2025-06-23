@@ -21,10 +21,12 @@
 #include <consensus/validation.h>
 #include <rpc/protocol.h>
 #include <net.h>
+#include <utilstrencodings.h>
 #include "assets.h"
 #include "assetdb.h"
 #include "assettypes.h"
 #include "protocol.h"
+#include "cid_parser.h"
 #include "wallet/coincontrol.h"
 #include "utilmoneystr.h"
 #include "coins.h"
@@ -3866,34 +3868,27 @@ bool GetMyAssetBalance(const std::string& name, CAmount& balance, const int& con
 }
 #endif
 
-// 46 char base58 --> 34 char KAW compatible
 std::string DecodeAssetData(std::string encoded)
 {
-    if (encoded.size() == 46) {
-        std::vector<unsigned char> b;
-        DecodeBase58(encoded, b);
-        return std::string(b.begin(), b.end());
+    LogPrintf("[CID-DEBUG] DecodeAssetData input: %s\n", encoded);
+    if (encoded.empty()) {
+        return "";
     }
 
-    else if (encoded.size() == 64 && IsHex(encoded)) {
-        std::vector<unsigned char> vec = ParseHex(encoded);
-        return std::string(vec.begin(), vec.end());
-    }
-
-    return "";
-
-};
+    // Return raw string directly without any CID parsing or format conversion
+    // Supports all formats: CIDv0, CIDv1, hex hashes, arbitrary strings
+    LogPrintf("[CID-DEBUG] DecodeAssetData: returning raw string, length=%zu\n", encoded.length());
+    return encoded;
+}
 
 std::string EncodeAssetData(std::string decoded)
 {
-    if (decoded.size() == 34) {
-        return EncodeIPFS(decoded);
-    }
-    else if (decoded.size() == 32){
-        return HexStr(decoded);
-    }
-
-    return "";
+    LogPrintf("[CID-DEBUG] EncodeAssetData input: %s (length: %zu)\n", HexStr(decoded), decoded.length());
+    
+    // Return raw string directly without any encoding conversion
+    // Supports all formats of IPFS hashes and arbitrary strings
+    LogPrintf("[CID-DEBUG] EncodeAssetData: returning raw string, length=%zu\n", decoded.length());
+    return decoded;
 }
 
 // 46 char base58 --> 34 char KAW compatible
@@ -4471,54 +4466,24 @@ bool CheckAmountWithUnits(const CAmount& nAmount, const int8_t nUnits)
 }
 
 bool CheckEncoded(const std::string& hash, std::string& strError) {
-    std::string encodedStr = EncodeAssetData(hash);
+    LogPrintf("[CID-DEBUG] CheckEncoded input length: %zu\n", hash.length());
     
-    // Check for traditional CIDv0 format: 46 characters starting with "Qm"
-    if (encodedStr.substr(0, 2) == "Qm" && encodedStr.size() == 46) {
-        return true;
+    if (hash.empty()) {
+        strError = _("Invalid parameter: IPFS hash cannot be empty");
+        LogPrintf("[CID-DEBUG] CheckEncoded failed: hash is empty\n");
+        return false;
     }
 
-    // Check for CIDv1 formats with various encodings
-    // CIDv1 with base32 encoding (most common): starts with "bafy" (dag-pb) or "bafk" (raw)
-    if (encodedStr.size() >= 4) {
-        std::string prefix = encodedStr.substr(0, 4);
-        if (prefix == "bafy" || prefix == "bafk" || prefix == "bafz" || prefix == "bafi") {
-            // Common CIDv1 base32 prefixes for different multicodecs
-            // bafy* = dag-pb, bafk* = raw, bafz* = dag-cbor, bafi* = dag-json
-            return true;
-        }
-    }
-    
-    // Check for CIDv1 with base36 encoding: starts with "k" or similar patterns
-    if (encodedStr.size() >= 1 && encodedStr[0] == 'k' && encodedStr.size() > 20) {
-        // CIDv1 base36 encoding pattern
-        return true;
-    }
-    
-    // Check for CIDv1 with base58btc encoding: starts with "z"
-    if (encodedStr.size() >= 1 && encodedStr[0] == 'z' && encodedStr.size() > 40) {
-        // CIDv1 base58btc encoding pattern
-        return true;
-    }
-    
-    // Check for CIDv1 with base16 (hex) encoding: starts with "f" followed by hex chars
-    if (encodedStr.size() >= 2 && encodedStr[0] == 'f' && encodedStr.size() > 50) {
-        std::string hexPart = encodedStr.substr(1);
-        if (IsHex(hexPart)) {
-            return true;
-        }
+    // Simple length check: maximum 2048 bytes
+    if (hash.length() > 2048) {
+        strError = _("Invalid parameter: IPFS hash too long (max 2048 bytes)");
+        LogPrintf("[CID-DEBUG] CheckEncoded failed: hash too long (%zu bytes)\n", hash.length());
+        return false;
     }
 
-    // Legacy support: Check for hex-encoded transaction ID when messages are deployed
-    if (AreMessagesDeployed()) {
-        if (IsHex(encodedStr) && encodedStr.length() == 64) {
-            return true;
-        }
-    }
-
-    strError = _("Invalid parameter: IPFS hash must be a valid CIDv0 (46 chars starting with 'Qm'), CIDv1 (various encodings), or transaction hash (64 hex chars when messages deployed)");
-
-    return false;
+    // No format validation, all strings are accepted
+    LogPrintf("[CID-DEBUG] CheckEncoded: accepted raw string (length: %zu)\n", hash.length());
+    return true;
 }
 
 void GetTxOutAssetTypes(const std::vector<CTxOut>& vout, int& issues, int& reissues, int& transfers, int& owners)
@@ -5493,15 +5458,11 @@ bool ContextualCheckNewAsset(CAssetsCache* assetCache, const CNewAsset& asset, s
     }
 
     // Check the ipfs hash as it changes when messaging goes active
-    if (asset.nHasIPFS && asset.strIPFSHash.size() != 34) {
-        if (!AreMessagesDeployed()) {
-            strError = _("Invalid parameter: ipfs_hash must be 46 characters. Txid must be valid 64 character hash");
+    if (asset.nHasIPFS && !asset.strIPFSHash.empty()) {
+        // Allow arbitrary IPFS hash strings up to 2048 bytes
+        if (asset.strIPFSHash.size() > 2048) {
+            strError = _( "Invalid parameter: ipfs_hash must be at most 2048 bytes" );
             return false;
-        } else {
-            if (asset.strIPFSHash.size() != 32) {
-                strError = _("Invalid parameter: ipfs_hash must be 46 characters. Txid must be valid 64 character hash");
-                return false;
-            }
         }
     }
 
@@ -5605,8 +5566,8 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
     }
 
     // Check the ipfs hash format
-    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() != 34 && (AreMessagesDeployed() && reissue_asset.strIPFSHash.size() != 32)) {
-        strError = _("Invalid parameter: ipfs_hash must be 34 bytes, Txid must be 32 bytes");
+    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() > 2048) {
+        strError = _("Invalid parameter: ipfs_hash must be at most 2048 bytes");
         return false;
     }
 
@@ -5695,8 +5656,8 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
     }
 
     // Check the IPFS hash format
-    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() != 34 && (AreMessagesDeployed() && reissue_asset.strIPFSHash.size() != 32)) {
-        strError = _("Invalid parameter: ipfs_hash must be 34 bytes, Txid must be 32 bytes");
+    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() > 2048) {
+        strError = _("Invalid parameter: ipfs_hash must be at most 2048 bytes");
         return false;
     }
 

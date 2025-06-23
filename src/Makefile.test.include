@@ -36,6 +36,7 @@ PHICOIN_TESTS =\
   test/assets/qualifier_tests.cpp \
   test/assets/unique_tests.cpp \
   test/assets/verifier_string_tests.cpp \
+  test/cid_tests.cpp \
   test/arith_uint256_tests.cpp \
   test/scriptnum10.h \
   test/addrman_tests.cpp \
