@@ -32,7 +32,7 @@ using namespace boost::placeholders;
 #include <validation.h>
 
 #include "assets/assets.h"
-#include "assets/cid_parser.h"
+
 
 static std::atomic<bool> g_rpc_running{false};
 static bool fRPCInWarmup = true;

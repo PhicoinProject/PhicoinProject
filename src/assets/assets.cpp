@@ -26,7 +26,7 @@
 #include "assetdb.h"
 #include "assettypes.h"
 #include "protocol.h"
-#include "cid_parser.h"
+
 #include "wallet/coincontrol.h"
 #include "utilmoneystr.h"
 #include "coins.h"

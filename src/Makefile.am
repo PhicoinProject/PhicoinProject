@@ -131,7 +131,6 @@ PHICOIN_CORE_H = \
   assets/assets.h \
   assets/assetdb.h \
   assets/assettypes.h \
-  assets/cid_parser.h \
   assets/messages.h \
   assets/myassetsdb.h \
   assets/restricteddb.h \
@@ -267,7 +266,6 @@ libphicoin_server_a_SOURCES = \
   assets/assets.cpp \
   assets/assetdb.cpp \
   assets/assettypes.cpp \
-  assets/cid_parser.cpp \
   assets/messages.cpp \
   assets/myassetsdb.cpp \
   assets/restricteddb.cpp \

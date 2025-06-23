@@ -28,7 +28,7 @@
 #include <core_io.h>
 #include <policy/policy.h>
 #include "assets/assettypes.h"
-#include "assets/cid_parser.h"
+
 #include "assettablemodel.h"
 
 #include <QGraphicsDropShadowEffect>
@@ -502,47 +502,15 @@ bool CreateAssetDialog::checkIPFSHash(QString hash)
     ui->openIpfsButton->setDisabled(true);
 
     if (!hash.isEmpty()) {
-        // Use direct CID validation instead of the complex decode/encode chain
-        std::string hashStr = hash.toStdString();
-        
-        if (!AssetCID::IsValidIPFSHash(hashStr)) {
-            // Check for legacy formats if direct CID validation fails
-            bool isValidLegacy = false;
-            
-            // Legacy CIDv0 format (46 chars starting with "Qm")
-            if (hashStr.length() == 46 && hashStr.substr(0, 2) == "Qm") {
-                std::vector<unsigned char> decoded;
-                if (DecodeBase58(hashStr, decoded) && decoded.size() == 34 && 
-                    decoded[0] == 0x12 && decoded[1] == 0x20) {
-                    isValidLegacy = true;
-                }
-            }
-            // Legacy transaction ID format (64 hex chars when messages deployed)
-            else if (hashStr.length() == 64 && IsHex(hashStr) && AreMessagesDeployed()) {
-                isValidLegacy = true;
-            }
-            
-            if (!isValidLegacy) {
-                ui->ipfsText->setStyleSheet("border: 2px solid red");
-                showMessage(tr("IPFS hash must be valid CIDv0 (46 chars, starts with 'Qm'), CIDv1 (various encodings), or hex txid (64 chars)"));
-                disableCreateButton();
-                return false;
-            }
-        }
-        
-        // Additional specific format validation for user feedback
-        if (hash.size() == 46 && !hash.startsWith("Qm")) {
+        // Simplified validation: only check length (max 2048 bytes)
+        if (hash.length() > 2048) {
             ui->ipfsText->setStyleSheet("border: 2px solid red");
-            showMessage(tr("46-character IPFS hash must start with 'Qm' (CIDv0 format)"));
+            showMessage(tr("IPFS hash too long (maximum 2048 characters)"));
             disableCreateButton();
             return false;
         }
-        else if (hash.size() == 64 && !hash.contains(QRegExp("^[0-9a-fA-F]+$"))) {
-            ui->ipfsText->setStyleSheet("border: 2px solid red");
-            showMessage(tr("64-character hash must be valid hexadecimal (transaction ID)"));
-            disableCreateButton();
-            return false;
-        }
+        
+        // All other strings are accepted (CIDv0, CIDv1, hex, custom strings, etc.)
     }
 
     // No problems were found with the hash, reset the border, and hide the messages.
@@ -550,7 +518,6 @@ bool CreateAssetDialog::checkIPFSHash(QString hash)
     ui->ipfsText->setStyleSheet("");
     ui->openIpfsButton->setDisabled(false);
     
-
     return true;
 }
 
