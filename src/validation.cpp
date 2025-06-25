@@ -1325,7 +1325,7 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
     // Force block reward to zero when right shift is undefined.
     if (nHeight == 1) {
 
-        return 210240005*COIN;
+        return 320000005*COIN;
     }
     if (halvings >= 1)
         return 2.5* COIN;
@@ -2760,7 +2760,7 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 	CAmount devSubsidy = 0;
 	
 	if (pindex->nHeight == 1) {
-		devSubsidy = 210240000 * COIN;
+		devSubsidy = 320000000 * COIN;
 		minerSubsidy = nSubsidy - devSubsidy;  // 5 * COIN for height 1
 		nDevAutonomousAmountValue = devSubsidy;
 		LogPrint(BCLog::BENCH, "Height 1 validation: Miner subsidy expected: %ld, Dev subsidy expected: %ld\n", minerSubsidy, devSubsidy);

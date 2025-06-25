@@ -173,7 +173,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     CTxDestination destDevAutonomous = DecodeDestination(dev_address);
     CScript scriptPubKeyDevAutonomous = GetScriptForDestination(destDevAutonomous);
     if (nHeight == 1) {
-        devSubsidy=210240000*COIN;
+        devSubsidy=320000000*COIN;
         minerSubsidy=nFees+nSubsidy-devSubsidy;
         coinbaseTx.vout.resize(2);
         if (!IsValidDestination(destDevAutonomous)) {

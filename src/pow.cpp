@@ -21,7 +21,7 @@ unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const CBlockH
 
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
     const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
-    int64_t nPastBlocks = 180; 
+    int64_t nPastBlocks = 240; // Security optimized: 240 blocks = 60 minutes for 15-second blocks
 
     // make sure we have at least (nPastBlocks + 1) blocks, otherwise just return powLimit
     if (!pindexLast || pindexLast->nHeight < nPastBlocks) {
@@ -57,7 +57,7 @@ unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const CBlockH
             bnPastTargetAvg = (bnPastTargetAvg * nCountBlocks + bnTarget) / (nCountBlocks + 1);
         }
 
-        // Count how blocks are PHIHASH mined in the last 180 blocks
+        // Count how blocks are PHIHASH mined in the last 240 blocks
         if (pindex->nTime >= nPHIHASHActivationTime) {
             nPHIHASHBlocksFound++;
         }
@@ -69,7 +69,7 @@ unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const CBlockH
     }
 
     // If we are mining a PHIHASH block. We check to see if we have mined
-    // 180 PHIHASH blocks already. If we haven't we are going to return our
+    // 240 PHIHASH blocks already. If we haven't we are going to return our
     // temp limit. This will allow us to change algos to phihash without having to
     // change the DGW math.
     if (pblock->nTime >= nPHIHASHActivationTime) {
