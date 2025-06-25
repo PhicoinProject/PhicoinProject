@@ -3,7 +3,7 @@ Jenkinsfile
 *.tar.gz
 bin/
 release/
-
+create_assets/
 depends_linux
 xbuild_scripts/
 *.exe
