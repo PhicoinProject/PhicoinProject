@@ -399,7 +399,7 @@ bool IsTypeCheckNameValid(const AssetType type, const std::string& name, std::st
         if (name.size() > MAX_NAME_LENGTH - 1) { error = "Name is greater than max length of " + std::to_string(MAX_NAME_LENGTH - 1); return false; }  //Assets and sub-assets need to leave one extra char for OWNER indicator
         if (!IsAssetNameASubasset(name) && name.size() < MIN_ASSET_LENGTH) { error = "Name must be contain " + std::to_string(MIN_ASSET_LENGTH) + " characters"; return false; }
         bool valid = IsNameValidBeforeTag(name);
-        if (!valid && IsAssetNameASubasset(name) && name.size() < 3) { error = "Name must have at least 3 characters (Valid characters are: A-Z 0-9 -)";  return false; }
+        if (!valid && IsAssetNameASubasset(name) && name.size() < MIN_ASSET_LENGTH) { error = "Name must have at least 1 characters (Valid characters are: A-Z 0-9 -)";  return false; }
         if (!valid) { error = "Name contains invalid characters (Valid characters are: A-Z 0-9 -) (must start with letter, end with letter/digit, hyphen not at start/end)";  return false; }
         return true;
     }
@@ -5533,17 +5533,18 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
         return false;
     }
 
-    // Allow IPFS modification even if asset is not reissuable
-    if (!prev_asset.nReissuable && reissue_asset.strIPFSHash != prev_asset.strIPFSHash) {
-        // Allow modification of IPFS hash only
+    // Handle unissuable assets: allow IPFS modification but prevent changing to reissuable
+    if (!prev_asset.nReissuable) {
+        // Unissuable assets can only modify IPFS hash, not amount or units
         if (reissue_asset.nAmount != 0 || reissue_asset.nUnits != -1) {
             strError = _("Unable to reissue asset: only IPFS hash modification is allowed for unissuable assets");
             return false;
         }
-    } else if (!prev_asset.nReissuable) {
-        // If asset is unissuable and not modifying IPFS only, reject the reissue
-        strError = _("Unable to reissue asset: reissuable is set to false");
-        return false;
+        // Prevent changing from unissuable to reissuable
+        if (reissue_asset.nReissuable == 1) {
+            strError = _("Unable to reissue asset: cannot change unissuable asset to reissuable");
+            return false;
+        }
     }
 
     if (prev_asset.nAmount + reissue_asset.nAmount > MAX_MONEY) {
@@ -5624,15 +5625,18 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
             return false;
         }
 
-        // Allow IPFS modification for unissuable assets without changing other properties
-        if (!prev_asset.nReissuable && reissue_asset.strIPFSHash != prev_asset.strIPFSHash) {
+        // Handle unissuable assets: allow IPFS modification but prevent changing to reissuable
+        if (!prev_asset.nReissuable) {
+            // Unissuable assets can only modify IPFS hash, not amount or units
             if (reissue_asset.nAmount != 0 || reissue_asset.nUnits != -1) {
                 strError = _("Unable to reissue asset: only IPFS hash modification is allowed for unissuable assets");
                 return false;
             }
-        } else if (!prev_asset.nReissuable) {
-            strError = _("Unable to reissue asset: reissuable is set to false");
-            return false;
+            // Prevent changing from unissuable to reissuable
+            if (reissue_asset.nReissuable == 1) {
+                strError = _("Unable to reissue asset: cannot change unissuable asset to reissuable");
+                return false;
+            }
         }
 
         if (prev_asset.nAmount + reissue_asset.nAmount > MAX_MONEY) {
