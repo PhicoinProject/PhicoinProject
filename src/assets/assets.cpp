@@ -84,13 +84,12 @@ static const std::regex QUALIFIER_INDICATOR("^[#][A-Z0-9._]{3,}$"); // Starts wi
 static const std::regex SUB_QUALIFIER_INDICATOR("^#[A-Z0-9._]+\\/#[A-Z0-9._]+$"); // Starts with #
 static const std::regex RESTRICTED_INDICATOR("^[\\$][A-Z0-9._]{3,}$"); // Starts with $
 
-static const std::regex PHICOIN_NAMES("^PHICOIN$|^#PHICOIN$");
+// static const std::regex PHICOIN_NAMES("^PHICOIN$|^#PHICOIN$");
 
 bool IsRootNameValid(const std::string& name)
 {
     // DNS RFC compliant validation - position restrictions are built into the regex
-    return std::regex_match(name, ROOT_NAME_CHARACTERS)
-        && !std::regex_match(name, PHICOIN_NAMES);
+    return std::regex_match(name, ROOT_NAME_CHARACTERS);
 }
 
 bool IsQualifierNameValid(const std::string& name)
@@ -98,8 +97,7 @@ bool IsQualifierNameValid(const std::string& name)
     return std::regex_match(name, QUALIFIER_NAME_CHARACTERS)
            && !std::regex_match(name, DOUBLE_HYPHEN)
            && !std::regex_match(name, QUALIFIER_LEADING_HYPHEN)
-           && !std::regex_match(name, TRAILING_HYPHEN)
-           && !std::regex_match(name, PHICOIN_NAMES);
+           && !std::regex_match(name, TRAILING_HYPHEN);
 }
 
 bool IsRestrictedNameValid(const std::string& name)
@@ -107,8 +105,7 @@ bool IsRestrictedNameValid(const std::string& name)
     return std::regex_match(name, RESTRICTED_NAME_CHARACTERS)
            && !std::regex_match(name, DOUBLE_HYPHEN)
            && !std::regex_match(name, LEADING_HYPHEN)
-           && !std::regex_match(name, TRAILING_HYPHEN)
-           && !std::regex_match(name, PHICOIN_NAMES);
+           && !std::regex_match(name, TRAILING_HYPHEN);
 }
 
 bool IsSubQualifierNameValid(const std::string& name)

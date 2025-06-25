@@ -55,7 +55,7 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    const char* pszTimestamp = "Break The Wall!";
+    const char* pszTimestamp = "Break the Great Firewall!";
     const CScript genesisOutputScript = CScript() << ParseHex("048e12253ce404c20ff8b0bcff71915d014171e865d2a91a24dde84788762d4815e10e8958f2fdb8f78b464b129b4ea8d071219397db7c24fec7432e5384796485") << OP_CHECKSIG;
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -128,8 +128,8 @@ class CMainParams : public CChainParams
 public:
     CMainParams()
     {
-        uint32_t nGenesisTime = 1750518589;
-        uint32_t nAssetTime= 1750714611;
+        uint32_t nGenesisTime = 1749020400;
+        uint32_t nAssetTime= 1750843526;
         strNetworkID = "main";
         consensus.nSubsidyHalvingInterval = 2102400; //  1 y
         consensus.nBIP34Enabled = true;
@@ -182,7 +182,7 @@ public:
         consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000000000"); // #150000
 
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"); // 
+        consensus.defaultAssumeValid = uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"); // 
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -200,16 +200,15 @@ public:
 
         uint32_t _nBits=0x1e00ffff;
 
-//        FindMainNetGenesisBlock(nGenesisTime,_nBits,"main");
 
 
-        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 15811287, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
+        //FindMainNetGenesisBlock(nGenesisTime,_nBits,"mainnet");
 
-
-        assert(consensus.hashGenesisBlock == uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"));
-        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
+        assert(consensus.hashGenesisBlock == uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"));
+        assert(genesis.hashMerkleRoot == uint256S("a295329fa338c93261c12b0a8b495f8a84059a78d35ad670a69092a9a8cbf33f"));
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 56); // P
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 16); // H
@@ -301,7 +300,7 @@ public:
     CTestNetParams()
     {
         strNetworkID = "test";
-        uint32_t nGenesisTime =1750518589;
+        uint32_t nGenesisTime =1749020400;
         consensus.nSubsidyHalvingInterval = 1000; //
         consensus.nBIP34Enabled = true;
         consensus.nBIP65Enabled = true; // 
@@ -352,7 +351,7 @@ public:
         consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000000000");//6216
         // 0000000261793a9216e324f3fcd3ad272f9f2525d0f160946c79333dbf94993b
         // By default assume that the signatures in ancestors of this block are valid.
-        consensus.defaultAssumeValid = uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401");
+        consensus.defaultAssumeValid = uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659");
         pchMessageStart[0] = 0x84; // T
         pchMessageStart[0] = 0x50; // 'P'
         pchMessageStart[1] = 0x48; // 'H'
@@ -365,13 +364,13 @@ public:
 
         uint32_t _nBits=0x1e00ffff;
 
-        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 15811287, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
 
         // Test MerkleRoot and GenesisBlock
-        assert(consensus.hashGenesisBlock == uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"));
-        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
+        assert(consensus.hashGenesisBlock == uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"));
+        assert(genesis.hashMerkleRoot == uint256S("a295329fa338c93261c12b0a8b495f8a84059a78d35ad670a69092a9a8cbf33f"));
 
         vSeeds.emplace_back("seed1.test.phicoin.net", false); 
 
@@ -521,14 +520,14 @@ public:
         nDefaultPort = 18966;
         nPruneAfterHeight = 1000;
 
-        uint32_t nGenesisTime = 1750518589; // 
+        uint32_t nGenesisTime = 1749020400; // 
 
         uint32_t _nBits=0x1e00ffff;
-        genesis = CreateGenesisBlock(nGenesisTime, 11951966, _nBits, 4, 5000 * COIN);
+        genesis = CreateGenesisBlock(nGenesisTime, 15811287, _nBits, 4, 5000 * COIN);
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        assert(consensus.hashGenesisBlock == uint256S("000000ad2b4c86b203e25a4c0aeddf5b4f092c133034c08365564a3bf2214401"));
-        assert(genesis.hashMerkleRoot == uint256S("34abb782fb4c018a854e4468dd159988112b748162b45b8709976a33e528e0f8"));
+        assert(consensus.hashGenesisBlock == uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"));
+        assert(genesis.hashMerkleRoot == uint256S("a295329fa338c93261c12b0a8b495f8a84059a78d35ad670a69092a9a8cbf33f"));
 
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
