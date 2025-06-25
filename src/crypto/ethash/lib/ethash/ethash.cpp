@@ -15,22 +15,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <cmath>
-
-
 
 namespace ethash
 {
 // Internal constants:
-// constexpr static int light_cache_init_size = 1 << 24;
-constexpr static int light_cache_init_size = 1 << 26;
-// constexpr static int light_cache_growth = 1 << 17;
+constexpr static int light_cache_init_size = 1 << 24;
+constexpr static int light_cache_growth = 1 << 17;
 constexpr static int light_cache_rounds = 3;
-// constexpr static uint64_t full_dataset_init_size = 1ULL << 33;//8GB
-constexpr static uint64_t full_dataset_init_size = 1ULL << 32; // 4GB
-
-constexpr static double   growth_factor =1.25;
-// constexpr static int full_dataset_growth = 1 << 23;
+constexpr static int full_dataset_init_size = 1 << 30;
+constexpr static int full_dataset_growth = 1 << 23;
 constexpr static int full_dataset_item_parents = 512;
 
 // Verify constants:
@@ -373,15 +366,14 @@ int ethash_calculate_light_cache_num_items(int epoch_number) noexcept
 {
     static constexpr int item_size = sizeof(hash512);
     static constexpr int num_items_init = light_cache_init_size / item_size;
+    static constexpr int num_items_growth = light_cache_growth / item_size;
     static_assert(
         light_cache_init_size % item_size == 0, "light_cache_init_size not multiple of item size");
+    static_assert(
+        light_cache_growth % item_size == 0, "light_cache_growth not multiple of item size");
 
- 
-    double _growth_factor = std::pow(growth_factor, epoch_number);
-    int num_items_upper_bound = static_cast<int>(num_items_init * _growth_factor);
-
+    int num_items_upper_bound = num_items_init + epoch_number * num_items_growth;
     int num_items = ethash_find_largest_prime(num_items_upper_bound);
-
     return num_items;
 }
 
@@ -389,18 +381,16 @@ int ethash_calculate_full_dataset_num_items(int epoch_number) noexcept
 {
     static constexpr int item_size = sizeof(hash1024);
     static constexpr int num_items_init = full_dataset_init_size / item_size;
+    static constexpr int num_items_growth = full_dataset_growth / item_size;
     static_assert(full_dataset_init_size % item_size == 0,
         "full_dataset_init_size not multiple of item size");
+    static_assert(
+        full_dataset_growth % item_size == 0, "full_dataset_growth not multiple of item size");
 
-
-    double _growth_factor = std::pow(growth_factor, epoch_number);
-    int num_items_upper_bound = static_cast<int>(num_items_init * _growth_factor);
-
+    int num_items_upper_bound = num_items_init + epoch_number * num_items_growth;
     int num_items = ethash_find_largest_prime(num_items_upper_bound);
-
     return num_items;
 }
-
 
 epoch_context* ethash_create_epoch_context(int epoch_number) noexcept
 {
