@@ -129,7 +129,7 @@ public:
     CMainParams()
     {
         uint32_t nGenesisTime = 1749020400;
-        uint32_t nAssetTime= 1750843526;
+        uint32_t nAssetTime= 1750854025;
         strNetworkID = "main";
         consensus.nSubsidyHalvingInterval = 2102400; //  1 y
         consensus.nBIP34Enabled = true;

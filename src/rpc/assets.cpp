@@ -862,8 +862,8 @@ UniValue getassetdata(const JSONRPCRequest& request)
         result.push_back(Pair("has_ipfs", asset.nHasIPFS));
 
         if (asset.nHasIPFS) {
-            // Display original IPFS hash string directly without encoding conversion
-            result.push_back(Pair("ipfs_hash", asset.strIPFSHash));
+            // Encode the binary IPFS hash data to readable format
+            result.push_back(Pair("ipfs_hash", EncodeAssetData(asset.strIPFSHash)));
         }
 
         CNullAssetTxVerifierString verifier;
@@ -1754,8 +1754,8 @@ UniValue listassets(const JSONRPCRequest& request)
             detail.push_back(Pair("block_height", data.nHeight));
             detail.push_back(Pair("blockhash", data.blockHash.GetHex()));
             if (asset.nHasIPFS) {
-                // Display original IPFS hash string directly without encoding conversion
-                detail.push_back(Pair("ipfs_hash", asset.strIPFSHash));
+                // Encode the binary IPFS hash data to readable format
+                detail.push_back(Pair("ipfs_hash", EncodeAssetData(asset.strIPFSHash)));
             }
             result.push_back(Pair(asset.strName, detail));
         } else {

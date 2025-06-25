@@ -58,26 +58,40 @@ const char IPFS_SHA2_256_LEN = 0x20;
 template <typename Stream, typename Operation>
 bool ReadWriteAssetHash(Stream &s, Operation ser_action, std::string &strIPFSHash)
 {
+    // assuming 34-byte IPFS SHA2-256 decoded hash (0x12, 0x20, 32 more bytes)
     if (ser_action.ForRead())
     {
-        // Deserialize: read raw string directly
-        ::Unserialize(s, strIPFSHash);
-        return true;
+        strIPFSHash = "";
+        if (!s.empty() and s.size() >= 33) {
+            char _sha2_256;
+            ::Unserialize(s, _sha2_256);
+            std::basic_string<char> hash;
+            ::Unserialize(s, hash);
+
+            std::ostringstream os;
+
+            // If it is an ipfs hash, we put the Q and the m 'Qm' at the front
+            if (_sha2_256 == IPFS_SHA2_256)
+                os << IPFS_SHA2_256 << IPFS_SHA2_256_LEN;
+
+            os << hash.substr(0, 32); // Get the 32 bytes of data
+            strIPFSHash = os.str();
+            return true;
+        }
     }
     else
     {
-        // Serialize: write raw string directly
-        if (strIPFSHash.empty()) {
-            return false;
+        if (strIPFSHash.length() == 34) {
+            ::Serialize(s, IPFS_SHA2_256);
+            ::Serialize(s, strIPFSHash.substr(2));
+            return true;
+        } else if (strIPFSHash.length() == 32) {
+            ::Serialize(s, TXID_NOTIFIER);
+            ::Serialize(s, strIPFSHash);
+            return true;
         }
-        
-        if (strIPFSHash.length() > 2048) {
-            return false;
-        }
-        
-        ::Serialize(s, strIPFSHash);
-        return true;
     }
+    return false;
 };
 
 class CNewAsset

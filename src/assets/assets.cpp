@@ -850,6 +850,7 @@ bool OwnerAssetFromScript(const CScript& scriptPubKey, std::string& assetName, s
     return true;
 }
 
+
 bool ReissueAssetFromScript(const CScript& scriptPubKey, CReissueAsset& reissue, std::string& strAddress)
 {
     int nStartingIndex = 0;
@@ -862,51 +863,28 @@ bool ReissueAssetFromScript(const CScript& scriptPubKey, CReissueAsset& reissue,
     strAddress = EncodeDestination(destination);
 
     std::vector<unsigned char> vchReissueAsset;
-
     auto it = scriptPubKey.begin() + nStartingIndex;
-    auto scriptEnd = scriptPubKey.end();
-
-
-    if (it >= scriptEnd) {
-        return false;
-    }
-
     if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA1) {
         uint8_t len = scriptPubKey[nStartingIndex];
-        if (it + 1 + len > scriptEnd) {
-            return false; 
-        }
         vchReissueAsset.insert(vchReissueAsset.end(), it + 1, it + 1 + len);
     } else if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA2) {
-
-        if (it + 2 > scriptEnd) {
-            return false;
-        }
         uint16_t len = ReadLE16(&scriptPubKey[nStartingIndex]);
-        if (it + 2 + len > scriptEnd) {
-            return false; 
-        }
         vchReissueAsset.insert(vchReissueAsset.end(), it + 2, it + 2 + len);
     } else {
-  
         uint8_t len = scriptPubKey[nStartingIndex - 1];
-        if (it + len > scriptEnd) {
-            return false;
-        }
         vchReissueAsset.insert(vchReissueAsset.end(), it, it + len);
     }
-    
-    CDataStream ssReissue(vchReissueAsset, SER_NETWORK, PROTOCOL_VERSION);
 
+    CDataStream ssReissue(vchReissueAsset, SER_NETWORK, PROTOCOL_VERSION);
     try {
         ssReissue >> reissue;
-    } catch(std::exception& e) {
+    } catch (std::exception& e) {
         error("Failed to get the reissue asset from the stream: %s", e.what());
         return false;
     }
-
     return true;
 }
+
 
 bool AssetNullDataFromScript(const CScript& scriptPubKey, CNullAssetTxData& assetData, std::string& strAddress)
 {
@@ -3865,27 +3843,34 @@ bool GetMyAssetBalance(const std::string& name, CAmount& balance, const int& con
 }
 #endif
 
+// 46 char base58 --> 34 char KAW compatible
 std::string DecodeAssetData(std::string encoded)
 {
-    LogPrintf("[CID-DEBUG] DecodeAssetData input: %s\n", encoded);
-    if (encoded.empty()) {
-        return "";
+    if (encoded.size() == 46) {
+        std::vector<unsigned char> b;
+        DecodeBase58(encoded, b);
+        return std::string(b.begin(), b.end());
     }
 
-    // Return raw string directly without any CID parsing or format conversion
-    // Supports all formats: CIDv0, CIDv1, hex hashes, arbitrary strings
-    LogPrintf("[CID-DEBUG] DecodeAssetData: returning raw string, length=%zu\n", encoded.length());
-    return encoded;
-}
+    else if (encoded.size() == 64 && IsHex(encoded)) {
+        std::vector<unsigned char> vec = ParseHex(encoded);
+        return std::string(vec.begin(), vec.end());
+    }
+
+    return "";
+
+};
 
 std::string EncodeAssetData(std::string decoded)
 {
-    LogPrintf("[CID-DEBUG] EncodeAssetData input: %s (length: %zu)\n", HexStr(decoded), decoded.length());
-    
-    // Return raw string directly without any encoding conversion
-    // Supports all formats of IPFS hashes and arbitrary strings
-    LogPrintf("[CID-DEBUG] EncodeAssetData: returning raw string, length=%zu\n", decoded.length());
-    return decoded;
+    if (decoded.size() == 34) {
+        return EncodeIPFS(decoded);
+    }
+    else if (decoded.size() == 32){
+        return HexStr(decoded);
+    }
+
+    return "";
 }
 
 // 46 char base58 --> 34 char KAW compatible
@@ -4463,24 +4448,20 @@ bool CheckAmountWithUnits(const CAmount& nAmount, const int8_t nUnits)
 }
 
 bool CheckEncoded(const std::string& hash, std::string& strError) {
-    LogPrintf("[CID-DEBUG] CheckEncoded input length: %zu\n", hash.length());
-    
-    if (hash.empty()) {
-        strError = _("Invalid parameter: IPFS hash cannot be empty");
-        LogPrintf("[CID-DEBUG] CheckEncoded failed: hash is empty\n");
-        return false;
+    std::string encodedStr = EncodeAssetData(hash);
+    if (encodedStr.substr(0, 2) == "Qm" && encodedStr.size() == 46) {
+        return true;
     }
 
-    // Simple length check: maximum 2048 bytes
-    if (hash.length() > 2048) {
-        strError = _("Invalid parameter: IPFS hash too long (max 2048 bytes)");
-        LogPrintf("[CID-DEBUG] CheckEncoded failed: hash too long (%zu bytes)\n", hash.length());
-        return false;
+    if (AreMessagesDeployed()) {
+        if (IsHex(encodedStr) && encodedStr.length() == 64) {
+            return true;
+        }
     }
 
-    // No format validation, all strings are accepted
-    LogPrintf("[CID-DEBUG] CheckEncoded: accepted raw string (length: %zu)\n", hash.length());
-    return true;
+    strError = _("Invalid parameter: ipfs_hash is not valid, or txid hash is not the right length");
+
+    return false;
 }
 
 void GetTxOutAssetTypes(const std::vector<CTxOut>& vout, int& issues, int& reissues, int& transfers, int& owners)
@@ -5455,11 +5436,15 @@ bool ContextualCheckNewAsset(CAssetsCache* assetCache, const CNewAsset& asset, s
     }
 
     // Check the ipfs hash as it changes when messaging goes active
-    if (asset.nHasIPFS && !asset.strIPFSHash.empty()) {
-        // Allow arbitrary IPFS hash strings up to 2048 bytes
-        if (asset.strIPFSHash.size() > 2048) {
-            strError = _( "Invalid parameter: ipfs_hash must be at most 2048 bytes" );
+    if (asset.nHasIPFS && asset.strIPFSHash.size() != 34) {
+        if (!AreMessagesDeployed()) {
+            strError = _("Invalid parameter: ipfs_hash must be 46 characters. Txid must be valid 64 character hash");
             return false;
+        } else {
+            if (asset.strIPFSHash.size() != 32) {
+                strError = _("Invalid parameter: ipfs_hash must be 46 characters. Txid must be valid 64 character hash");
+                return false;
+            }
         }
     }
 
@@ -5533,18 +5518,17 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
         return false;
     }
 
-    // Handle unissuable assets: allow IPFS modification but prevent changing to reissuable
-    if (!prev_asset.nReissuable) {
-        // Unissuable assets can only modify IPFS hash, not amount or units
+    // Allow IPFS modification even if asset is not reissuable
+    if (!prev_asset.nReissuable && reissue_asset.strIPFSHash != prev_asset.strIPFSHash) {
+        // Allow modification of IPFS hash only
         if (reissue_asset.nAmount != 0 || reissue_asset.nUnits != -1) {
             strError = _("Unable to reissue asset: only IPFS hash modification is allowed for unissuable assets");
             return false;
         }
-        // Prevent changing from unissuable to reissuable
-        if (reissue_asset.nReissuable == 1) {
-            strError = _("Unable to reissue asset: cannot change unissuable asset to reissuable");
-            return false;
-        }
+    } else if (!prev_asset.nReissuable) {
+        // If asset is unissuable and not modifying IPFS only, reject the reissue
+        strError = _("Unable to reissue asset: reissuable is set to false");
+        return false;
     }
 
     if (prev_asset.nAmount + reissue_asset.nAmount > MAX_MONEY) {
@@ -5564,8 +5548,8 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
     }
 
     // Check the ipfs hash format
-    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() > 2048) {
-        strError = _("Invalid parameter: ipfs_hash must be at most 2048 bytes");
+    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() != 34 && (AreMessagesDeployed() && reissue_asset.strIPFSHash.size() != 32)) {
+        strError = _("Invalid parameter: ipfs_hash must be 34 bytes, Txid must be 32 bytes");
         return false;
     }
 
@@ -5657,8 +5641,8 @@ bool ContextualCheckReissueAsset(CAssetsCache* assetCache, const CReissueAsset& 
     }
 
     // Check the IPFS hash format
-    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() > 2048) {
-        strError = _("Invalid parameter: ipfs_hash must be at most 2048 bytes");
+    if (!reissue_asset.strIPFSHash.empty() && reissue_asset.strIPFSHash.size() != 34 && (AreMessagesDeployed() && reissue_asset.strIPFSHash.size() != 32)) {
+        strError = _("Invalid parameter: ipfs_hash must be 34 bytes, Txid must be 32 bytes");
         return false;
     }
 
