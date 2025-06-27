@@ -129,7 +129,7 @@ public:
     CMainParams()
     {
         uint32_t nGenesisTime = 1749020400;
-        uint32_t nAssetTime= 1750897028;
+        uint32_t nAssetTime= nGenesisTime-5;
         strNetworkID = "main";
         consensus.nSubsidyHalvingInterval = 2102400; //  1 y
         consensus.nBIP34Enabled = true;
@@ -148,33 +148,33 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 1199145601; 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = 1199145601;   
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nOverrideRuleChangeActivationThreshold = 6;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nOverrideRuleChangeActivationThreshold = 1;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nOverrideMinerConfirmationWindow = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].bit = 6;                 // Assets 
         consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nStartTime = nAssetTime; 
-        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = nAssetTime+600;  
-        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nOverrideRuleChangeActivationThreshold = 6;
-        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nTimeout = nAssetTime;  
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nOverrideRuleChangeActivationThreshold = 1;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ASSETS].nOverrideMinerConfirmationWindow = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].bit = 7;                                       // Assets
         consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nStartTime = nAssetTime;                      
-        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nTimeout = nAssetTime+600;                       
-        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nOverrideRuleChangeActivationThreshold = 6; //  Approx 67%
-        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nTimeout = nAssetTime;                       
+        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nOverrideRuleChangeActivationThreshold = 1; //  Approx 67%
+        consensus.vDeployments[Consensus::DEPLOYMENT_MSG_REST_ASSETS].nOverrideMinerConfirmationWindow = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].bit = 8;
         consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nStartTime = nAssetTime;                       
-        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nTimeout = nAssetTime+600;                        
-        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nOverrideRuleChangeActivationThreshold = 6; // Approx 67%
-        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nTimeout = nAssetTime;                        
+        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nOverrideRuleChangeActivationThreshold = 1; // Approx 67%
+        consensus.vDeployments[Consensus::DEPLOYMENT_TRANSFER_SCRIPT_SIZE].nOverrideMinerConfirmationWindow = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].bit = 9;
         consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nStartTime = nAssetTime;                      
-        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nTimeout = nAssetTime+600;                        
-        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nOverrideRuleChangeActivationThreshold = 6; // Approx 67%
-        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nTimeout = nAssetTime;                        
+        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nOverrideRuleChangeActivationThreshold = 1; // Approx 67%
+        consensus.vDeployments[Consensus::DEPLOYMENT_ENFORCE_VALUE].nOverrideMinerConfirmationWindow = 1;
         consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].bit = 10;
         consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nStartTime = nAssetTime;                       
-        consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nTimeout = nAssetTime+600;                        
+        consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nTimeout = nAssetTime;                        
         consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nOverrideRuleChangeActivationThreshold = 6; // Approx 67%
-        consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nOverrideMinerConfirmationWindow = 10;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nOverrideMinerConfirmationWindow = 1;
 
 
         // The best chain should have at least this much work
@@ -194,7 +194,7 @@ public:
         pchMessageStart[2] = 0x49; // 'I'
         pchMessageStart[3] = 0x58; // 'X'
 
-        nDefaultPort = 18964 ;//PHI  22
+        nDefaultPort = 28964 ;//PHI  22
 
         nPruneAfterHeight = 2102400;
 
@@ -281,9 +281,9 @@ public:
         nMinReorganizationPeers = 4;//4
         nMinReorganizationAge = 60 * 60 * 12; // 12 hours
 
-        nAssetActivationHeight = 1;     // Asset activated block height
-        nMessagingActivationBlock = 1;  // Messaging activated block height
-        nRestrictedActivationBlock =1; // Restricted activated block height
+        nAssetActivationHeight = 0;     // Asset activated block height
+        nMessagingActivationBlock = 0;  // Messaging activated block height
+        nRestrictedActivationBlock = 0; // Restricted activated block height
 
         nPHIIIIIHASHActTime = nGenesisTime + 1; 
         nPHIHASHActivationTime = nPHIIIIIHASHActTime;
@@ -357,7 +357,7 @@ public:
         pchMessageStart[1] = 0x48; // 'H'
         pchMessageStart[2] = 0x49; // 'I'
 
-        nDefaultPort = 18965;
+        nDefaultPort = 28965;
         nPruneAfterHeight = 1000;
 
         // uint32_t nGenesisTime = 1706774400; // 
@@ -442,9 +442,9 @@ public:
         nMinReorganizationPeers = 2;
         nMinReorganizationAge = 60 * 60 * 12/4; // 12 hours
 
-        nAssetActivationHeight = 1;      // Asset activated block height
-        nMessagingActivationBlock = 1;  // Messaging activated block height
-        nRestrictedActivationBlock = 1; // Restricted activated block height
+        nAssetActivationHeight = 0;      // Asset activated block height
+        nMessagingActivationBlock = 0;  // Messaging activated block height
+        nRestrictedActivationBlock = 0; // Restricted activated block height
 
         nPHIIIIIHASHActTime = nGenesisTime + 1; 
         nPHIHASHActivationTime = nPHIIIIIHASHActTime;
@@ -517,7 +517,7 @@ public:
         pchMessageStart[1] = 0x48; // 'H'
         pchMessageStart[2] = 0x49; // 'I'
 
-        nDefaultPort = 18966;
+        nDefaultPort = 28966;
         nPruneAfterHeight = 1000;
 
         uint32_t nGenesisTime = 1749020400; // 

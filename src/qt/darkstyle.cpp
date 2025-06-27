@@ -34,55 +34,37 @@ QStyle *DarkStyle::baseStyle() const
 
 void DarkStyle::polish(QPalette &palette)
 {
-  // modify palette to dark
-  palette.setColor(QPalette::Window,QColor(53,53,53));
-  palette.setColor(QPalette::WindowText,Qt::white);/*
-###############################################################################
-#                                                                             #
-# The MIT License                                                             #
-#                                                                             #
-# Copyright (C) 2017 by Juergen Skrotzky (JorgenVikingGod@gmail.com)          #
-#               >> https://github.com/Jorgen-VikingGod                        #
-#                                                                             #
-# Sources: https://github.com/Jorgen-VikingGod/Qt-Frameless-Window-DarkStyle  #
-#                                                                             #
-###############################################################################
-*/
-  palette.setColor(QPalette::Disabled,QPalette::WindowText,QColor(127,127,127));
-  palette.setColor(QPalette::Base,QColor(42,42,42));
-  palette.setColor(QPalette::AlternateBase,QColor(66,66,66));
-  palette.setColor(QPalette::ToolTipBase,Qt::white);
-  palette.setColor(QPalette::ToolTipText,QColor(53,53,53));
-  palette.setColor(QPalette::Text,Qt::white);
-  palette.setColor(QPalette::Disabled,QPalette::Text,QColor(127,127,127));
-  palette.setColor(QPalette::Dark,QColor(35,35,35));
-  palette.setColor(QPalette::Shadow,QColor(20,20,20));
-  palette.setColor(QPalette::Button,QColor(53,53,53));
-  palette.setColor(QPalette::ButtonText,Qt::white);
-  palette.setColor(QPalette::Disabled,QPalette::ButtonText,QColor(127,127,127));
-  palette.setColor(QPalette::BrightText,Qt::red);
-  palette.setColor(QPalette::Link,QColor(42,130,218));
-  palette.setColor(QPalette::Highlight,QColor(42,130,218));
-  palette.setColor(QPalette::Disabled,QPalette::Highlight,QColor(80,80,80));
-  palette.setColor(QPalette::HighlightedText,Qt::white);
-  palette.setColor(QPalette::Disabled,QPalette::HighlightedText,QColor(127,127,127));
+  //  inspired modern dark palette
+  palette.setColor(QPalette::Window, QColor(15, 23, 42));        // #0F172A
+  palette.setColor(QPalette::WindowText, QColor(241, 245, 249)); // #F1F5F9
+  palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(100, 116, 139)); // #64748B
+  palette.setColor(QPalette::Base, QColor(30, 41, 59));          // #1E293B
+  palette.setColor(QPalette::AlternateBase, QColor(51, 65, 85)); // #334155
+  palette.setColor(QPalette::ToolTipBase, QColor(31, 41, 55));   // #1F2937
+  palette.setColor(QPalette::ToolTipText, QColor(255, 255, 255));
+  palette.setColor(QPalette::Text, QColor(241, 245, 249));       // #F1F5F9
+  palette.setColor(QPalette::Disabled, QPalette::Text, QColor(100, 116, 139)); // #64748B
+  palette.setColor(QPalette::Dark, QColor(15, 23, 42));          // #0F172A
+  palette.setColor(QPalette::Shadow, QColor(51, 65, 85));  // #334155 instead of black
+  palette.setColor(QPalette::Button, QColor(51, 65, 85));        // #334155
+  palette.setColor(QPalette::ButtonText, QColor(241, 245, 249)); // #F1F5F9
+  palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(100, 116, 139)); // #64748B
+  palette.setColor(QPalette::BrightText, QColor(239, 68, 68));   // #EF4444 (Red for warnings)
+  palette.setColor(QPalette::Link, QColor(59, 130, 246));        // #3B82F6 (Scale blue)
+  palette.setColor(QPalette::Highlight, QColor(59, 130, 246));   // #3B82F6
+  palette.setColor(QPalette::Disabled, QPalette::Highlight, QColor(71, 85, 105)); // #475569
+  palette.setColor(QPalette::HighlightedText, QColor(255, 255, 255));
+  palette.setColor(QPalette::Disabled, QPalette::HighlightedText, QColor(148, 163, 184)); // #94A3B8
 }
 
 void DarkStyle::polish(QApplication *app)
 {
   if (!app) return;
 
-// increase font size for better reading,
-// setPointSize was reduced from +2 because when applied this way in Qt5, the font is larger than intended for some reason
-//  QFont defaultFont = QApplication::font();
-//  defaultFont.setPointSize(defaultFont.pointSize()+1);
-//  app->setFont(defaultFont);
-
-  // loadstylesheet
-  QFile qfDarkstyle(QStringLiteral(":/darkstyle/qss"));
+  // Load darkstyle directly instead of trying scalestyle first
+  QFile qfDarkstyle(QStringLiteral(":/scalestyle/qss"));
   if (qfDarkstyle.open(QIODevice::ReadOnly | QIODevice::Text))
   {
-    // set stylesheet
     QString qsStylesheet = QString::fromLatin1(qfDarkstyle.readAll());
     app->setStyleSheet(qsStylesheet);
     qfDarkstyle.close();

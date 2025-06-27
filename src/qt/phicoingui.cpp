@@ -642,15 +642,64 @@ void PHICOINGUI::createToolBars()
 #endif
 
         /** PHI START */
-        QString tbStyleSheet = ".QToolBar {background-color : transparent; border-color: transparent; }  "
-                               ".QToolButton {background-color: transparent; border-color: transparent; width: 249px; color: %1; border: none;} "
-                               ".QToolButton:checked {background: none; background-color: none; selection-background-color: none; color: %2; border: none; font: %4} "
-                               ".QToolButton:hover {background: none; background-color: none; border: none; color: %3;} "
-                               ".QToolButton:disabled {color: gray;}";
+        //  inspired dark toolbar colors
+        QString toolbarBgStart = "#000000";     // Pure black
+        QString toolbarBgEnd = "#0F172A";       // Very dark blue
+        QString borderColor = "#334155";        // Dark gray border
+        QString selectedBgStart = "#3B82F6";    // Purple
+        QString selectedBgEnd = "#3B82F6";     // Blue
+        QString hoverBg = "rgba(59, 130, 246, 0.1)";  // Light blue with transparency
+        QString disabledColor = "#64748B";      // Muted gray
+        
+        QString tbStyleSheet = 
+            ".QToolBar {"
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                "stop:0 %1, stop:0.3 #0F172A, stop:1 %2);"
+                "border: 1px solid %3;"
+                "border-radius: 12px;"
+                "padding: 8px;"
+            "}"
+            ".QToolButton {"
+                "background: transparent;"
+                "border: none;"
+                "border-radius: 8px;"
+                "width: 200px;"
+                "height: 40px;"
+                "color: #FFFFFF;"
+                "padding: 8px 12px;"
+                "margin: 3px 0px;"
+                "font-weight: 500;"
+                "font-size: 14px;"
+                "text-align: left;"
+                "font-family: 'Inter', 'SF Pro Display', 'Segoe UI', sans-serif;"
+            "}"
+            ".QToolButton:checked {"
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                "stop:0 %5, stop:0.5 #3B82F6, stop:1 #22C55E);"
+                "color: white;"
+                "font-weight: 600;"
+                "border-radius: 8px;"
+            "}"
+            ".QToolButton:hover:!checked {"
+                "background: %7;"
+                "color: #60A5FA;"
+                "border-radius: 8px;"
+            "}"
+            ".QToolButton:disabled {"
+                "color: %8;"
+                "background: transparent;"
+            "}";
 
-        m_toolbar->setStyleSheet(tbStyleSheet.arg(platformStyle->ToolBarNotSelectedTextColor().name(),
-                                                platformStyle->ToolBarSelectedTextColor().name(),
-                                                platformStyle->DarkOrangeColor().name(), stringToUse));
+        m_toolbar->setStyleSheet(tbStyleSheet.arg(
+            toolbarBgStart,                                         // %1 - toolbar background start
+            toolbarBgEnd,                                           // %2 - toolbar background end  
+            borderColor,                                            // %3 - border color
+            platformStyle->ToolBarNotSelectedTextColor().name(),    // %4 - not selected text
+            selectedBgStart,                                        // %5 - selected background start
+            selectedBgEnd,                                          // %6 - selected background end
+            hoverBg,                                                // %7 - hover background
+            disabledColor                                           // %8 - disabled color
+        ));
 
         m_toolbar->setOrientation(Qt::Vertical);
         m_toolbar->setIconSize(QSize(40, 40));
@@ -667,7 +716,12 @@ void PHICOINGUI::createToolBars()
         phicoinLabelLayout->setDirection(QBoxLayout::TopToBottom);
         phicoinLabelLayout->addStretch(1);
 
-        QString mainWalletWidgetStyle = QString(".QWidget{background-color: %1}").arg(platformStyle->MainBackGroundColor().name());
+        //  inspired main widget background
+        QString mainWalletWidgetStyle = 
+            ".QWidget {"
+                "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+                "stop:0 #000000, stop:0.3 #0F172A, stop:1 #1E293B);"
+            "}";
         QWidget* mainWalletWidget = new QWidget();
         mainWalletWidget->setStyleSheet(mainWalletWidgetStyle);
 

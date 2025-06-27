@@ -39,6 +39,11 @@ public:
     QColor DarkOrangeColor() const;
     QColor AssetTxColor() const;
 
+    //  inspired color methods
+    QColor ScalePrimaryColor() const;
+    QColor ScaleAccentColor() const;
+    QColor ScaleCardBackgroundColor() const;
+    QColor ScaleBorderColor() const;
 
     /** Colorize an image (given filename) with the icon color */
     QImage SingleColorImage(const QString& filename) const;
