@@ -20,16 +20,16 @@
       <number>20</number>
      </property>
      <property name="leftMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="topMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="rightMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="bottomMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <item>
       <widget class="QFrame" name="frameAssetBalance">
@@ -182,16 +182,16 @@
       <number>20</number>
      </property>
      <property name="leftMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="topMargin">
       <number>0</number>
      </property>
      <property name="rightMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="bottomMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <item>
       <widget class="QFrame" name="tabFrame">

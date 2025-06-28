@@ -23,16 +23,16 @@
       <number>20</number>
      </property>
      <property name="leftMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="topMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="rightMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <property name="bottomMargin">
-      <number>20</number>
+      <number>0</number>
      </property>
      <item>
       <widget class="QFrame" name="frameAssetControl">
@@ -604,8 +604,8 @@
          <rect>
           <x>0</x>
           <y>0</y>
-          <width>1010</width>
-          <height>257</height>
+          <width>1048</width>
+          <height>390</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1">

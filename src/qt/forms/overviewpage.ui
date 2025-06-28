@@ -49,16 +49,16 @@
         <enum>QLayout::SetMinAndMaxSize</enum>
        </property>
        <property name="leftMargin">
-        <number>20</number>
+        <number>0</number>
        </property>
        <property name="topMargin">
-        <number>20</number>
+        <number>0</number>
        </property>
        <property name="rightMargin">
-        <number>20</number>
+        <number>0</number>
        </property>
        <property name="bottomMargin">
-        <number>20</number>
+        <number>0</number>
        </property>
        <item>
         <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -689,6 +689,32 @@
             <property name="horizontalSpacing">
              <number>12</number>
             </property>
+            <item row="3" column="0">
+             <widget class="QListView" name="listTransactions">
+              <property name="styleSheet">
+               <string notr="true">QListView { background: transparent; }</string>
+              </property>
+              <property name="frameShape">
+               <enum>QFrame::NoFrame</enum>
+              </property>
+              <property name="verticalScrollBarPolicy">
+               <enum>Qt::ScrollBarAlwaysOff</enum>
+              </property>
+              <property name="horizontalScrollBarPolicy">
+               <enum>Qt::ScrollBarAlwaysOff</enum>
+              </property>
+              <property name="selectionMode">
+               <enum>QAbstractItemView::NoSelection</enum>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="Line" name="line_3">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
             <item row="0" column="0">
              <layout class="QHBoxLayout" name="horizontalLayout_2">
               <property name="spacing">
@@ -755,29 +781,22 @@
               </item>
              </layout>
             </item>
-            <item row="2" column="0">
-             <widget class="QListView" name="listTransactions">
+            <item row="4" column="0">
+             <widget class="QLabel" name="labelAlerts">
+              <property name="visible">
+               <bool>true</bool>
+              </property>
               <property name="styleSheet">
-               <string notr="true">QListView { background: transparent; }</string>
+               <string notr="true">QLabel { background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop:0 #F0D0A0, stop:1 #F8D488); color:#000000; }</string>
               </property>
-              <property name="frameShape">
-               <enum>QFrame::NoFrame</enum>
+              <property name="wordWrap">
+               <bool>true</bool>
               </property>
-              <property name="verticalScrollBarPolicy">
-               <enum>Qt::ScrollBarAlwaysOff</enum>
+              <property name="margin">
+               <number>3</number>
               </property>
-              <property name="horizontalScrollBarPolicy">
-               <enum>Qt::ScrollBarAlwaysOff</enum>
-              </property>
-              <property name="selectionMode">
-               <enum>QAbstractItemView::NoSelection</enum>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="Line" name="line_3">
-              <property name="orientation">
-               <enum>Qt::Horizontal</enum>
+              <property name="textInteractionFlags">
+               <set>Qt::TextSelectableByMouse</set>
               </property>
              </widget>
             </item>
@@ -789,25 +808,6 @@
       </layout>
      </item>
     </layout>
-   </item>
-   <item row="0" column="3">
-    <widget class="QLabel" name="labelAlerts">
-     <property name="visible">
-      <bool>true</bool>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">QLabel { background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop:0 #F0D0A0, stop:1 #F8D488); color:#000000; }</string>
-     </property>
-     <property name="wordWrap">
-      <bool>true</bool>
-     </property>
-     <property name="margin">
-      <number>3</number>
-     </property>
-     <property name="textInteractionFlags">
-      <set>Qt::TextSelectableByMouse</set>
-     </property>
-    </widget>
    </item>
   </layout>
  </widget>
