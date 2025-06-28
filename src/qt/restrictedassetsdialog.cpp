@@ -146,6 +146,15 @@ void RestrictedAssetsDialog::setupStyling(const PlatformStyle *platformStyle)
 
     ui->labelAddressList->setStyleSheet(STRING_LABEL_COLOR);
     ui->labelAddressList->setFont(GUIUtil::getTopLabelFont());
+
+    /** Style the search boxes to match Overview page */
+    ui->lineEditAssetSearch->setAttribute(Qt::WA_MacShowFocusRect, 0);
+    ui->lineEditAssetSearch->setAlignment(Qt::AlignVCenter);
+    ui->lineEditAssetSearch->setFont(GUIUtil::getSubLabelFont());
+
+    ui->lineEditAddressSearch->setAttribute(Qt::WA_MacShowFocusRect, 0);
+    ui->lineEditAddressSearch->setAlignment(Qt::AlignVCenter);
+    ui->lineEditAddressSearch->setFont(GUIUtil::getSubLabelFont());
 }
 
 

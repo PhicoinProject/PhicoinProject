@@ -19,8 +19,8 @@ static const int STATUSBAR_ICONSIZE = 16;
 static const bool DEFAULT_SPLASHSCREEN = true;
 
 /* Invalid field background style */
-#define STYLE_INVALID "background:#FF8080; border: 1px solid lightgray; padding: 0px;"
-#define STYLE_VALID "border: 1px solid lightgray; padding: 0px;"
+#define STYLE_INVALID "background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #2D1B1B, stop:1 #3B1E1E); border: 2px solid #EF4444; border-radius: 8px; padding: 8px 12px; color: #FFFFFF;"
+#define STYLE_VALID ""
 
 /* Transaction list -- unconfirmed transaction */
 #define COLOR_UNCONFIRMED QColor(128, 128, 128)

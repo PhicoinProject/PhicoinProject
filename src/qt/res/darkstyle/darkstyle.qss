@@ -199,7 +199,8 @@ QTabBar::tab {
     font-weight: 500;
     font-size: 13px;
     font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
-    min-width: 80px;
+    min-width: 100px;
+    max-width: 600px;
     text-align: center;
 }
 
@@ -218,6 +219,15 @@ QTabBar::tab:hover:!selected {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #475569, stop:1 #334155);
     color: #60A5FA;
     border-color: #60A5FA;
+}
+
+/* Specific styling for Restricted Assets tabs */
+RestrictedAssetsDialog QTabBar::tab {
+    padding: 10px 25px;
+    min-width: 200px;
+    max-width: 450px;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 /*  Modern Buttons */
@@ -287,17 +297,65 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     color: #FFFFFF;
     font-size: 13px;
     font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+    min-height: 16px;
 }
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 2px solid #60A5FA;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B);
+    border: 2px solid #60A5FA !important;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
+    padding: 8px 12px !important;
 }
 
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {
     background-color: #0F172A;
     color: #64748B;
     border-color: #334155;
+}
+
+/* Specific styling for QValidatedLineEdit */
+QValidatedLineEdit {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+    min-height: 16px;
+}
+
+QValidatedLineEdit:focus {
+    border: 2px solid #60A5FA !important;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
+    padding: 8px 12px !important;
+}
+
+/* Specific styling for Restricted Assets Dialog inputs */
+RestrictedAssetsDialog QLineEdit, 
+RestrictedAssetsDialog QValidatedLineEdit,
+AssignQualifier QLineEdit,
+AssignQualifier QValidatedLineEdit,
+FreezeAddress QLineEdit,
+FreezeAddress QValidatedLineEdit {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
+    border: 1px solid #475569;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+    min-height: 18px;
+}
+
+RestrictedAssetsDialog QLineEdit:focus, 
+RestrictedAssetsDialog QValidatedLineEdit:focus,
+AssignQualifier QLineEdit:focus,
+AssignQualifier QValidatedLineEdit:focus,
+FreezeAddress QLineEdit:focus,
+FreezeAddress QValidatedLineEdit:focus {
+    border: 2px solid #60A5FA !important;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
+    padding: 10px 14px !important;
 }
 
 /* Modern Checkboxes and Radio Buttons */

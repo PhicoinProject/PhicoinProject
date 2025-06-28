@@ -401,14 +401,8 @@ OverviewPage::OverviewPage(const PlatformStyle *platformStyle, QWidget *parent) 
 
     /** Create the search bar for assets */
     ui->assetSearch->setAttribute(Qt::WA_MacShowFocusRect, 0);
-    ui->assetSearch->setStyleSheet(QString(".QLineEdit {border: 1px solid %1; border-radius: 5px;}").arg(COLOR_LABELS.name()));
     ui->assetSearch->setAlignment(Qt::AlignVCenter);
-    QFont font = ui->assetSearch->font();
-    font.setPointSize(12);
-    ui->assetSearch->setFont(font);
-
-    QFontMetrics fm = QFontMetrics(ui->assetSearch->font());
-    ui->assetSearch->setFixedHeight(fm.height()+ 5);
+    ui->assetSearch->setFont(GUIUtil::getSubLabelFont());
 
     // Trigger the call to show the assets table if assets are active
     showAssets();
