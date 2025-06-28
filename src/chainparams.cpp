@@ -12,7 +12,7 @@
 #include "tinyformat.h"
 #include "util.h"
 #include "utilstrencodings.h"
-
+#include <limits>
 #include "chainparamsseeds.h"
 #include <assert.h>
 
@@ -129,7 +129,7 @@ public:
     CMainParams()
     {
         uint32_t nGenesisTime = 1749020400;
-        uint32_t nAssetTime= 1751180400;
+        uint32_t nAssetTime = 1751090400;
         strNetworkID = "main";
         consensus.nSubsidyHalvingInterval = 2102400; //  1 y
         consensus.nBIP34Enabled = true;
