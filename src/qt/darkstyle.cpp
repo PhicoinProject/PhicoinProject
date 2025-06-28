@@ -62,7 +62,7 @@ void DarkStyle::polish(QApplication *app)
   if (!app) return;
 
   // Load darkstyle directly instead of trying scalestyle first
-  QFile qfDarkstyle(QStringLiteral(":/scalestyle/qss"));
+  QFile qfDarkstyle(QStringLiteral(":/darkstyle/qss"));
   if (qfDarkstyle.open(QIODevice::ReadOnly | QIODevice::Text))
   {
     QString qsStylesheet = QString::fromLatin1(qfDarkstyle.readAll());

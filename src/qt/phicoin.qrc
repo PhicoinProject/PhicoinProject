@@ -141,6 +141,9 @@
         <file alias="radio-checked-disabled">res/darkstyle/icon_radiobutton_checked_disabled.png</file>
         <file alias="radio-unchecked-disabled">res/darkstyle/icon_radiobutton_unchecked_disabled.png</file>
     </qresource>
+    <qresource prefix="/scalestyle">
+        <file alias="qss">res/scalestyle/scalestyle.qss</file>
+    </qresource>
     <qresource prefix="/fonts">
         <file alias="opensans-bold">res/fonts/OpenSans-Bold.ttf</file>
         <file alias="opensans-bolditalic">res/fonts/OpenSans-BoldItalic.ttf</file>

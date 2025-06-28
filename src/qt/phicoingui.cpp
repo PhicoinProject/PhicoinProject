@@ -646,7 +646,7 @@ void PHICOINGUI::createToolBars()
         QString toolbarBgStart = "#000000";     // Pure black
         QString toolbarBgEnd = "#0F172A";       // Very dark blue
         QString borderColor = "#334155";        // Dark gray border
-        QString selectedBgStart = "#3B82F6";    // Purple
+        QString selectedBgStart ="qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba(59, 130, 246, 0.2), stop:1 rgba(147, 51, 234, 0.2))";  // Blue to purple gradient like Console tab
         QString selectedBgEnd = "#3B82F6";     // Blue
         QString hoverBg = "rgba(59, 130, 246, 0.1)";  // Light blue with transparency
         QString disabledColor = "#64748B";      // Muted gray
@@ -682,8 +682,9 @@ void PHICOINGUI::createToolBars()
             "}"
             ".QToolButton:hover:!checked {"
                 "background: %7;"
-                "color: #60A5FA;"
+                "color: #FFFFFF;"
                 "border-radius: 8px;"
+                "border: 1px solid #3B82F6;"
             "}"
             ".QToolButton:disabled {"
                 "color: %8;"

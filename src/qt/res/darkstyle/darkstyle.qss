@@ -328,6 +328,14 @@ QRadioButton::indicator:checked {
     border-color: #3B82F6;
 }
 
+/* Remove background from checkbox and radio button text areas */
+QCheckBox, QRadioButton {
+    background: transparent;
+    color: #FFFFFF;
+    font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+    spacing: 8px;
+}
+
 /* Modern Scrollbars */
 QScrollBar:vertical, QScrollBar:horizontal {
     background: #1E293B;
@@ -567,9 +575,100 @@ QLabel[class="subheading"] {
 
 /*  Modern Frame */
 QFrame {
-    background: rgba(30, 41, 59, 0.5);
-    border: 1px solid #334155;
+    background: none;
+}
+
+/* PHICOIN Amount Field - Container should be transparent */
+PHICOINAmountField {
+    background: transparent;
+    border: none;
+    color: #FFFFFF;
+    font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+}
+
+/* Style the internal AmountSpinBox (QAbstractSpinBox) */
+AmountSpinBox, QAbstractSpinBox {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
+    border: 1px solid #475569;
     border-radius: 8px;
+    padding: 8px 12px;
+    color: #FFFFFF;
+    font-size: 13px;
+    font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+}
+
+AmountSpinBox:focus, QAbstractSpinBox:focus {
+    border: 2px solid #60A5FA;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B);
+}
+
+AmountSpinBox:disabled, QAbstractSpinBox:disabled {
+    background-color: #0F172A;
+    color: #64748B;
+    border-color: #334155;
+}
+
+/* Hide the up/down buttons for AmountSpinBox */
+AmountSpinBox::up-button, AmountSpinBox::down-button {
+    border: none;
+    background: none;
+    width: 0px;
+    height: 0px;
+}
+
+QAbstractSpinBox::up-button, QAbstractSpinBox::down-button {
+    border: none;
+    background: none;
+    width: 0px;
+    height: 0px;
+}
+
+/* Send Coins Dialog specific styles - Remove backgrounds */
+SendCoinsDialog QCheckBox, SendCoinsDialog QRadioButton {
+    background: transparent;
+}
+
+/* PHICOINAmountField in SendCoinsDialog uses the global style above */
+
+/* Custom fee controls */
+QRadioButton[objectName="radioCustomFee"] {
+    background: transparent;
+}
+
+QCheckBox[objectName="checkboxSubtractFeeFromAmount"] {
+    background: transparent;
+}
+
+/* Fee section frame - remove background */
+QFrame[objectName="frameFeeSelection"] {
+    background: transparent;
+    border: none;
+}
+
+/* Remove background from fee-related labels and controls */
+QLabel[objectName="labelCustomPerKilobyte"] {
+    background: transparent;
+}
+
+QLabel[objectName="labelSmartFee"] {
+    background: transparent;
+}
+
+/* Ensure fee section controls have transparent backgrounds (except PHICOINAmountField) */
+QWidget[objectName="frameFeeSelection"] QCheckBox,
+QWidget[objectName="frameFeeSelection"] QRadioButton,
+QWidget[objectName="frameFeeSelection"] QLabel {
+    background: transparent;
+}
+
+/* Transaction fee section */
+QFrame[objectName="frameFee"] {
+    background: transparent;
+}
+
+/* Coin control frame */
+QFrame[objectName="frameCoinControl"] {
+    background: transparent;
 }
 
 QFrame[class="card"] {
