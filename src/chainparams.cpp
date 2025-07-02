@@ -235,13 +235,16 @@ public:
 
         checkpointData = (CCheckpointData){
             {
-
+                {0, uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659")},
+                {10000, uint256S("00000003dd587f01dd637803922158343c40f8b795ff5ab3aa2c9e445943e8bf")},
+                {15000, uint256S("0000000bdde6ea5e7c0eb088f38423de7cae550b85c7b41c7beddef6a6768bf2")},
+                {20000, uint256S("00000006f9e93bf1c642a2bf0102ef0d442b1469acfb4251cf871414be4f19dd")},
             }};
 
         chainTxData = ChainTxData{
-            // 1734332195, // Update to the latest UNIX timestamp
-            // 182694,     // Update to the latest total number of transactions
-            // 0.07549100225201959 // Update to the latest estimated transactions per second
+            1751425007, // Update to the latest UNIX timestamp
+            37383,     // Update to the latest total number of transactions
+            0.1110777642409295 // Update to the latest estimated transactions per second
         };
 
 
