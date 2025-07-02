@@ -120,13 +120,6 @@
 - Multi-signature support
 - Hardware wallet compatibility
 
-### **Developer Tools**
-- Comprehensive RPC API
-- Asset creation and management tools
-- IPFS integration utilities
-- Testing framework and utilities
-- Detailed documentation and examples
-
 ---
 
 ## 🌍 Community & Social Media
@@ -135,59 +128,8 @@ Join our growing community of developers, miners, and blockchain enthusiasts:
 
 - **Twitter/X**: [@PhicoinNet](https://x.com/PhicoinNet)
 - **Discord**: [https://discord.gg/phicoin](https://discord.gg/phicoin)
-- **Website**: [Coming Soon]
-- **GitHub**: [PhicoinProject](https://github.com/phicoin/PhicoinProject)
+- **Website**: [https://phicoin.net/](https://phicoin.net/)
 
----
 
-## 🚀 Getting Started
 
-### **For Users**
-1. Download the latest Phicoin V2 wallet
-2. Create your first PHI address (starts with 'P')
-3. Connect to the network and start exploring assets
-4. Try creating your first IPFS-linked asset
-
-### **For Miners**
-1. Download phihashminer for your platform
-2. Configure your mining setup
-3. Connect to our official pool or mine solo
-4. Start earning PHI rewards
-
-### **For Developers**
-1. Clone the repository
-2. Follow the build instructions
-3. Explore our comprehensive API documentation
-4. Start building amazing decentralized applications
-
----
-
-## 🎊 Launch Celebration
-
-**Phicoin V2 represents more than just a blockchain upgrade - it's a paradigm shift towards a truly decentralized, high-performance infrastructure that empowers developers, users, and enterprises alike.**
-
-### **Why Phicoin V2 Matters:**
-- **Innovation**: First blockchain with native IPFS integration at scale
-- **Performance**: Industry-leading transaction throughput and confirmation times
-- **Accessibility**: User-friendly tools and comprehensive documentation
-- **Sustainability**: Efficient consensus mechanism with controlled inflation
-- **Community**: Growing ecosystem of developers and users worldwide
-
----
-
-## 📄 License & Legal
-
-Distributed under the MIT License. See `COPYING` for more information.
-
----
-
-## 🤝 Contributing
-
-We welcome contributions from the community! Please read our `CONTRIBUTING.md` file for guidelines on how to contribute to the Phicoin V2 project.
-
----
-
-**The future of blockchain infrastructure is here. Welcome to Phicoin V2! 🎉**
-
-*"Break the Great Firewall!" - Genesis Block*
 
