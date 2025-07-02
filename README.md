@@ -83,29 +83,6 @@
 
 ---
 
-## 🛠️ Mining & Network Participation
-
-### **Official Mining Pool**
-**Pool URL**: https://pool.phicoin.net/
-
-#### **Solo Mining**
-```bash
-# Linux
-./phihashminer -P stratum+tcp://YourPhicoinAddress@official.pool.phicoin.net:19966
-
-# Windows
-.\phihashminer.exe -P stratum+tcp://YourPhicoinAddress@official.pool.phicoin.net:19966
-```
-
-#### **PPLNS Pool Mining**
-```bash
-# Linux
-./phihashminer -P stratum+tcp://YourPhicoinAddress@official.pool.phicoin.net:9966
-
-# Windows
-.\phihashminer.exe -P stratum+tcp://YourPhicoinAddress@official.pool.phicoin.net:9966
-```
-
 ### **Network Seeds**
 - seed1.phicoin.net
 - seed2.phicoin.net
