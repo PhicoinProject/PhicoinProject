@@ -1,4 +1,4 @@
-# 🚀 PHICOIN V2 NETWORK - OFFICIAL LAUNCH ANNOUNCEMENT 🚀
+# 🚀 PHICOIN V2 - OFFICIAL LAUNCH ANNOUNCEMENT 🚀
 
 ![Phicoin V2 Banner](https://github.com/user-attachments/assets/142316da-019d-4c8e-af5d-80d286349e6e)
 
