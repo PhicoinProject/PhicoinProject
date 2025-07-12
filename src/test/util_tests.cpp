@@ -6,6 +6,7 @@
 #include "util.h"
 
 #include "clientversion.h"
+#include "net_processing.h"
 #include "primitives/transaction.h"
 #include "sync.h"
 #include "utilstrencodings.h"
@@ -669,6 +670,70 @@ BOOST_FIXTURE_TEST_SUITE(util_tests, BasicTestingSetup)
         BOOST_CHECK(ParseFixedPoint("21000000000", 8, &amount));
         BOOST_CHECK(ParseFixedPoint("42000000000", 8, &amount));
         BOOST_CHECK(!ParseFixedPoint("42000000001", 8, &amount));
+    }
+
+    BOOST_AUTO_TEST_CASE(ParseClientVersion_test)
+    {
+        BOOST_TEST_MESSAGE("Running ParseClientVersion Test");
+        
+        int major, minor, revision;
+        
+        // Test normal version without comments
+        BOOST_CHECK(ParseClientVersion("/PHICOIN:2.1.0/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 2);
+        BOOST_CHECK_EQUAL(minor, 1);
+        BOOST_CHECK_EQUAL(revision, 0);
+        
+        // Test version with single comment
+        BOOST_CHECK(ParseClientVersion("/PHICOIN:2.0.1(mycomment)/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 2);
+        BOOST_CHECK_EQUAL(minor, 0);
+        BOOST_CHECK_EQUAL(revision, 1);
+        
+        // Test version with multiple comments
+        BOOST_CHECK(ParseClientVersion("/PHICOIN:2.2.3(comment1; comment2)/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 2);
+        BOOST_CHECK_EQUAL(minor, 2);
+        BOOST_CHECK_EQUAL(revision, 3);
+        
+        // Test version with complex comments
+        BOOST_CHECK(ParseClientVersion("/PHICOIN:3.0.0(build123; debug; test)/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 3);
+        BOOST_CHECK_EQUAL(minor, 0);
+        BOOST_CHECK_EQUAL(revision, 0);
+        
+        // Test case insensitive patterns
+        BOOST_CHECK(ParseClientVersion("/Phicoin:2.1.0(test)/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 2);
+        BOOST_CHECK_EQUAL(minor, 1);
+        BOOST_CHECK_EQUAL(revision, 0);
+        
+        BOOST_CHECK(ParseClientVersion("/phicoin:2.1.0(test)/", major, minor, revision));
+        BOOST_CHECK_EQUAL(major, 2);
+        BOOST_CHECK_EQUAL(minor, 1);
+        BOOST_CHECK_EQUAL(revision, 0);
+        
+        // Test invalid formats
+        BOOST_CHECK(!ParseClientVersion("/UNKNOWN:2.1.0/", major, minor, revision));
+        BOOST_CHECK(!ParseClientVersion("/PHICOIN:invalid/", major, minor, revision));
+        BOOST_CHECK(!ParseClientVersion("/PHICOIN:2.1/", major, minor, revision));
+        BOOST_CHECK(!ParseClientVersion("/PHICOIN:2.1.abc/", major, minor, revision));
+        
+        // Test version checking function
+        // Test that versions >= 2.0.0 are not below minimum
+        BOOST_CHECK(!IsClientVersionBelowMinimum("/PHICOIN:2.0.0/"));
+        BOOST_CHECK(!IsClientVersionBelowMinimum("/PHICOIN:2.0.0(comment)/"));
+        BOOST_CHECK(!IsClientVersionBelowMinimum("/PHICOIN:2.1.0/"));
+        BOOST_CHECK(!IsClientVersionBelowMinimum("/PHICOIN:3.0.0(build; test)/"));
+        
+        // Test that versions < 2.0.0 are below minimum
+        BOOST_CHECK(IsClientVersionBelowMinimum("/PHICOIN:1.9.9/"));
+        BOOST_CHECK(IsClientVersionBelowMinimum("/PHICOIN:1.9.9(comment)/"));
+        BOOST_CHECK(IsClientVersionBelowMinimum("/PHICOIN:0.1.0/"));
+        
+        // Test that unrecognized formats are considered below minimum
+        BOOST_CHECK(IsClientVersionBelowMinimum("/UNKNOWN:3.0.0/"));
+        BOOST_CHECK(IsClientVersionBelowMinimum("CustomClient"));
     }
 
 BOOST_AUTO_TEST_SUITE_END()

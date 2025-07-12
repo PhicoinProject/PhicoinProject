@@ -82,4 +82,9 @@ bool GetNodeStateStats(NodeId nodeid, CNodeStateStats &stats);
 /** Increase a node's misbehavior score. */
 void Misbehaving(NodeId nodeid, int howmuch);
 
+/** Parse PHICOIN client version from user agent string */
+bool ParseClientVersion(const std::string& userAgent, int& major, int& minor, int& revision);
+/** Check if client version is below minimum required (2.0.0) */
+bool IsClientVersionBelowMinimum(const std::string& userAgent);
+
 #endif // PHICOIN_NET_PROCESSING_H

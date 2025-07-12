@@ -73,7 +73,7 @@ static const int STALE_RELAY_AGE_LIMIT = 30 * 24 * 60 * 60;
 static const int HISTORICAL_BLOCK_AGE = 7 * 24 * 60 * 60;
 
 // Function to parse PHICOIN client version from user agent string
-// Expected format: "/PHICOIN:x.y.z/" or similar
+// Expected format: "/PHICOIN:x.y.z/" or "/PHICOIN:x.y.z(comments)/"
 bool ParseClientVersion(const std::string& userAgent, int& major, int& minor, int& revision) {
     major = minor = revision = 0;
     
@@ -108,6 +108,13 @@ bool ParseClientVersion(const std::string& userAgent, int& major, int& minor, in
     }
     
     std::string version = userAgent.substr(pos, end - pos);
+    
+    // Handle comments in parentheses - find the opening parenthesis
+    size_t comment_start = version.find('(');
+    if (comment_start != std::string::npos) {
+        // If there's a comment, only use the part before the parenthesis
+        version = version.substr(0, comment_start);
+    }
     
     // Parse version string "x.y.z"
     size_t dot1 = version.find('.');
@@ -471,8 +478,9 @@ void MaybeSetPeerAsAnnouncingHeaderAndIDs(NodeId nodeid, CConnman* connman) {
             if (lNodesAnnouncingHeaderAndIDs.size() >= 3) {
                 // As per BIP152, we only get 3 of our peers to announce
                 // blocks using compact encodings.
-                connman->ForNode(lNodesAnnouncingHeaderAndIDs.front(), [connman, nCMPCTBLOCKVersion](CNode* pnodeStop){
-                    connman->PushMessage(pnodeStop, CNetMsgMaker(pnodeStop->GetSendVersion()).Make(NetMsgType::SENDCMPCT, /*fAnnounceUsingCMPCTBLOCK=*/false, nCMPCTBLOCKVersion));
+                connman->ForNode(lNodesAnnouncingHeaderAndIDs.front(), [connman](CNode* pfrom){
+                    uint64_t nCMPCTBLOCKVersion = (pfrom->GetLocalServices() & NODE_WITNESS) ? 2 : 1;
+                    connman->PushMessage(pfrom, CNetMsgMaker(pfrom->GetSendVersion()).Make(NetMsgType::SENDCMPCT, /*fAnnounceUsingCMPCTBLOCK=*/false, nCMPCTBLOCKVersion));
                     return true;
                 });
                 lNodesAnnouncingHeaderAndIDs.pop_front();
