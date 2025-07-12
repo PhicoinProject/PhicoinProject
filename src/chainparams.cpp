@@ -220,13 +220,13 @@ public:
         nExtCoinType = 0;
 
         vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
-
+        vSeeds.emplace_back("seed.phicoin.net", false); 
         vSeeds.emplace_back("seed1.phicoin.net", false); 
         vSeeds.emplace_back("seed2.phicoin.net", false); 
         vSeeds.emplace_back("seed3.phicoin.net", false); 
         vSeeds.emplace_back("seed4.phicoin.net", false); 
         vSeeds.emplace_back("seed5.phicoin.net", false); 
-        vSeeds.emplace_back("seed6.phicoin.net", false); 
+        vSeeds.emplace_back("seed6.phicoin.net", false);
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = true;
@@ -239,6 +239,10 @@ public:
                 {10000, uint256S("00000003dd587f01dd637803922158343c40f8b795ff5ab3aa2c9e445943e8bf")},
                 {15000, uint256S("0000000bdde6ea5e7c0eb088f38423de7cae550b85c7b41c7beddef6a6768bf2")},
                 {20000, uint256S("00000006f9e93bf1c642a2bf0102ef0d442b1469acfb4251cf871414be4f19dd")},
+                {40000, uint256S("0000000173b5c893af16f8e89b40427c9b7f0366eff0368358914cb926bcfbed")},
+                {60000, uint256S("0000000191e51e66ff10aaa3a0e532e52e05d50fb8ff069bf8ae25d99f43ebf6")},
+                {80000, uint256S("000000003ac1947719f40af46933d353afc364de01904436aea530df21dcfd90")},
+
             }};
 
         chainTxData = ChainTxData{

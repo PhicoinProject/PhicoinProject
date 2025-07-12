@@ -1764,6 +1764,50 @@ void CConnman::ThreadOpenConnections()
 
     // Initiate network connections
     int64_t nStart = GetTime();
+    
+    // Add fixed seed nodes immediately for faster startup
+    static bool fixedSeedsAdded = false;
+    if (!fixedSeedsAdded && addrman.size() < 10) {
+        LogPrintf("Adding fixed seed nodes for fast startup.\n");
+        CNetAddr local;
+        local.SetInternal("fixedseeds");
+        
+        // Convert fixed seeds to address list
+        std::vector<CAddress> vFixedSeeds = convertSeed6(GetParams().FixedSeeds());
+        addrman.Add(vFixedSeeds, local);
+        
+        // Try to connect to the first few fixed seed nodes immediately
+        int nConnectAttempts = 0;
+        int nMaxConnectAttempts = std::min(12, (int)vFixedSeeds.size()); // Try max 12 nodes
+        
+        for (const CAddress& addr : vFixedSeeds) {
+            if (nConnectAttempts >= nMaxConnectAttempts) break;
+            
+            // Check if we already have this connection
+            if (FindNode((CNetAddr)addr) || FindNode(addr.ToStringIPPort())) {
+                continue;
+            }
+            
+            LogPrintf("Attempting immediate connection to fixed seed: %s\n", addr.ToString());
+            
+            // Try to acquire outbound connection slot
+            CSemaphoreGrant grant(*semOutbound, true); // non-blocking
+            if (grant) {
+                bool fConnected = OpenNetworkConnection(addr, false, &grant, nullptr, false, false, false);
+                if (fConnected) {
+                    LogPrintf("Successfully connected to fixed seed: %s\n", addr.ToString());
+                    nConnectAttempts++;
+                } else {
+                    LogPrintf("Failed to connect to fixed seed: %s\n", addr.ToString());
+                }
+            } else {
+                LogPrintf("No outbound slots available for immediate seed connection\n");
+                break;
+            }
+        }
+        
+        fixedSeedsAdded = true;
+    }
 
     // Minimum time before next feeler connection (in microseconds).
     int64_t nNextFeeler = PoissonNextSend(nStart*1000*1000, FEELER_INTERVAL);
@@ -1779,16 +1823,18 @@ void CConnman::ThreadOpenConnections()
         if (interruptNet)
             return;
 
-        // Add seed nodes if DNS seeds are all down (an infrastructure attack?).
-        if (addrman.size() < 5 && (GetTime() - nStart > 60)) {
-            static bool done = false;
 
-            if (!done) {
-                LogPrintf("Adding fixed seed nodes as DNS doesn't seem to be available.\n");
+        
+        // Original backup mechanism: Add seed nodes if DNS seeds are all down (keep as secondary backup)
+        if (addrman.size() < 6 && (GetTime() - nStart > 30)) {
+            static bool backupDone = false;
+
+            if (!backupDone) {
+                LogPrintf("Adding backup fixed seed nodes as DNS still unavailable after 30 seconds.\n");
                 CNetAddr local;
                 local.SetInternal("fixedseeds");
                 addrman.Add(convertSeed6(GetParams().FixedSeeds()), local);
-                done = true;
+                backupDone = true;
             }
         }
 
