@@ -98,7 +98,7 @@
 Join our growing community of developers, miners, and blockchain enthusiasts:
 
 - **Twitter/X**: [@PhicoinNet](https://x.com/PhicoinNet)
-- **Discord**: [https://discord.gg/phicoin](https://discord.gg/phicoin)
+- **Discord**: [https://discord.gg/phicoin](https://phicoin.net/discord)
 - **Website**: [https://phicoin.net/](https://phicoin.net/)
 
 
