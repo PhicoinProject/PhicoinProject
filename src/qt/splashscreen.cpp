@@ -167,7 +167,7 @@ SplashScreen::SplashScreen(const NetworkStyle* networkStyle)
 
     // Set window properties with  style
     setWindowTitle(titleText + " " + titleAddText);
-    setWindowFlags(Qt::SplashScreen | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
+    setWindowFlags(Qt::Window | Qt::WindowTitleHint | Qt::WindowMinimizeButtonHint | Qt::WindowCloseButtonHint);
     
     // Modern window sizing
     QRect r(QPoint(), QSize(pixmap.size().width() / devicePixelRatio, 

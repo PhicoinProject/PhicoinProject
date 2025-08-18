@@ -242,13 +242,16 @@ public:
                 {40000, uint256S("0000000173b5c893af16f8e89b40427c9b7f0366eff0368358914cb926bcfbed")},
                 {60000, uint256S("0000000191e51e66ff10aaa3a0e532e52e05d50fb8ff069bf8ae25d99f43ebf6")},
                 {80000, uint256S("000000003ac1947719f40af46933d353afc364de01904436aea530df21dcfd90")},
-
+                {100000, uint256S("00000000ce62774e34487198833659d13a6d8e451151551045f8bb16e7d67b82")},
+                {150000, uint256S("000000007c33b1c3a3e8f092e4e04e710760747e852a718cdf05df9ab17db64f")},
+                {200000, uint256S("000000004403c2a864a98a3ff71fe8310404300a0577c23336ed08c5df87c024")},
+                {250000, uint256S("000000003ada5f4ed05a229b07a9e9595cff1e60d62b0f04582ee4231eaa56d3")},
             }};
 
         chainTxData = ChainTxData{
-            1751425007, // Update to the latest UNIX timestamp
-            37383,     // Update to the latest total number of transactions
-            0.1110777642409295 // Update to the latest estimated transactions per second
+            1755447345, // UNIX timestamp of last known txcount (from getchaintxstats)
+            334013,     // Total number of transactions up to that timestamp
+            0.07483090569028712 // Estimated transactions per second after that timestamp
         };
 
 
