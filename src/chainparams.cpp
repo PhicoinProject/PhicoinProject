@@ -179,7 +179,7 @@ public:
 
         // The best chain should have at least this much work
 
-        consensus.nMinimumChainWork = uint256S("0000000000000000000000000000000000000000000000000000000000000000"); // #150000
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000b16f9a17938c5"); // #364901
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid = uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"); // 
@@ -246,6 +246,8 @@ public:
                 {150000, uint256S("000000007c33b1c3a3e8f092e4e04e710760747e852a718cdf05df9ab17db64f")},
                 {200000, uint256S("000000004403c2a864a98a3ff71fe8310404300a0577c23336ed08c5df87c024")},
                 {250000, uint256S("000000003ada5f4ed05a229b07a9e9595cff1e60d62b0f04582ee4231eaa56d3")},
+                {300000, uint256S("0000000009d90e386fe3bfd8cce9ab8778c051d6382a731c1d46db3a183c1de8")},
+                {350000, uint256S("0000000012e14a088dd33129955ebef863a6d2686075cebf3adc32eda87e6127")},
             }};
 
         chainTxData = ChainTxData{
