@@ -3,12 +3,71 @@
 PHICOINROOT=$(pwd)
 OS=$1
 
+bundle_windows_runtime_dlls() {
+    local release_dir="$PHICOINROOT/release/win"
+    local -a search_dirs=(
+        "$PHICOINROOT/depends/x86_64-w64-mingw32/bin"
+        "$PHICOINROOT/depends/x86_64-w64-mingw32/host/bin"
+        "/usr/x86_64-w64-mingw32/bin"
+        "/usr/lib/gcc/x86_64-w64-mingw32"
+    )
+    local -a fallback_dlls=(
+        "libssl-0.dll"
+        "libcrypto-0.dll"
+        "libssl-1_1-x64.dll"
+        "libcrypto-1_1-x64.dll"
+        "libssl-3-x64.dll"
+        "libcrypto-3-x64.dll"
+        "libwinpthread-1.dll"
+    )
+
+    mkdir -p "$release_dir"
+
+    if command -v x86_64-w64-mingw32-objdump >/dev/null 2>&1; then
+        for exe in "$release_dir"/*.exe; do
+            [ -f "$exe" ] || continue
+            while read -r dll; do
+                for dir in "${search_dirs[@]}"; do
+                    if [ -f "$dir/$dll" ]; then
+                        cp -f "$dir/$dll" "$release_dir/"
+                        break
+                    fi
+                done
+            done < <(x86_64-w64-mingw32-objdump -p "$exe" | awk '/DLL Name:/{print $3}')
+        done
+    fi
+
+    for dll in "${fallback_dlls[@]}"; do
+        for dir in "${search_dirs[@]}"; do
+            if [ -f "$dir/$dll" ]; then
+                cp -f "$dir/$dll" "$release_dir/"
+                break
+            fi
+        done
+    done
+
+    local -a qt_platform_dirs=(
+        "$PHICOINROOT/depends/x86_64-w64-mingw32/plugins/platforms"
+        "$PHICOINROOT/depends/x86_64-w64-mingw32/lib/qt/plugins/platforms"
+        "$PHICOINROOT/depends/x86_64-w64-mingw32/qt/plugins/platforms"
+        "/usr/x86_64-w64-mingw32/lib/qt5/plugins/platforms"
+        "/usr/x86_64-w64-mingw32/lib/qt/plugins/platforms"
+    )
+    for dir in "${qt_platform_dirs[@]}"; do
+        if [ -f "$dir/qwindows.dll" ]; then
+            mkdir -p "$release_dir/platforms"
+            cp -f "$dir/qwindows.dll" "$release_dir/platforms/"
+            break
+        fi
+    done
+}
+
 # find ./src -name '*.o' -type f -delete
 # find ./src -name '*.a' -type f -delete
 # find ./src -name '*.so' -type f -delete
 # find ./src -name '*.dylib' -type f -delete
 
-# make clean
+make clean
 
 # Ensure static linking is used
 # Fully static compilation: all libraries are statically linked except system libraries libc and libm
@@ -108,9 +167,11 @@ if [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
         sed -i "s|phicoin_cli_LDFLAGS = .*|phicoin_cli_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib|g" src/Makefile
         sed -i "s|phicoin_tx_LDFLAGS = .*|phicoin_tx_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib|g" src/Makefile
         
-        # Qt executable LDFLAGS (if exists)
-        if grep -q "phicoin_qt_LDFLAGS" src/Makefile; then
-            sed -i "s|phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib|g" src/Makefile
+        # Qt executable LDFLAGS (if exists). Preserve trailing backslash.
+        if grep -q "^qt_phicoin_qt_LDFLAGS" src/Makefile; then
+            sed -i "s|^qt_phicoin_qt_LDFLAGS = .*|qt_phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib \\\\|g" src/Makefile
+        elif grep -q "^phicoin_qt_LDFLAGS" src/Makefile; then
+            sed -i "s|^phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib \\\\|g" src/Makefile
         fi
         
         # Ensure BDB library also uses static linking
@@ -134,8 +195,10 @@ if [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
         fi
         
         # Qt executable LDFLAGS - Ensure static linking of other libraries
-        if grep -q "phicoin_qt_LDFLAGS" src/Makefile; then
-            sed -i "s|phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib|g" src/Makefile
+        if grep -q "^qt_phicoin_qt_LDFLAGS" src/Makefile; then
+            sed -i "s|^qt_phicoin_qt_LDFLAGS = .*|qt_phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib \\\\|g" src/Makefile
+        elif grep -q "^phicoin_qt_LDFLAGS" src/Makefile; then
+            sed -i "s|^phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ -no-pie -Wl,--as-needed -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${PHICOINROOT}/db4/lib \\\\|g" src/Makefile
         fi
     fi
 elif [[ ${OS} == "windows" ]]; then
@@ -150,7 +213,8 @@ elif [[ ${OS} == "windows" ]]; then
         sed -i "s|phicoin_tx_LDFLAGS = .*|phicoin_tx_LDFLAGS = -static-libgcc -static-libstdc++|g" src/Makefile
         # Qt executable LDFLAGS (if exists)
         if grep -q "phicoin_qt_LDFLAGS" src/Makefile; then
-            sed -i "s|phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++|g" src/Makefile
+            # Preserve the continued lines in Makefile by keeping a trailing backslash.
+            sed -i "s|^phicoin_qt_LDFLAGS = .*|phicoin_qt_LDFLAGS = -static-libgcc -static-libstdc++ \\\\|g" src/Makefile
         fi
     fi
 fi
@@ -163,8 +227,8 @@ case "$OS" in
         mv ./src/phicoin-cli ./release/linux 2>/dev/null || true
         mv ./src/phicoind ./release/linux 2>/dev/null || true
         mv ./src/qt/phicoin-qt ./release/linux 2>/dev/null || true
-        # Statically linked executables can be safely stripped
-        strip ./release/linux/* 2>/dev/null || true
+        # NOTE: keep symbols for debugging segfaults on new systems
+        # strip ./release/linux/* 2>/dev/null || true
         # Bundle Qt5 libraries for portability
         if [ -f "${PHICOINROOT}/release/linux/phicoin-qt" ]; then
             echo ""
@@ -176,6 +240,7 @@ case "$OS" in
         mkdir -p $PHICOINROOT/release/win
         mv $PHICOINROOT/src/*.exe $PHICOINROOT/release/win
         mv $PHICOINROOT/src/qt/*.exe $PHICOINROOT/release/win
+        bundle_windows_runtime_dlls
         # strip --strip-unneeded $PHICOINROOT/release/win/*
         ;;
     "arm")
@@ -183,8 +248,8 @@ case "$OS" in
         mv ./src/phicoin-cli ./release/arm 2>/dev/null || true
         mv ./src/phicoind ./release/arm 2>/dev/null || true
         mv ./src/qt/phicoin-qt ./release/arm 2>/dev/null || true
-        # Statically linked executables can be safely stripped
-        strip ./release/arm/* 2>/dev/null || true
+        # NOTE: keep symbols for debugging segfaults on new systems
+        # strip ./release/arm/* 2>/dev/null || true
         ;;
     "osx")
         mkdir -p $PHICOINROOT/release/osx
@@ -200,4 +265,4 @@ case "$OS" in
         ;;
 esac
 
-echo "Build and strip completed for $OS"
+echo "Build completed for $OS"

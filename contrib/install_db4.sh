@@ -54,18 +54,29 @@ http_get() {
   if [ -f "${2}" ]; then
     echo "File ${2} already exists; not downloading again"
   elif check_exists curl; then
-    curl --insecure --retry 5 "${1}" -o "${2}"
+    curl --insecure --retry 5 -L --max-time 30 "${1}" -o "${2}"
   else
     wget --no-check-certificate "${1}" -O "${2}"
   fi
 
-  sha256_check "${3}" "${2}" || true
+  if ! sha256_check "${3}" "${2}"; then
+    echo "SHA256 mismatch for ${2}" >&2
+    return 1
+  fi
 }
 
 mkdir -p "${BDB_PREFIX}"
 http_get "${BDB_URL}" "${BDB_VERSION}.tar.gz" "${BDB_HASH}"
 tar -xzvf ${BDB_VERSION}.tar.gz -C "$BDB_PREFIX"
 cd "${BDB_PREFIX}/${BDB_VERSION}/"
+
+# Ensure config.guess/config.sub are valid for this system.
+# Some environments may have stale or corrupted copies in the tarball.
+if [ -f /usr/share/misc/config.guess ] && [ -f /usr/share/misc/config.sub ]; then
+  cp /usr/share/misc/config.guess dist/config.guess
+  cp /usr/share/misc/config.sub dist/config.sub
+  chmod +x dist/config.guess dist/config.sub
+fi
 
 # Apply a patch necessary when building with clang and c++11 (see https://community.oracle.com/thread/3952592)
 patch --ignore-whitespace -p1 << 'EOF'
@@ -229,26 +240,32 @@ CONFIG_SUB_HASH='3a4befde9bcdf0fdb2763fc1bfa74e8696df94e1ad7aac8042d133c8ff1d2e3
 rm -f "dist/config.guess"
 rm -f "dist/config.sub"
 
-# Try to download, if hash verification fails then use the version from the depends system
-if ! http_get "${CONFIG_GUESS_URL}" dist/config.guess "${CONFIG_GUESS_HASH}" 2>/dev/null; then
+# Prefer system copies to avoid network issues, otherwise download.
+if [ -f "/usr/share/misc/config.guess" ]; then
+    cp -f /usr/share/misc/config.guess dist/config.guess
+elif ! http_get "${CONFIG_GUESS_URL}" dist/config.guess "${CONFIG_GUESS_HASH}" 2>/dev/null; then
     if [ -f "$(dirname ${BDB_PREFIX})/../build-aux/config.guess" ]; then
         cp -f "$(dirname ${BDB_PREFIX})/../build-aux/config.guess" dist/config.guess
     elif [ -f "/root/project/git/PhicoinProject/build-aux/config.guess" ]; then
         cp -f /root/project/git/PhicoinProject/build-aux/config.guess dist/config.guess
     fi
 fi
-if ! http_get "${CONFIG_SUB_URL}" dist/config.sub "${CONFIG_SUB_HASH}" 2>/dev/null; then
+if [ -f "/usr/share/misc/config.sub" ]; then
+    cp -f /usr/share/misc/config.sub dist/config.sub
+elif ! http_get "${CONFIG_SUB_URL}" dist/config.sub "${CONFIG_SUB_HASH}" 2>/dev/null; then
     if [ -f "$(dirname ${BDB_PREFIX})/../build-aux/config.sub" ]; then
         cp -f "$(dirname ${BDB_PREFIX})/../build-aux/config.sub" dist/config.sub
     elif [ -f "/root/project/git/PhicoinProject/build-aux/config.sub" ]; then
         cp -f /root/project/git/PhicoinProject/build-aux/config.sub dist/config.sub
     fi
 fi
+chmod +x dist/config.guess dist/config.sub
 
 cd build_unix/
 
 "${BDB_PREFIX}/${BDB_VERSION}/dist/configure" \
-  --enable-cxx --disable-shared --disable-replication --with-pic --enable-mutexsupport --prefix="${BDB_PREFIX}" \
+  --enable-cxx --disable-shared --disable-replication --with-pic --enable-mutexsupport --enable-posixmutexes --prefix="${BDB_PREFIX}" \
+  CFLAGS="-pthread -Wno-error=implicit-int -Wno-error=implicit-function-declaration" LDFLAGS="-pthread" \
   "${@}"
 
 make install

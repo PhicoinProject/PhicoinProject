@@ -74,8 +74,11 @@ Section -Main SEC0000
     SetOutPath $INSTDIR
     SetOverwrite on
     File @abs_top_srcdir@/release/@PHICOIN_GUI_NAME@@EXEEXT@
+    File /nonfatal @abs_top_srcdir@/release/win/*.dll
     File /oname=COPYING.txt @abs_top_srcdir@/COPYING
     File /oname=readme.txt @abs_top_srcdir@/doc/README_windows.txt
+    SetOutPath $INSTDIR\platforms
+    File /nonfatal @abs_top_srcdir@/release/win/platforms/*.dll
     SetOutPath $INSTDIR\daemon
     File @abs_top_srcdir@/release/@PHICOIN_DAEMON_NAME@@EXEEXT@
     File @abs_top_srcdir@/release/@PHICOIN_CLI_NAME@@EXEEXT@

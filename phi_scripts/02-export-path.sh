@@ -114,8 +114,9 @@ elif [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
     export PKG_CONFIG_PATH=${PHICOINROOT}/depends/x86_64-linux-gnu/lib/pkgconfig:${PKG_CONFIG_PATH}
     export LD_LIBRARY_PATH=${PHICOINROOT}/depends/x86_64-linux-gnu/lib:${BDB_PREFIX}/lib
     export CPPFLAGS="-I/usr/include -I${PHICOINROOT}/depends/x86_64-linux-gnu/include"
-    export CXXFLAGS="-O2 -fno-pie"
-    export CFLAGS="-O2 -fno-pie"
+    # Debug-friendly flags for dev builds (keep frame pointers + symbols)
+    export CXXFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie"
+    export CFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie"
     # Fully static compilation flags
     # -static-libgcc: Statically link GCC runtime
     # -static-libstdc++: Statically link C++ standard library
@@ -127,7 +128,7 @@ elif [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
     # Use system boost, but force static linking
     # Note: Fully static compilation means all libraries are statically linked except system libraries libc and libm
     # libc and libm remain dynamically linked to ensure compatibility with different Linux distributions
-    cd ${PHICOINROOT} && CONFIG_SITE=${PHICOINROOT}/depends/x86_64-linux-gnu/share/config.site ./configure --prefix=/ --disable-ccache --disable-maintainer-mode --disable-dependency-tracking --enable-glibc-back-compat --enable-reduce-exports --disable-tests --with-qtdbus=no --disable-bench --with-qtdbus=no --disable-gui-tests --with-incompatible-bdb BOOST_LDFLAGS="-L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -Wl,-Bstatic" BOOST_CPPFLAGS="-I/usr/include" BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include" CFLAGS="-O2 -fno-pie" CXXFLAGS="-O2 -fno-pie" LDFLAGS="-static-libgcc -static-libstdc++ -no-pie -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${BDB_PREFIX}/lib" ${EXTRA_OPTS}
+    cd ${PHICOINROOT} && CONFIG_SITE=${PHICOINROOT}/depends/x86_64-linux-gnu/share/config.site ./configure --prefix=/ --disable-ccache --disable-maintainer-mode --disable-dependency-tracking --enable-glibc-back-compat --enable-reduce-exports --disable-tests --with-qtdbus=no --disable-bench --with-qtdbus=no --disable-gui-tests --with-incompatible-bdb BOOST_LDFLAGS="-L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -Wl,-Bstatic" BOOST_CPPFLAGS="-I/usr/include" BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include" CFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie" CXXFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie" LDFLAGS="-static-libgcc -static-libstdc++ -no-pie -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${BDB_PREFIX}/lib" ${EXTRA_OPTS}
 elif [[ ${OS} == "arm32v7" || ${OS} == "arm32v7-disable-wallet" ]]; then
     if [[ ${OS} == "arm32v7-disable-wallet" ]]; then
         EXTRA_OPTS="--disable-wallet"

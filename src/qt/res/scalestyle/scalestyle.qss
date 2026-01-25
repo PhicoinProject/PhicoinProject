@@ -143,10 +143,10 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     background: #F8FAFC;
     border: 2px solid #E5E7EB;
     border-radius: 12px;
-    padding: 16px 20px;
+    padding: 10px 14px;
     color: #111827;
     font-size: 15px;
-    line-height: 1.5;
+    min-height: 24px;
 }
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {

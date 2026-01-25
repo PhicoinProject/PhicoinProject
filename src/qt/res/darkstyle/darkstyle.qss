@@ -293,17 +293,17 @@ QLineEdit, QTextEdit, QPlainTextEdit {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
     border: 1px solid #475569;
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: #FFFFFF;
     font-size: 13px;
     font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
-    min-height: 16px;
+    min-height: 20px;
 }
 
 QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
-    border: 2px solid #60A5FA !important;
+    border: 1px solid #60A5FA !important;
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
-    padding: 8px 12px !important;
+    padding: 6px 10px !important;
 }
 
 QLineEdit:disabled, QTextEdit:disabled, QPlainTextEdit:disabled {
@@ -317,17 +317,17 @@ QValidatedLineEdit {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
     border: 1px solid #475569;
     border-radius: 8px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: #FFFFFF;
     font-size: 13px;
     font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
-    min-height: 16px;
+    min-height: 20px;
 }
 
 QValidatedLineEdit:focus {
-    border: 2px solid #60A5FA !important;
+    border: 1px solid #60A5FA !important;
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
-    padding: 8px 12px !important;
+    padding: 6px 10px !important;
 }
 
 /* Specific styling for Restricted Assets Dialog inputs */
@@ -340,11 +340,11 @@ FreezeAddress QValidatedLineEdit {
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1E293B, stop:1 #334155);
     border: 1px solid #475569;
     border-radius: 8px;
-    padding: 10px 14px;
+    padding: 6px 10px;
     color: #FFFFFF;
     font-size: 13px;
     font-family: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
-    min-height: 18px;
+    min-height: 20px;
 }
 
 RestrictedAssetsDialog QLineEdit:focus, 
@@ -353,9 +353,9 @@ AssignQualifier QLineEdit:focus,
 AssignQualifier QValidatedLineEdit:focus,
 FreezeAddress QLineEdit:focus,
 FreezeAddress QValidatedLineEdit:focus {
-    border: 2px solid #60A5FA !important;
+    border: 1px solid #60A5FA !important;
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0F172A, stop:1 #1E293B) !important;
-    padding: 10px 14px !important;
+    padding: 6px 10px !important;
 }
 
 /* Modern Checkboxes and Radio Buttons */
@@ -854,10 +854,11 @@ RPCConsole QLineEdit {
                 stop:1 rgba(30, 41, 59, 0.8));
     border: 1px solid #475569;
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 5px 8px;
     color: #FFFFFF;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12px;
+    min-height: 20px;
 }
 
 RPCConsole QLineEdit:focus {
