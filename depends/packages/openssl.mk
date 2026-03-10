@@ -1,8 +1,8 @@
 package=openssl
-$(package)_version=1.1.1k
+$(package)_version=3.5.5
 $(package)_download_path=https://www.openssl.org/source
 $(package)_file_name=$(package)-$($(package)_version).tar.gz
-$(package)_sha256_hash=892a0875b9872acd04a9fde79b1f943075d5ea162415de3047c327df33fbaee5
+$(package)_sha256_hash=b28c91532a8b65a1f983b4c28b7488174e4a01008e29ce8e69bd789f28bc2a89
 
 define $(package)_set_vars
 $(package)_config_opts=--prefix=$(host_prefix) --openssldir=$(host_prefix)/etc/openssl
@@ -10,11 +10,8 @@ $(package)_config_opts+=no-camellia
 $(package)_config_opts+=no-capieng
 $(package)_config_opts+=no-cast
 $(package)_config_opts+=no-comp
-$(package)_config_opts+=no-dso
-$(package)_config_opts+=no-dtls1
 $(package)_config_opts+=no-ec_nistp_64_gcc_128
 $(package)_config_opts+=no-gost
-$(package)_config_opts+=no-heartbeats
 $(package)_config_opts+=no-idea
 $(package)_config_opts+=no-md2
 $(package)_config_opts+=no-mdc2
@@ -34,6 +31,7 @@ $(package)_config_opts+=no-weak-ssl-ciphers
 $(package)_config_opts+=no-whirlpool
 $(package)_config_opts+=no-zlib
 $(package)_config_opts+=no-zlib-dynamic
+$(package)_config_opts+=enable-legacy
 $(package)_config_opts+=$($(package)_cflags) $($(package)_cppflags)
 $(package)_config_opts_linux=-fPIC -Wa,--noexecstack
 $(package)_config_opts_x86_64_linux=linux-x86_64
@@ -68,11 +66,11 @@ endef
 
 define $(package)_build_cmds
   sed -i.old 's/INSTALL_PROGRAMS=apps\/openssl/INSTALL_PROGRAMS=/g' Makefile && \
-  $(MAKE) -j1 build_libs
+  $(MAKE) -j16 build_libs
 endef
 
 define $(package)_stage_cmds
-  $(MAKE) DESTDIR=$($(package)_staging_dir) -j1 install_dev
+  $(MAKE) DESTDIR=$($(package)_staging_dir) -j16 install_dev
 endef
 
 define $(package)_postprocess_cmds

@@ -47,7 +47,7 @@ LT_LANG([C++])
 
 case $host in
   *mingw*)
-    LIBTOOL_APP_LDFLAGS="$LIBTOOL_APP_LDFLAGS -all-static"
+    # LIBTOOL_APP_LDFLAGS="$LIBTOOL_APP_LDFLAGS -all-static"
   ;;
 esac
 

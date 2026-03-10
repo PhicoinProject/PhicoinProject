@@ -1,11 +1,12 @@
 package=native_protobuf
-$(package)_version=2.6.1
-$(package)_download_path=https://github.com/google/protobuf/releases/download/v$($(package)_version)
-$(package)_file_name=protobuf-$($(package)_version).tar.bz2
-$(package)_sha256_hash=ee445612d544d885ae240ffbcbf9267faa9f593b7b101f21d58beceb92661910
+$(package)_version=21.12
+$(package)_download_path=https://github.com/protocolbuffers/protobuf/releases/download/v$($(package)_version)
+$(package)_file_name=protobuf-all-$($(package)_version).tar.gz
+$(package)_sha256_hash=2c6a36c7b5a55accae063667ef3c55f2642e67476d96d355ff0acb13dbb47f09
 
 define $(package)_set_vars
 $(package)_config_opts=--disable-shared
+$(package)_config_opts+=--enable-static
 endef
 
 define $(package)_config_cmds

@@ -1,10 +1,9 @@
 PACKAGE=qt
-$(package)_version=5.12.11
-#$(package)_download_path=https://download.qt.io/official_releases/qt/5.12/$($(package)_version)/submodules
-$(package)_download_path=https://download.qt.io/archive/qt/5.12/$($(package)_version)/submodules
+$(package)_version=5.15.15
+$(package)_download_path=https://download.qt.io/archive/qt/5.15/$($(package)_version)/submodules
 $(package)_suffix=everywhere-src-$($(package)_version).tar.xz
 $(package)_file_name=qtbase-$($(package)_suffix)
-$(package)_sha256_hash=1c1b4e33137ca77881074c140d54c3c9747e845a31338cfe8680f171f0bc3a39
+$(package)_sha256_hash=e5f941fecf694ecba97c550b45b0634e552166cc6c815bcfdc481edd62796ba1
 $(package)_dependencies=openssl
 $(package)_linux_dependencies=freetype fontconfig libxcb libxkbcommon
 $(package)_qt_libs=corelib network widgets gui plugins testlib
@@ -15,10 +14,10 @@ $(package)_patches+= fix_lib_paths.patch fix_android_pch.patch
 $(package)_patches+= qtbase-moc-ignore-gcc-macro.patch fix_qendian_limits.patch
 
 $(package)_qttranslations_file_name=qttranslations-$($(package)_suffix)
-$(package)_qttranslations_sha256_hash=577b0668a777eb2b451c61e8d026d79285371597ce9df06b6dee6c814164b7c3
+$(package)_qttranslations_sha256_hash=33e077ea098c86ad5616e5ae11458484ba846db8e2f4524c0a4185c84ed6a806
 
 $(package)_qttools_file_name=qttools-$($(package)_suffix)
-$(package)_qttools_sha256_hash=98b2aaca230458f65996f3534fd471d2ffd038dd58ac997c0589c06dc2385b4f
+$(package)_qttools_sha256_hash=71946704c6bd6c925910288b97dfcc2e357d4a28e22c8651a5813aae4f238028
 
 $(package)_extra_sources  = $($(package)_qttranslations_file_name)
 $(package)_extra_sources += $($(package)_qttools_file_name)
@@ -272,17 +271,17 @@ define $(package)_config_cmds
 endef
 
 define $(package)_build_cmds
-  $(MAKE) -C qtbase/src $(addprefix sub-,$($(package)_qt_libs)) && \
-  $(MAKE) -C qttools/src/linguist/lrelease && \
-  $(MAKE) -C qttools/src/linguist/lupdate && \
-  $(MAKE) -C qttranslations
+  $(MAKE) -C qtbase/src -j16 $(addprefix sub-,$($(package)_qt_libs)) && \
+  $(MAKE) -C qttools/src/linguist/lrelease -j16 && \
+  $(MAKE) -C qttools/src/linguist/lupdate -j16 && \
+  $(MAKE) -C qttranslations -j16
 endef
 
 define $(package)_stage_cmds
-  $(MAKE) -C qtbase/src INSTALL_ROOT=$($(package)_staging_dir) $(addsuffix -install_subtargets,$(addprefix sub-,$($(package)_qt_libs))) && \
-  $(MAKE) -C qttools/src/linguist/lrelease INSTALL_ROOT=$($(package)_staging_dir) install_target && \
-  $(MAKE) -C qttools/src/linguist/lupdate INSTALL_ROOT=$($(package)_staging_dir) install_target && \
-  $(MAKE) -C qttranslations INSTALL_ROOT=$($(package)_staging_dir) install_subtargets
+  $(MAKE) -C qtbase/src INSTALL_ROOT=$($(package)_staging_dir) -j16 $(addsuffix -install_subtargets,$(addprefix sub-,$($(package)_qt_libs))) && \
+  $(MAKE) -C qttools/src/linguist/lrelease INSTALL_ROOT=$($(package)_staging_dir) -j16 install_target && \
+  $(MAKE) -C qttools/src/linguist/lupdate INSTALL_ROOT=$($(package)_staging_dir) -j16 install_target && \
+  $(MAKE) -C qttranslations INSTALL_ROOT=$($(package)_staging_dir) -j16 install_subtargets
 endef
 
 define $(package)_postprocess_cmds

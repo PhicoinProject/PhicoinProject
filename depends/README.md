@@ -10,7 +10,7 @@ To build for another arch/OS:
 
 For example:
 
-    make HOST=x86_64-w64-mingw32 -j4
+    make HOST=x86_64-w64-mingw32 -j16
 
 **Ravencoin's configure script by default will ignore the depends output.** In
 order for it to pick up libraries, tools, and settings from the depends build,

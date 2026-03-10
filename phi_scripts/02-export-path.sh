@@ -31,6 +31,10 @@ elif [[ ${OS} == "osx" ]]; then
     export PATH=${PHICOINROOT}/depends/x86_64-apple-darwin14/native/bin:${PATH}
 elif [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
     export PATH=${PHICOINROOT}/depends/x86_64-linux-gnu/native/bin:${PATH}
+    # Static build flags for Linux
+    export CFLAGS="-O2 -fno-pie"
+    export CXXFLAGS="-O2 -fno-pie"
+    export LDFLAGS="-static-libgcc -static-libstdc++ -static -no-pie"
 elif [[ ${OS} == "arm32v7" || ${OS} == "arm32v7-disable-wallet" ]]; then
     export PATH=${PHICOINROOT}/depends/arm-linux-gnueabihf/native/bin:${PATH}
 elif [[ ${OS} == "aarch64" || ${OS} == "aarch64-disable-wallet" ]]; then
@@ -128,7 +132,28 @@ elif [[ ${OS} == "linux" || ${OS} == "linux-disable-wallet" ]]; then
     # Use system boost, but force static linking
     # Note: Fully static compilation means all libraries are statically linked except system libraries libc and libm
     # libc and libm remain dynamically linked to ensure compatibility with different Linux distributions
-    cd ${PHICOINROOT} && CONFIG_SITE=${PHICOINROOT}/depends/x86_64-linux-gnu/share/config.site ./configure --prefix=/ --disable-ccache --disable-maintainer-mode --disable-dependency-tracking --enable-glibc-back-compat --enable-reduce-exports --disable-tests --with-qtdbus=no --disable-bench --with-qtdbus=no --disable-gui-tests --with-incompatible-bdb BOOST_LDFLAGS="-L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -Wl,-Bstatic" BOOST_CPPFLAGS="-I/usr/include" BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include" CFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie" CXXFLAGS="-O0 -g -fno-omit-frame-pointer -fno-pie" LDFLAGS="-static-libgcc -static-libstdc++ -no-pie -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${BDB_PREFIX}/lib" ${EXTRA_OPTS}
+    # Static build configuration for Linux
+    cd ${PHICOINROOT} && CONFIG_SITE=${PHICOINROOT}/depends/x86_64-linux-gnu/share/config.site ./configure \
+        --prefix=/ \
+        --disable-ccache \
+        --disable-maintainer-mode \
+        --disable-dependency-tracking \
+        --enable-glibc-back-compat \
+        --enable-reduce-exports \
+        --disable-tests \
+        --with-qtdbus=no \
+        --disable-bench \
+        --with-incompatible-bdb \
+        --enable-static \
+        --disable-shared \
+        BOOST_LDFLAGS="-Wl,-Bstatic -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -Wl,-Bdynamic" \
+        BOOST_CPPFLAGS="-I/usr/include" \
+        BDB_LIBS="-Wl,-Bstatic -L${BDB_PREFIX}/lib -ldb_cxx-4.8 -Wl,-Bdynamic" \
+        BDB_CFLAGS="-I${BDB_PREFIX}/include" \
+        CFLAGS="-O2 -fno-pie" \
+        CXXFLAGS="-O2 -fno-pie" \
+        LDFLAGS="-static-libgcc -static-libstdc++ -static -no-pie -L/usr/lib/x86_64-linux-gnu -L${PHICOINROOT}/depends/x86_64-linux-gnu/lib -L${BDB_PREFIX}/lib" \
+        ${EXTRA_OPTS}
 elif [[ ${OS} == "arm32v7" || ${OS} == "arm32v7-disable-wallet" ]]; then
     if [[ ${OS} == "arm32v7-disable-wallet" ]]; then
         EXTRA_OPTS="--disable-wallet"

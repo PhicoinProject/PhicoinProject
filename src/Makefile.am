@@ -479,7 +479,7 @@ nodist_libphicoin_util_a_SOURCES = $(srcdir)/obj/build.h
 phicoind_SOURCES = phicoind.cpp
 phicoind_CPPFLAGS = $(AM_CPPFLAGS) $(PHICOIN_INCLUDES)
 phicoind_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-phicoind_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+phicoind_LDFLAGS = -static $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
 if TARGET_WINDOWS
 phicoind_SOURCES += phicoind-res.rc
@@ -505,7 +505,7 @@ phicoind_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPN
 phicoin_cli_SOURCES = phicoin-cli.cpp
 phicoin_cli_CPPFLAGS = $(AM_CPPFLAGS) $(PHICOIN_INCLUDES) $(EVENT_CFLAGS)
 phicoin_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
-phicoin_cli_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
+phicoin_cli_LDFLAGS = -static $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS)
 
 if TARGET_WINDOWS
 phicoin_cli_SOURCES += phicoin-cli-res.rc

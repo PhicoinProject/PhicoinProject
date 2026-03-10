@@ -23,7 +23,7 @@ define $(package)_config_cmds
 endef
 
 define $(package)_build_cmds
-  $(MAKE) libdb_cxx-4.8.a libdb-4.8.a
+  $(MAKE) -j16 libdb_cxx-4.8.a libdb-4.8.a
 endef
 
 define $(package)_stage_cmds

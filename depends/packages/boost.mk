@@ -1,8 +1,8 @@
 package=boost
-$(package)_version=1_71_0
-$(package)_download_path=https://boostorg.jfrog.io/artifactory/main/release/$(subst _,.,$($(package)_version))/source/
-$(package)_file_name=boost_$($(package)_version).tar.bz2
-$(package)_sha256_hash=d73a8da01e8bf8c7eda40b4c84915071a8c8a0df4a6734537ddde4a8580524ee
+$(package)_version=1.87.0
+$(package)_download_path=https://archives.boost.io/release/$($(package)_version)/source/
+$(package)_file_name=boost_$($(package)_version).tar.gz
+$(package)_sha256_hash=d6c69e4459eb5d6ec208250291221e7ff4a2affde9af6e49c9303b89c687461f
 $(package)_dependencies=native_b2
 
 define $(package)_set_vars
@@ -37,11 +37,11 @@ define $(package)_config_cmds
 endef
 
 define $(package)_build_cmds
-  b2 -d2 -j2 -d1 --prefix=$($(package)_staging_prefix_dir) $($(package)_config_opts) toolset=$($(package)_toolset_$(host_os)) stage
+  b2 -d2 -j16 -d1 --prefix=$($(package)_staging_prefix_dir) $($(package)_config_opts) toolset=$($(package)_toolset_$(host_os)) stage
 endef
 
 define $(package)_stage_cmds
-  b2 -d0 -j4 --prefix=$($(package)_staging_prefix_dir) $($(package)_config_opts) toolset=$($(package)_toolset_$(host_os)) install
+  b2 -d0 -j16 --prefix=$($(package)_staging_prefix_dir) $($(package)_config_opts) toolset=$($(package)_toolset_$(host_os)) install
 endef
 
 define $(package)_postprocess_cmds
