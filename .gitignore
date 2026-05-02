@@ -136,3 +136,7 @@ dev_tools/
 logs.01
 bug_fixes/
 .claude/
+CLAUDE.md
+release/
+release_test/
+.cache/

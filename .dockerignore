@@ -1,0 +1,11 @@
+.git/
+release/
+logs.*
+*.pdf
+*.mp4
+*.tiff
+db4/
+autom4te.cache/
+configure
+config.log
+config.status

@@ -1,0 +1,15 @@
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    autoconf automake autotools-dev binutils bsdmainutils build-essential \
+    ca-certificates curl git gnupg gdb strace zip p7zip-full \
+    libboost-all-dev libdb-dev libevent-dev libminiupnpc-dev \
+    libprotobuf-dev libssl-dev libtool libqrencode-dev \
+    pkg-config protobuf-compiler python3 qttools5-dev qttools5-dev-tools \
+    libczmq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /phicoin
+CMD ["bash"]

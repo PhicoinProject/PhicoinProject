@@ -1,0 +1,38 @@
+services:
+  # Dev environment - mount source for interactive development
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/phicoin
+      - .cache:/cache
+    environment:
+      - DEBIAN_FRONTEND=noninteractive
+    stdin_open: true
+    tty: true
+
+  # Runtime daemon - runs phicoind
+  daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "28964:28964"
+      - "28966:28966"
+    volumes:
+      - phicoin-data:/var/lib/phicoin
+    command: ["phicoind", "-printtoconsole", "-daemon=0", "-datadir=/var/lib/phicoin"]
+
+  # Test service - uses downloaded blockchain data from release_test/
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./release_test/phicoin-data:/data:ro
+      - .cache/test-data:/tmp/test-data
+    command: ["phicoind", "-printtoconsole", "-daemon=0", "-datadir=/tmp/test-data"]
+
+volumes:
+  phicoin-data:
