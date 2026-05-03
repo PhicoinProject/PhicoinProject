@@ -140,3 +140,12 @@ CLAUDE.md
 release/
 release_test/
 .cache/
+newUI/design/
+.playwright-mcp/
+newUI/goals
+
+# Agent work artifacts - DO NOT commit to public repo
+newUI/**/.bugs-report.md
+newUI/**/DESIGN.md
+newUI/**/*-report.md
+newUI/**/progress.md

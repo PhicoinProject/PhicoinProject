@@ -1,0 +1,54 @@
+services:
+  phicoin-wallet:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../src:/app/src
+      - ../public:/app/public
+      - ../vite.config.ts:/app/vite.config.ts
+      - ../tsconfig.json:/app/tsconfig.json
+      - ../index.html:/app/index.html
+      - ../package.json:/app/package.json
+      - ../postcss.config.js:/app/postcss.config.js
+      - ../tailwind.config.js:/app/tailwind.config.js
+      - /app/node_modules
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_RPC_HOST=phicoin-daemon
+      - VITE_RPC_PORT=28966
+      - VITE_RPC_USER=phicoin
+      - VITE_RPC_PASSWORD=phicoinpass
+    command: npm run dev -- --host
+    depends_on:
+      - phicoin-daemon
+    networks:
+      - phicoin-net
+
+  phicoin-daemon:
+    image: phicoin:latest
+    ports:
+      - "28964:28964"
+      - "28966:28966"
+    volumes:
+      - phicoin-data:/var/lib/phicoin
+      - ../../../release_test/phicoin-data:/prebuilt:ro
+    user: "1000:1000"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        if [ ! -d /var/lib/phicoin/blocks ]; then
+          cp -r /prebuilt/* /var/lib/phicoin/ 2>/dev/null || true
+        fi
+        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -server=1 -rpcuser=phicoin -rpcpassword=phicoinpass -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -rpcport=28966
+    networks:
+      - phicoin-net
+
+volumes:
+  phicoin-data:
+
+networks:
+  phicoin-net:
+    driver: bridge

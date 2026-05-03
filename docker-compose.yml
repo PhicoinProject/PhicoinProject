@@ -13,26 +13,57 @@ services:
     tty: true
 
   # Runtime daemon - runs phicoind
+  # NOTE: RPC port inside container is 16611 (default from chainparamsbase.cpp),
+  # mapped to 28966 on the host for the expected RPC endpoint.
   daemon:
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "28964:28964"
-      - "28966:28966"
+      - "28966:16611"
     volumes:
       - phicoin-data:/var/lib/phicoin
-    command: ["phicoind", "-printtoconsole", "-daemon=0", "-datadir=/var/lib/phicoin"]
+    command: >
+      /bin/sh -c "
+        if [ ! -d /var/lib/phicoin/blocks ]; then
+          cp -r /prebuilt/* /var/lib/phicoin/ 2>/dev/null || true;
+        fi;
+        if [ ! -f /var/lib/phicoin/phicoin.conf ]; then
+          printf 'rpcuser=phicoin\nrpcpassword=phicoinpass\nrpcallowip=0.0.0.0/0\nrpcbind=0.0.0.0\nserver=1\n' > /var/lib/phicoin/phicoin.conf;
+        fi;
+        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin
+      "
+    networks:
+      phicoin-net:
+        aliases:
+          - phicoin-daemon
 
   # Test service - uses downloaded blockchain data from release_test/
   test:
     build:
       context: .
       dockerfile: Dockerfile
+    ports:
+      - "28964:28964"
+      - "28966:16611"
     volumes:
-      - ./release_test/phicoin-data:/data:ro
-      - .cache/test-data:/tmp/test-data
-    command: ["phicoind", "-printtoconsole", "-daemon=0", "-datadir=/tmp/test-data"]
+      - phicoin-test-data:/data
+    command: >
+      /bin/sh -c "
+        if [ ! -d /data/blocks ]; then
+          cp -r /prebuilt/* /data/ 2>/dev/null || true;
+        fi;
+        if [ ! -f /data/phicoin.conf ]; then
+          printf 'rpcuser=phicoin\nrpcpassword=phicoinpass\nrpcallowip=0.0.0.0/0\nrpcbind=0.0.0.0\nserver=1\n' > /data/phicoin.conf;
+        fi;
+        exec phicoind -printtoconsole -daemon=0 -datadir=/data
+      "
 
 volumes:
   phicoin-data:
+  phicoin-test-data:
+
+networks:
+  phicoin-net:
+    driver: bridge
