@@ -143,7 +143,7 @@ export class RpcClient {
   // ---- Transactions ----
 
   async sendToAddress(destination: string, amount: number, comment?: string): Promise<string> {
-    return this.raw<string>('sendtoaddress', [destination, amount, comment || '', '', false, 6]);
+    return this.raw<string>('sendtoaddress', [destination, amount, comment || '', '', false]);
   }
 
   async getTransaction(txid: string): Promise<unknown> {
