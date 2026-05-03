@@ -1,7 +1,12 @@
 import { rpc } from './rpc';
-import type { Address, WalletState } from '@/types';
+import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import { deriveReceiveAddress, deriveAddressPool, isValidPHICoinAddress } from './addressDerivation';
+import type { Address, WalletState, DerivedAddress } from '@/types';
 
-/** High-level wallet service wrapping RPC calls with business logic */
+// Number of addresses to pre-generate for the pool
+const ADDRESS_POOL_SIZE = 10;
+
+/** High-level wallet service wrapping RPC calls with local HD derivation */
 export class WalletService {
   /** Get total wallet balance */
   async getBalance(): Promise<number> {
@@ -13,12 +18,37 @@ export class WalletService {
     return rpc.getWalletInfo();
   }
 
-  /** Generate a new receiving address */
-  async createAddress(label = ''): Promise<string> {
+  /**
+   * Generate a new receiving address from the in-memory HDKey.
+   * Falls back to RPC if HDKey is not available (v1 wallet).
+   */
+  async createAddress(label?: string): Promise<string> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (hdKey) {
+      // Find next unused address from local derivation
+      const network = (this.getLastNetwork() as 'mainnet' | 'testnet') ?? 'mainnet';
+      const usedCount = this.getUsedAddressCount();
+      const addr = deriveReceiveAddress(hdKey, network, usedCount);
+      return addr.address;
+    }
+    // Fallback to RPC (v1 wallet or no HDKey)
     return rpc.getNewAddress(label || undefined);
   }
 
-  /** Get list of addresses with balances */
+  /**
+   * Get derived address pool from HDKey.
+   * Returns pre-generated addresses for scanning.
+   */
+  getDerivedAddressPool(): DerivedAddress[] {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return [];
+
+    const network = (this.getLastNetwork() as 'mainnet' | 'testnet') ?? 'mainnet';
+    const usedCount = this.getUsedAddressCount();
+    return deriveAddressPool(hdKey, network, usedCount, ADDRESS_POOL_SIZE);
+  }
+
+  /** Get list of addresses with balances (RPC-based) */
   async getAddresses(): Promise<Address[]> {
     const data = await rpc.listAddresses();
     const results = data as Record<string, unknown>[];
@@ -58,6 +88,11 @@ export class WalletService {
     return rpc.listUnspent(minConf);
   }
 
+  /** Verify if an address is a valid PHICOIN address */
+  isValidAddress(address: string): boolean {
+    return isValidPHICoinAddress(address);
+  }
+
   /** Build wallet state snapshot */
   async getWalletState(): Promise<WalletState> {
     const [balance, walletInfo, blockCount] = await Promise.all([
@@ -88,6 +123,16 @@ export class WalletService {
       lastBlockHeight: blockCount,
       error: null,
     };
+  }
+
+  private getLastNetwork(): string {
+    // Placeholder: derive from wallet info or stored state
+    return 'mainnet';
+  }
+
+  private getUsedAddressCount(): number {
+    // Placeholder: track used addresses count from transaction history
+    return 0;
   }
 }
 

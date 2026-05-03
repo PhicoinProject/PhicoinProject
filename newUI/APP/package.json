@@ -18,6 +18,10 @@
     "format:check": "prettier --check src/"
   },
   "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/secp256k1": "^1.7.2",
+    "@scure/bip32": "^2.2.0",
+    "@scure/bip39": "^2.2.0",
     "@tanstack/react-query": "^5.62.0",
     "@tanstack/react-table": "^8.20.6",
     "axios": "^1.7.9",
@@ -31,6 +35,8 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-env": "^7.29.3",
     "@playwright/test": "^1.50.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",

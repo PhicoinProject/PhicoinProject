@@ -198,3 +198,13 @@ export interface RecentTransaction extends Transaction {
   displayAmount: string;
   formattedDate: string;
 }
+
+/** A locally derived HD wallet address */
+export interface DerivedAddress {
+  address: string;
+  path: string;
+  index: number;
+  isChange: boolean;
+  network: number;
+  label: string;
+}

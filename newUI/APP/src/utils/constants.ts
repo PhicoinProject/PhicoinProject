@@ -34,6 +34,13 @@ export const ASSET_STATUS_REVOKED = 'REVOKED';
 // Key derivation (matching Bitcoin Core scrypt parameters)
 export const SCRYPT_PARAMS = { n: 16384, r: 8, p: 1 };
 
+// V2 wallet encryption
+export const WALLET_KDF_ITERATIONS = 1_000_000;
+
+// HD wallet coin types (from chainparams.cpp)
+export const MAINNET_COIN_TYPE = 0;
+export const TESTNET_COIN_TYPE = 1;
+
 // Query defaults
 export const DEFAULT_PAGE_SIZE = 10;
 export const TRANSACTION_LOAD_MORE = 50;

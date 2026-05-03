@@ -107,7 +107,9 @@ export const Transactions: React.FC = () => {
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 002-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
               />
             </svg>
-            <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">No transactions found</p>
+            <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
+              No transactions found
+            </p>
             <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
               {search || filter !== 'all'
                 ? 'Try adjusting your search or filters'
@@ -138,20 +140,20 @@ export const Transactions: React.FC = () => {
                         key={String(tx.txid ?? i)}
                         className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated hover:bg-blue-50 dark:hover:bg-blue-900/20'}`}
                       >
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
                           <a
                             href={`transactions/${tx.txid}`}
                             className="font-mono text-xs text-phi-primary hover:underline"
                             onClick={(e) => e.preventDefault()}
                           >
-                            {String(tx.txid ?? '').slice(0, 20)}...
+                            {String(tx.txid ?? '').slice(0, 12)}...{String(tx.txid ?? '').slice(-8)}
                           </a>
                         </td>
                         <td className="px-4 py-3 text-gray-600 dark:text-dark-mutedText">
                           {formatDate(Number(tx.blocktime ?? tx.date ?? tx.time ?? 0))}
                         </td>
                         <td
-                          className={`px-4 py-3 font-semibold ${amount >= 0 ? 'text-green-600' : 'text-red-600'}`}
+                          className={`px-4 py-3 font-semibold ${amount >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
                         >
                           {amount >= 0 ? '+' : ''}
                           {amount.toFixed(8)} PHI
@@ -161,12 +163,14 @@ export const Transactions: React.FC = () => {
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
                           <span className="rounded-full bg-gray-100 dark:bg-dark-elevated px-2 py-0.5 text-xs font-medium text-gray-700 dark:text-dark-secondary">
                             {category}
                           </span>
                         </td>
-                        <td className="px-4 py-3">{confirmations(tx)}</td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
+                          {confirmations(tx)}
+                        </td>
                       </tr>
                     );
                   })}
@@ -197,7 +201,7 @@ export const Transactions: React.FC = () => {
                       </span>
                     </div>
                     <p className="mt-1 font-mono text-xs text-phi-primary hover:underline">
-                      {String(tx.txid ?? '').slice(0, 20)}...
+                      {String(tx.txid ?? '').slice(0, 12)}...{String(tx.txid ?? '').slice(-8)}
                     </p>
                     <div className="mt-1 flex items-center justify-between">
                       <span className="text-xs text-gray-500 dark:text-dark-mutedText">

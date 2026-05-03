@@ -19,6 +19,8 @@ import { Mining } from '@/pages/Mining';
 import { Unlock } from '@/pages/Unlock';
 import { CreateWallet } from '@/pages/CreateWallet';
 import { BackupWallet } from '@/pages/BackupWallet';
+import { ImportWallet } from '@/pages/ImportWallet';
+import { BackupVerify } from '@/pages/BackupVerify';
 import { hasWallet, isUnlocked } from '@/services/auth';
 
 const NAV_ITEMS = [
@@ -49,6 +51,8 @@ const PAGES = [
   { path: '/rpc', element: <RPCConsole /> },
   { path: '/settings', element: <Settings /> },
   { path: '/backup', element: <BackupWallet /> },
+  { path: '/import', element: <ImportWallet /> },
+  { path: '/backup-verify', element: <BackupVerify /> },
 ];
 
 /**
@@ -57,6 +61,21 @@ const PAGES = [
  */
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState({ walletExists: hasWallet(), unlocked: isUnlocked() });
+
+  // Apply dark mode class on mount and when localStorage changes
+  useEffect(() => {
+    const applyDark = () => {
+      const dark = localStorage.getItem('darkMode') === 'true';
+      if (dark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    applyDark();
+    const interval = setInterval(applyDark, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   // Listen for localStorage changes (same tab) and cross-tab storage events
   useEffect(() => {

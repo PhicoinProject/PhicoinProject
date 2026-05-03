@@ -207,7 +207,7 @@ export const Send: React.FC = () => {
               <option value="">All addresses (auto-select)</option>
               {availableAddresses.map((a) => (
                 <option key={a.address} value={a.address}>
-                  {a.label || `${a.address.slice(0, 12)}...${a.address.slice(-6)}`} (
+                  {a.label || `${a.address.slice(0, 10)}...${a.address.slice(-8)}`} (
                   {a.balance.toFixed(8)})
                 </option>
               ))}
@@ -315,7 +315,7 @@ export const Send: React.FC = () => {
                       className="rounded border-gray-300 dark:border-dark-muted"
                     />
                     <span className="font-mono text-xs text-gray-600 dark:text-dark-mutedText">
-                      {coin.txid.slice(0, 16)}:{coin.vout}
+                      {coin.txid.slice(0, 10)}...{coin.txid.slice(-6)}:{coin.vout}
                     </span>
                   </div>
                   <span className="font-medium text-gray-800 dark:text-dark-secondary">

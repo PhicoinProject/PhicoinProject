@@ -7,10 +7,12 @@ interface AssetTableProps {
   onClick?: (asset: Asset) => void;
 }
 
-function statusVariant(status: string): { bg: string; text: string } {
-  if (status === ASSET_STATUS_ISSUED) return { bg: 'bg-green-100', text: 'text-green-700' };
-  if (status === ASSET_STATUS_REVOKED) return { bg: 'bg-red-100', text: 'text-red-700' };
-  return { bg: 'bg-gray-100', text: 'text-gray-600' };
+function statusBadge(status: string): string {
+  if (status === ASSET_STATUS_ISSUED)
+    return 'bg-green-100 dark:bg-green-500 text-green-700 dark:text-white';
+  if (status === ASSET_STATUS_REVOKED)
+    return 'bg-red-100 dark:bg-red-500 text-red-700 dark:text-white';
+  return 'bg-gray-100 dark:bg-dark-elevated text-gray-600 dark:text-dark-mutedText';
 }
 
 /** Table displaying a list of assets with balances */
@@ -29,13 +31,15 @@ export const AssetTable: React.FC<AssetTableProps> = ({ assets, balances = {}, o
       <tbody>
         {assets.length === 0 ? (
           <tr>
-            <td colSpan={5} className="px-4 py-8 text-center text-gray-500 dark:text-dark-mutedText">
+            <td
+              colSpan={5}
+              className="px-4 py-8 text-center text-gray-500 dark:text-dark-mutedText"
+            >
               No assets found.
             </td>
           </tr>
         ) : (
           assets.map((asset) => {
-            const variant = statusVariant(asset.status);
             return (
               <tr
                 key={asset.assetId}
@@ -46,11 +50,11 @@ export const AssetTable: React.FC<AssetTableProps> = ({ assets, balances = {}, o
                   {asset.assetLabel}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
-                  {asset.assetId.slice(0, 12)}...
+                  {asset.assetId.slice(0, 10)}...{asset.assetId.slice(-8)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${variant.bg} ${variant.text}`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(asset.status)}`}
                   >
                     {asset.status}
                   </span>

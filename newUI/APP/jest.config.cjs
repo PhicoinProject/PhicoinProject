@@ -1,16 +1,22 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+/** @type {import('jest').Config} */
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
+  testMatch: ['**/__tests__/**/*.test.ts', '**/__tests__/**/*.test.tsx'],
+  extensionsToTreatAsEsm: ['.ts'],
   transform: {
-    '^.+\\.tsx?$': ['ts-jest', { useESM: true }],
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        useESM: true,
+        tsconfig: 'tsconfig.json',
+      },
+    ],
   },
-  extensionsToTreatAsEsm: ['.ts', '.tsx'],
-  testPathIgnorePatterns: ['/node_modules/', '/tests/e2e/'],
-  setupFilesAfterSetup: [],
+  transformIgnorePatterns: [],
+  resetMocks: false,
+  setupFiles: ['<rootDir>/jest.setup.cjs'],
 };

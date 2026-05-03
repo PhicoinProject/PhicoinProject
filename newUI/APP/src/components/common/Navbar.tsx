@@ -15,7 +15,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const { data: networkData } = useNetworkStatus();
 
   const shortAddress = currentAddress
-    ? `${currentAddress.slice(0, 6)}...${currentAddress.slice(-4)}`
+    ? `${currentAddress.slice(0, 8)}...${currentAddress.slice(-6)}`
     : '';
 
   return (

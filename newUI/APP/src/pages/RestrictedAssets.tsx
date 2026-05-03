@@ -82,16 +82,20 @@ export const RestrictedAssets: React.FC = () => {
                       key={String(asset.assetId)}
                       className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                     >
-                      <td className="px-4 py-3 font-medium">{String(asset.assetLabel)}</td>
-                      <td className="px-4 py-3">
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-dark-text">
+                        {String(asset.assetLabel)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
+                        <span className="rounded-full bg-amber-100 dark:bg-amber-500 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-white">
                           {String(asset.restrictionType)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs">
-                        {String(asset.verifier).slice(0, 20)}...
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
+                        {String(asset.verifier).slice(0, 12)}...{String(asset.verifier).slice(-8)}
                       </td>
-                      <td className="px-4 py-3 text-right">{Number(asset.balance).toFixed(8)}</td>
+                      <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
+                        {Number(asset.balance).toFixed(8)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -104,7 +108,9 @@ export const RestrictedAssets: React.FC = () => {
       {/* Qualifiers */}
       {activeTab === 'qualifiers' && (
         <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">My Qualifiers</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
+            My Qualifiers
+          </h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-dark-mutedText">
             Qualifiers you own and can assign to addresses.
           </p>
@@ -114,9 +120,13 @@ export const RestrictedAssets: React.FC = () => {
             </p>
           </div>
           {qualifiersLoading ? (
-            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">Loading qualifiers...</p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">
+              Loading qualifiers...
+            </p>
           ) : !qualifiers || qualifiers.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">No qualifiers found.</p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">
+              No qualifiers found.
+            </p>
           ) : (
             <div className="mt-4 space-y-2">
               {qualifiers.map((q: Qualifier) => (
@@ -128,7 +138,7 @@ export const RestrictedAssets: React.FC = () => {
                     {q.qualifier}
                   </span>
                   <span className="font-mono text-xs text-gray-400 dark:text-dark-mutedText">
-                    {q.txid?.slice(0, 16)}
+                    {q.txid?.slice(0, 10)}...{q.txid?.slice(-6)}
                   </span>
                 </div>
               ))}
@@ -140,14 +150,18 @@ export const RestrictedAssets: React.FC = () => {
       {/* Tags */}
       {activeTab === 'tags' && (
         <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">Address Tags</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
+            Address Tags
+          </h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-dark-mutedText">
             Manage tags on your addresses for restricted asset transfers.
           </p>
           {tagsLoading ? (
             <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">Loading tags...</p>
           ) : !tags || tags.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">No address tags found.</p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">
+              No address tags found.
+            </p>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -163,8 +177,10 @@ export const RestrictedAssets: React.FC = () => {
                       key={t.address + i}
                       className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                     >
-                      <td className="px-4 py-3 font-mono text-xs">{t.address.slice(0, 30)}...</td>
-                      <td className="px-4 py-3">{t.tag}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
+                        {t.address.slice(0, 12)}...{t.address.slice(-8)}
+                      </td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-dark-text">{t.tag}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -184,7 +200,9 @@ export const RestrictedAssets: React.FC = () => {
             View addresses that have been frozen for restricted assets.
           </p>
           {restrictionsLoading ? (
-            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">Loading restrictions...</p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-dark-mutedText">
+              Loading restrictions...
+            </p>
           ) : (
             <div className="mt-4 overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -209,20 +227,24 @@ export const RestrictedAssets: React.FC = () => {
                         key={r.address + i}
                         className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                       >
-                        <td className="px-4 py-3 font-mono text-xs">{r.address.slice(0, 30)}...</td>
-                        <td className="px-4 py-3">{r.assetLabel || r.assetId}</td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
+                          {r.address.slice(0, 12)}...{r.address.slice(-8)}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
+                          {r.assetLabel || r.assetId}
+                        </td>
+                        <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
                           <span
                             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                               r.status === 'frozen'
-                                ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                                : 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                ? 'bg-red-100 dark:bg-red-500 text-red-700 dark:text-white'
+                                : 'bg-green-100 dark:bg-green-500 text-green-700 dark:text-white'
                             }`}
                           >
                             {r.status || 'active'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
                           <span className="text-xs text-gray-400 dark:text-dark-mutedText">
                             {r.status || 'active'}
                           </span>

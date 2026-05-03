@@ -1,0 +1,265 @@
+import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import {
+  deriveReceiveAddress,
+  deriveChangeAddress,
+  isValidPHICoinAddress,
+} from './addressDerivation';
+import { rpc } from './rpc';
+import type { DerivedAddress } from '@/types';
+
+// Default gap limit - stop scanning after this many consecutive unused addresses
+const GAP_LIMIT = 10;
+
+// Default pool size - number of pre-generated addresses
+const POOL_SIZE = 10;
+
+/**
+ * Track derived addresses and their usage status.
+ * Keys are BIP32 derivation paths, values contain usage state.
+ */
+export interface AddressRecord {
+  address: string;
+  path: string;
+  isChange: boolean;
+  index: number;
+  used: boolean;
+  lastSeen?: number; // block height when first used
+}
+
+/**
+ * Address tracking service - manages HD wallet address pool and scans for usage.
+ */
+export class AddressTracker {
+  private receiveUsed: number = 0;
+  private changeUsed: number = 0;
+  private records: Map<string, AddressRecord> = new Map();
+
+  /** Initialize tracker by scanning existing addresses */
+  async initialize(network: 'mainnet' | 'testnet'): Promise<void> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return;
+
+    // Load previously scanned state from sessionStorage (ephemeral)
+    this.loadState();
+
+    // Scan for newly used addresses in the pool
+    await this.scanForUsage(network);
+
+    // Ensure we have enough unused addresses
+    await this.replenishPool(network);
+  }
+
+  /** Get next unused receive address */
+  getNextReceiveAddress(network: 'mainnet' | 'testnet'): DerivedAddress | null {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return null;
+
+    const addr = deriveReceiveAddress(hdKey, network, this.receiveUsed);
+    this.addRecord(addr, false);
+    return addr;
+  }
+
+  /** Get next unused change address */
+  getNextChangeAddress(network: 'mainnet' | 'testnet'): DerivedAddress | null {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return null;
+
+    const addr = deriveChangeAddress(hdKey, network, this.changeUsed);
+    this.addRecord(addr, false);
+    return addr;
+  }
+
+  /** Get all derived addresses */
+  getAllAddresses(): AddressRecord[] {
+    return Array.from(this.records.values());
+  }
+
+  /** Get unused receive address pool */
+  getUnusedPool(): DerivedAddress[] {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return [];
+
+    const unused: DerivedAddress[] = [];
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const index = this.receiveUsed + i;
+      const path = this.receivePath(index);
+      if (!this.records.has(path) || !this.records.get(path)?.used) {
+        const hdKey = useWalletHDKeyStore.getState().hdKey;
+        if (hdKey) {
+          const net = this.getNetwork();
+          unused.push(deriveReceiveAddress(hdKey, net, index));
+        }
+      }
+    }
+    return unused;
+  }
+
+  /**
+   * Scan blockchain for address usage.
+   * Checks each derived address against known transaction history.
+   */
+  async scanForUsage(_network: 'mainnet' | 'testnet'): Promise<void> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return;
+
+    try {
+      // Get transactions from RPC to find used addresses
+      const transactions = await rpc.listTransactions('*', 100, 0);
+
+      const usedAddresses = new Set<string>();
+
+      // Extract addresses from transaction history
+      for (const tx of transactions as Record<string, unknown>[]) {
+        const address = tx.address as string;
+        if (address) usedAddresses.add(address);
+      }
+
+      // Mark addresses as used if they appear in transaction history
+      for (const [, record] of this.records) {
+        if (usedAddresses.has(record.address)) {
+          record.used = true;
+        }
+      }
+
+      // Update used counts
+      this.updateUsedCounts();
+      this.saveState();
+    } catch {
+      // If RPC is unavailable, use stored state
+    }
+  }
+
+  /** Replenish the address pool to ensure enough unused addresses */
+  private async replenishPool(network: 'mainnet' | 'testnet'): Promise<void> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return;
+
+    const unusedReceiveCount = this.getUnusedReceiveCount();
+    if (unusedReceiveCount < POOL_SIZE) {
+      // Pre-generate more addresses (just adds to tracking, doesn't use RPC)
+      for (let i = 0; i < POOL_SIZE - unusedReceiveCount; i++) {
+        const nextIndex = this.receiveUsed + unusedReceiveCount + i + 1;
+        const addr = deriveReceiveAddress(hdKey, network, nextIndex);
+        this.addRecord(addr, false);
+      }
+      this.saveState();
+    }
+  }
+
+  /** Mark an address as used (called after sending/receiving) */
+  markAddressUsed(address: string): void {
+    for (const [, record] of this.records) {
+      if (record.address === address && !record.used) {
+        record.used = true;
+        this.updateUsedCounts();
+        this.saveState();
+        return;
+      }
+    }
+  }
+
+  /** Check if a PHICOIN address belongs to this wallet */
+  isMyAddress(address: string): boolean {
+    return Array.from(this.records.values()).some((r) => r.address === address);
+  }
+
+  /** Check if an address is valid PHICOIN address */
+  isValidAddress(address: string): boolean {
+    return isValidPHICoinAddress(address);
+  }
+
+  /** Get count of used receive addresses */
+  getReceiveUsedCount(): number {
+    return this.receiveUsed;
+  }
+
+  /** Get count of used change addresses */
+  getChangeUsedCount(): number {
+    return this.changeUsed;
+  }
+
+  /** Get gap limit */
+  getGapLimit(): number {
+    return GAP_LIMIT;
+  }
+
+  /** Reset tracker state */
+  reset(): void {
+    this.receiveUsed = 0;
+    this.changeUsed = 0;
+    this.records.clear();
+    sessionStorage.removeItem('phi:addressTracker');
+  }
+
+  private addRecord(addr: DerivedAddress, used: boolean): void {
+    this.records.set(addr.path, {
+      address: addr.address,
+      path: addr.path,
+      isChange: addr.isChange,
+      index: addr.index,
+      used,
+    });
+  }
+
+  private receivePath(index: number): string {
+    return `m/0'/0'/0'/0/${index}`;
+  }
+
+  private getNetwork(): 'mainnet' | 'testnet' {
+    return 'mainnet';
+  }
+
+  private getUnusedReceiveCount(): number {
+    let count = 0;
+    for (const [path] of this.records) {
+      if (path.startsWith('m/0') && !path.includes('/1/')) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  private updateUsedCounts(): void {
+    this.receiveUsed = 0;
+    this.changeUsed = 0;
+
+    for (const [, record] of this.records) {
+      if (record.used) {
+        if (!record.isChange) {
+          this.receiveUsed = Math.max(this.receiveUsed, record.index + 1);
+        } else {
+          this.changeUsed = Math.max(this.changeUsed, record.index + 1);
+        }
+      }
+    }
+  }
+
+  private saveState(): void {
+    const state = {
+      receiveUsed: this.receiveUsed,
+      changeUsed: this.changeUsed,
+      records: Array.from(this.records.entries()).map(([k, v]) => [k, v]),
+    };
+    sessionStorage.setItem('phi:addressTracker', JSON.stringify(state));
+  }
+
+  private loadState(): void {
+    const saved = sessionStorage.getItem('phi:addressTracker');
+    if (!saved) return;
+
+    try {
+      const state = JSON.parse(saved) as {
+        receiveUsed: number;
+        changeUsed: number;
+        records: [string, AddressRecord][];
+      };
+      this.receiveUsed = state.receiveUsed;
+      this.changeUsed = state.changeUsed;
+      this.records = new Map(state.records);
+    } catch {
+      // Ignore corrupted state
+    }
+  }
+}
+
+export const addressTracker = new AddressTracker();

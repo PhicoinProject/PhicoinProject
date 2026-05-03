@@ -148,14 +148,20 @@ export const AddressBook: React.FC = () => {
                     key={addr.address}
                     className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                   >
-                    <td className="px-4 py-3">{addr.label || '—'}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{addr.address.slice(0, 35)}...</td>
+                    <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
+                      {addr.label || '—'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
+                      {addr.address}
+                    </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      <span className="rounded-full bg-blue-100 dark:bg-blue-500 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-white">
                         {addr.isMine ? 'Mine' : 'Watch-only'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">{addr.totalReceived.toFixed(8)}</td>
+                    <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
+                      {addr.totalReceived.toFixed(8)}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => navigator.clipboard.writeText(addr.address)}

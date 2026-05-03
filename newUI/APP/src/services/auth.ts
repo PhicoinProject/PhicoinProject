@@ -1,4 +1,12 @@
 import { deriveKey, encryptData, generateSalt, toHex, sha256 } from './crypto';
+import {
+  storeEncryptedSeed,
+  retrieveEncryptedSeed,
+  hasV2Wallet,
+  clearV2Wallet,
+} from './encryptedWallet';
+import { deriveMasterSeed, seedToHDKey } from './HDWallet';
+import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 
 const SALT_KEY = 'phi:salt';
 const SENTINEL_KEY = 'phi:sentinel';
@@ -6,6 +14,7 @@ const MNEMONIC_HASH_KEY = 'phi:mnemonicHash';
 const CREATED_KEY = 'phi:created';
 const RATE_LIMIT_KEY = 'phi:rateLimit';
 const SENTINEL_PLAINTEXT = 'phi-wallet-verified';
+const WALLET_VERSION_KEY = 'phi:walletVersion';
 
 // Rate limiting config
 const MAX_ATTEMPTS = 5;
@@ -16,9 +25,18 @@ export function isUnlocked(): boolean {
   return sessionStorage.getItem('phi:unlocked') === 'true';
 }
 
-/** Check whether wallet data exists in localStorage. */
+/** Check whether wallet data exists in localStorage (v1 or v2). */
 export function hasWallet(): boolean {
-  return !!localStorage.getItem(SALT_KEY) && !!localStorage.getItem(SENTINEL_KEY);
+  const v1 = !!localStorage.getItem(SALT_KEY) && !!localStorage.getItem(SENTINEL_KEY);
+  const v2 = hasV2Wallet();
+  return v1 || v2;
+}
+
+/** Get the wallet version: 'v1' | 'v2' | null */
+export function getWalletVersion(): 'v1' | 'v2' | null {
+  if (hasV2Wallet()) return 'v2';
+  if (localStorage.getItem(SALT_KEY) && localStorage.getItem(SENTINEL_KEY)) return 'v1';
+  return null;
 }
 
 /**
@@ -99,12 +117,11 @@ function constantTimeCompare(a: string, b: string): boolean {
 
 /**
  * Attempt to unlock the wallet with the given passphrase.
- * Derives a key from the stored salt and verifies against the sentinel value.
+ * Tries v2 (encrypted seed) first, falls back to v1 (sentinel).
  * Returns true on success, false on wrong passphrase.
- * Throws if wallet data is missing or corrupted.
+ * Throws if wallet data is missing or rate-limited.
  */
 export async function tryUnlock(passphrase: string): Promise<boolean> {
-  // Check rate limit first
   const limit = checkRateLimit();
   if (!limit.allowed) {
     throw new Error(
@@ -112,6 +129,24 @@ export async function tryUnlock(passphrase: string): Promise<boolean> {
     );
   }
 
+  // Try v2 wallet first
+  if (hasV2Wallet()) {
+    try {
+      const masterSeed = await retrieveEncryptedSeed(passphrase);
+      const hdKey = seedToHDKey(masterSeed);
+      useWalletHDKeyStore.getState().setHDKey(hdKey);
+
+      resetRateLimit();
+      sessionStorage.setItem('phi:unlocked', 'true');
+      return true;
+    } catch {
+      await sleep(200);
+      recordFailedAttempt();
+      return false;
+    }
+  }
+
+  // Fall back to v1 sentinel-based unlock
   const saltHex = localStorage.getItem(SALT_KEY);
   if (!saltHex) throw new Error('Wallet data missing');
 
@@ -133,8 +168,6 @@ export async function tryUnlock(passphrase: string): Promise<boolean> {
       ciphertext
     );
   } catch {
-    // Decryption failure = wrong passphrase. Always perform a small delay
-    // to mitigate timing attacks on the decrypt step.
     await sleep(200);
     recordFailedAttempt();
     return false;
@@ -146,7 +179,6 @@ export async function tryUnlock(passphrase: string): Promise<boolean> {
     return false;
   }
 
-  // Successful unlock — reset rate limit
   resetRateLimit();
   sessionStorage.setItem('phi:unlocked', 'true');
   sessionStorage.setItem('phi:keySalt', saltHex);
@@ -159,9 +191,23 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Create a new wallet.
+ * Create a v2 wallet with 24-word BIP39 mnemonic, user seed, and password.
+ * Derives master seed, encrypts, and stores in localStorage.
+ */
+export async function createWalletV2(
+  mnemonic: string,
+  userSeed: string,
+  password: string
+): Promise<void> {
+  const masterSeed = await deriveMasterSeed(mnemonic, userSeed);
+  await storeEncryptedSeed(masterSeed, password);
+  localStorage.setItem(WALLET_VERSION_KEY, '2');
+  localStorage.setItem(CREATED_KEY, Date.now().toString());
+}
+
+/**
+ * Create a v1 wallet (legacy, for backward compatibility).
  * Stores salt and encrypted sentinel in localStorage for future unlock.
- * Optionally stores an encrypted mnemonic if provided.
  */
 export async function createWallet(passphrase: string, mnemonic?: string): Promise<void> {
   const salt = generateSalt();
@@ -186,8 +232,11 @@ export function clearWallet(): void {
   localStorage.removeItem(SENTINEL_KEY);
   localStorage.removeItem(MNEMONIC_HASH_KEY);
   localStorage.removeItem(CREATED_KEY);
+  localStorage.removeItem(WALLET_VERSION_KEY);
   sessionStorage.removeItem('phi:unlocked');
   sessionStorage.removeItem('phi:keySalt');
+  clearV2Wallet();
+  useWalletHDKeyStore.getState().clearHDKey();
 }
 
 /** Get wallet metadata (creation date, mnemonic hash) without unlocking. */

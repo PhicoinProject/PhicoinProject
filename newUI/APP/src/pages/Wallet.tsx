@@ -35,7 +35,9 @@ export const Wallet: React.FC = () => {
 
       {/* Wallet info card */}
       <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-4 md:p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">Wallet Info</h2>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
+          Wallet Info
+        </h2>
         {walletLoading ? (
           <div className="mt-4 space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -133,7 +135,9 @@ export const Wallet: React.FC = () => {
       {/* Addresses */}
       <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-4 md:p-6 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">Addresses</h2>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
+            Addresses
+          </h2>
           <button onClick={() => refetch()} className="text-sm text-phi-primary hover:underline">
             Refresh
           </button>
@@ -194,7 +198,7 @@ export const Wallet: React.FC = () => {
                         {addr.label || '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
-                        {addr.address.slice(0, 30)}...
+                        {addr.address}
                       </td>
                       <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
                         {addr.totalReceived.toFixed(8)}
@@ -235,7 +239,7 @@ export const Wallet: React.FC = () => {
                     </span>
                   </div>
                   <p className="mt-1 font-mono text-xs text-gray-500 dark:text-dark-mutedText">
-                    {addr.address.slice(0, 30)}...
+                    {addr.address}
                   </p>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-xs text-gray-400 dark:text-dark-mutedText">
