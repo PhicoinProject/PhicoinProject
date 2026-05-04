@@ -13,7 +13,7 @@ services:
     tty: true
 
   # Runtime daemon - runs phicoind
-  # NOTE: RPC port inside container is 16611 (default from chainparamsbase.cpp),
+  # NOTE: RPC port inside container is 28969 (from phicoin.conf),
   # mapped to 28966 on the host for the expected RPC endpoint.
   daemon:
     build:
@@ -21,27 +21,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "28964:28964"
-      - "28966:16611"
+      - "28966:28969"
     volumes:
-      - phicoin-data:/var/lib/phicoin
+      - ./.cache/data:/var/lib/phicoin
     command: >
       /bin/sh -c "
-        if [ ! -d /var/lib/phicoin/blocks ]; then
-          cp -r /prebuilt/* /var/lib/phicoin/ 2>/dev/null || true;
-        fi;
-        if [ ! -f /var/lib/phicoin/phicoin.conf ]; then
-          printf 'rpcuser=phicoin\nrpcpassword=phicoinpass\nrpcallowip=0.0.0.0/0\nrpcbind=0.0.0.0\nserver=1\n' > /var/lib/phicoin/phicoin.conf;
-        fi;
-        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -addressindex -spentindex -txindex -blockindex
+        phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -rpcbind=0.0.0.0 -rpcallowip=0.0.0.0/0 -rpcport=28969
       "
-    networks:
-      phicoin-net:
-        aliases:
-          - phicoin-daemon
-
-volumes:
-  phicoin-data:
-
-networks:
-  phicoin-net:
-    driver: bridge
