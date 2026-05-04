@@ -36,3 +36,14 @@ global.sessionStorage = {
 // Polyfill TextEncoder/TextDecoder
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder;
+
+// Polyfill Vite's import.meta.env for Node.js / Jest
+// Vite injects these at build time; Jest has no equivalent.
+if (typeof global.importMetaEnv === 'undefined') {
+  global.importMetaEnv = {
+    DEV: process.env.NODE_ENV !== 'production',
+    PROD: process.env.NODE_ENV === 'production',
+    SSR: false,
+    BASE_URL: '/',
+  };
+}

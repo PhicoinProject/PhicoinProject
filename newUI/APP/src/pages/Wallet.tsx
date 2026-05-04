@@ -1,19 +1,23 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { walletService } from '@/services/wallet';
+import { rpc } from '@/services/rpc';
 import { Button } from '@/components/common/Button';
 import { useToast } from '@/components/common/Toast';
 import type { Address } from '@/types';
 
-/** Wallet management page — addresses, import/export, backup */
+/** Wallet management page -- addresses, import/export, backup */
 export const Wallet: React.FC = () => {
   const navigate = useNavigate();
   const { showToast } = useToast();
 
-  const { data: walletInfo, isLoading: walletLoading } = useQuery({
-    queryKey: ['walletInfo'],
-    queryFn: () => walletService.getWalletInfo(),
+  const addressPool = useMemo(() => walletService.getDerivedAddressPool(), []);
+  const addressList = useMemo(() => addressPool.map((a) => a.address), [addressPool]);
+
+  const { data: blockchainInfo, isLoading: infoLoading } = useQuery({
+    queryKey: ['blockchainInfo'],
+    queryFn: () => rpc.getBlockchainInfo(),
     staleTime: 30_000,
   });
 
@@ -22,23 +26,24 @@ export const Wallet: React.FC = () => {
     isLoading: addrLoading,
     refetch,
   } = useQuery({
-    queryKey: ['walletAddresses'],
-    queryFn: () => walletService.getAddresses(),
+    queryKey: ['walletAddresses', addressList.join(',')],
+    queryFn: () => walletService.getAddresses(addressList),
     staleTime: 30_000,
+    enabled: addressList.length > 0,
   });
 
-  const info = walletInfo as Record<string, unknown> | undefined;
+  const info = blockchainInfo as Record<string, unknown> | undefined;
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-gray-900 dark:text-dark-text md:text-2xl">Wallet</h1>
 
-      {/* Wallet info card */}
+      {/* Blockchain info card */}
       <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-4 md:p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
-          Wallet Info
+          Network Status
         </h2>
-        {walletLoading ? (
+        {infoLoading ? (
           <div className="mt-4 space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="animate-pulse flex justify-between">
@@ -50,56 +55,32 @@ export const Wallet: React.FC = () => {
         ) : (
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Name</span>
-              <span className="font-medium text-gray-900 dark:text-dark-text">
-                {String(info?.walletname ?? '—')}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Status</span>
-              <span
-                className={`font-medium ${(info?.islocked as boolean) ? 'text-red-600' : 'text-green-600'}`}
-              >
-                {(info?.islocked as boolean) ? 'Locked' : 'Unlocked'}
-              </span>
-            </div>
-            <div className="flex justify-between">
               <span className="text-gray-500 dark:text-dark-mutedText">Network</span>
               <span className="font-medium text-gray-900 dark:text-dark-text">
-                {String(info?.network ?? '—')}
+                {String(info?.chain ?? 'mainnet')}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Balance</span>
+              <span className="text-gray-500 dark:text-dark-mutedText">Blocks</span>
               <span className="font-medium text-gray-900 dark:text-dark-text">
-                {Number(info?.balance ?? 0).toFixed(8)} PHI
+                {Number(info?.blocks ?? 0).toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Unconfirmed Balance</span>
+              <span className="text-gray-500 dark:text-dark-mutedText">Headers</span>
               <span className="font-medium text-gray-900 dark:text-dark-text">
-                {Number(info?.unconfirmed_balance ?? 0).toFixed(8)} PHI
+                {Number(info?.headers ?? 0).toLocaleString()}
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">TX Count</span>
+              <span className="text-gray-500 dark:text-dark-mutedText">Verification Progress</span>
               <span className="font-medium text-gray-900 dark:text-dark-text">
-                {Number(info?.txcount ?? 0).toLocaleString()}
+                {(Number(info?.verificationprogress ?? 0) * 100).toFixed(4)}%
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Keypool Oldest</span>
-              <span className="font-medium text-gray-900 dark:text-dark-text">
-                {info?.keypoololdest
-                  ? new Date(Number(info.keypoololdest) * 1000).toLocaleString()
-                  : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500 dark:text-dark-mutedText">Keypool Size</span>
-              <span className="font-medium text-gray-900 dark:text-dark-text">
-                {Number(info?.keypoolsize ?? 0)}
-              </span>
+              <span className="text-gray-500 dark:text-dark-mutedText">Wallet</span>
+              <span className="font-medium text-gray-900 dark:text-dark-text">HD Wallet</span>
             </div>
           </div>
         )}
@@ -168,7 +149,7 @@ export const Wallet: React.FC = () => {
               />
             </svg>
             <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
-              No addresses generated yet
+              No addresses with activity yet
             </p>
             <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
               Go to "Receive" to generate your first address
@@ -195,7 +176,7 @@ export const Wallet: React.FC = () => {
                       className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                     >
                       <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
-                        {addr.label || '—'}
+                        {addr.label || '--'}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
                         {addr.address}

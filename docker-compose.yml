@@ -32,37 +32,15 @@ services:
         if [ ! -f /var/lib/phicoin/phicoin.conf ]; then
           printf 'rpcuser=phicoin\nrpcpassword=phicoinpass\nrpcallowip=0.0.0.0/0\nrpcbind=0.0.0.0\nserver=1\n' > /var/lib/phicoin/phicoin.conf;
         fi;
-        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin
+        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -addressindex -spentindex -txindex -blockindex
       "
     networks:
       phicoin-net:
         aliases:
           - phicoin-daemon
 
-  # Test service - uses downloaded blockchain data from release_test/
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "28964:28964"
-      - "28966:16611"
-    volumes:
-      - phicoin-test-data:/data
-    command: >
-      /bin/sh -c "
-        if [ ! -d /data/blocks ]; then
-          cp -r /prebuilt/* /data/ 2>/dev/null || true;
-        fi;
-        if [ ! -f /data/phicoin.conf ]; then
-          printf 'rpcuser=phicoin\nrpcpassword=phicoinpass\nrpcallowip=0.0.0.0/0\nrpcbind=0.0.0.0\nserver=1\n' > /data/phicoin.conf;
-        fi;
-        exec phicoind -printtoconsole -daemon=0 -datadir=/data
-      "
-
 volumes:
   phicoin-data:
-  phicoin-test-data:
 
 networks:
   phicoin-net:

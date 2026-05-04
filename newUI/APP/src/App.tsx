@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import { useWalletBalance, useSyncStatus } from '@/hooks';
+import { useRealtimeUpdates, useSyncStatus } from '@/hooks';
 import { useWalletStore } from '@/stores';
 import { Sidebar } from '@/components/common/Sidebar';
 import { Navbar } from '@/components/common/Navbar';
@@ -14,6 +14,8 @@ import { Transactions } from '@/pages/Transactions';
 import { Settings } from '@/pages/Settings';
 import { AddressBook } from '@/pages/AddressBook';
 import { RestrictedAssets } from '@/pages/RestrictedAssets';
+import { CreateAsset } from '@/pages/CreateAsset';
+import { ManageAssets } from '@/pages/ManageAssets';
 import { RPCConsole } from '@/pages/RPCConsole';
 import { Mining } from '@/pages/Mining';
 import { Unlock } from '@/pages/Unlock';
@@ -21,6 +23,7 @@ import { CreateWallet } from '@/pages/CreateWallet';
 import { BackupWallet } from '@/pages/BackupWallet';
 import { ImportWallet } from '@/pages/ImportWallet';
 import { BackupVerify } from '@/pages/BackupVerify';
+import { SignVerify } from '@/pages/SignVerify';
 import { hasWallet, isUnlocked } from '@/services/auth';
 
 const NAV_ITEMS = [
@@ -29,6 +32,8 @@ const NAV_ITEMS = [
   { path: '/receive', label: 'Receive' },
   { path: '/wallet', label: 'Wallet' },
   { path: '/assets', label: 'Assets' },
+  { path: '/create-asset', label: 'Create Asset' },
+  { path: '/manage-assets', label: 'Manage Assets' },
   { path: '/restricted', label: 'Restricted' },
   { path: '/transactions', label: 'Transactions' },
   { path: '/addressbook', label: 'Address Book' },
@@ -36,6 +41,7 @@ const NAV_ITEMS = [
   { path: '/rpc', label: 'RPC Console' },
   { path: '/settings', label: 'Settings' },
   { path: '/backup', label: 'Backup' },
+  { path: '/sign-verify', label: 'Sign & Verify' },
 ];
 
 const PAGES = [
@@ -44,6 +50,8 @@ const PAGES = [
   { path: '/receive', element: <Receive /> },
   { path: '/wallet', element: <Wallet /> },
   { path: '/assets', element: <Assets /> },
+  { path: '/create-asset', element: <CreateAsset /> },
+  { path: '/manage-assets', element: <ManageAssets /> },
   { path: '/restricted', element: <RestrictedAssets /> },
   { path: '/transactions', element: <Transactions /> },
   { path: '/addressbook', element: <AddressBook /> },
@@ -53,6 +61,7 @@ const PAGES = [
   { path: '/backup', element: <BackupWallet /> },
   { path: '/import', element: <ImportWallet /> },
   { path: '/backup-verify', element: <BackupVerify /> },
+  { path: '/sign-verify', element: <SignVerify /> },
 ];
 
 /**
@@ -102,7 +111,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 /** Main app wrapper - only renders after unlock, starts RPC polling here */
 function MainApp() {
-  useWalletBalance();
+  useRealtimeUpdates();
   useSyncStatus();
 
   useEffect(() => {

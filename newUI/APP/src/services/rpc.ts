@@ -11,6 +11,7 @@ const BLOCKED_METHODS = new Set([
   'signmessagewithprivkey',
   // Wallet encryption / passphrase management
   'walletpassphrase',
+  'walletlock',
   'walletpassphrasechange',
   'encryptwallet',
   'keypoolrefill',
@@ -27,13 +28,110 @@ const BLOCKED_METHODS = new Set([
   'move',
   // Address generation that could expose change addresses
   'getrawchangeaddress',
+  // Wallet balance and info queries
+  'getbalance',
+  'getwalletinfo',
+  // Wallet transaction queries
+  'listtransactions',
+  'listreceivedbyaddress',
+  'getreceivedbyaddress',
+  'listaccounts',
+  'listsinceblock',
+  'gettransaction',
+  'getnewaddress',
+  // Wallet address management
+  'setlabel',
+  'validateaddress',
+  // Wallet signing
+  'signrawtransactionwithwallet',
+  // UTXO management
+  'listunspent',
+  'lockunspent',
+  // Transaction operations
+  'bumpfee',
+  'fundrawtransaction',
+  'rescanblockchain',
+  'sendtoaddress',
+  // Multisig
+  'addmultisigaddress',
+  // Wallet-scoped asset listing
+  'listmyassets',
+  // Transaction recovery
+  'abandontransaction',
+  // Asset issuance (wallet-bound)
+  'issue',
+  'issueunique',
+  'reissue',
+  'issuerestrictedasset',
+  'issuequalifierasset',
+  'reissuerestrictedasset',
+  // Asset transfers (wallet-bound)
+  'transfer',
+  'transferfromaddress',
+  'transferfromaddresses',
+  'transferqualifier',
+  // Address tagging
+  'addtagtoaddress',
+  'removetagfromaddress',
+  // Asset freezing
+  'freezeaddress',
+  'unfreezeaddress',
+  'freezerestrictedasset',
+  'unfreezerestrictedasset',
+  // Reward distribution (write)
+  'distributereward',
+  // Snapshot management (write)
+  'requestsnapshot',
+  'purgesnapshot',
+  // Message channels (write)
+  'subscribetochannel',
+  'unsubscribefromchannel',
+  'transferwithmessage',
+  // Message channels (read, wallet-bound)
+  'viewallmessages',
+  'viewallmessagechannels',
+  // Dangerous blockchain operations
+  'invalidateblock',
+  'preciousblock',
+  'reconsiderblock',
+  'pruneblockchain',
+  'clearmempool',
+  'savemempool',
+  'prioritisetransaction',
+  'setmocktime',
+  // Dangerous mining operations
+  'submitblock',
+  'generate',
+  'generatetoaddress',
+  'setgenerate',
+  'getgenerate',
+  // Dangerous utility
+  'stop',
+  // Additional wallet-bound methods
+  'getreceivedbyaccount',
+  'listreceivedbyaccount',
+  'disconnectnode',
+  'addnode',
+  'getaddednodeinfo',
 ]);
+
+/**
+ * Read a Vite env var safely. import.meta.env is only available in Vite builds;
+ * during Jest tests it is undefined, so we return the fallback.
+ */
+function viteEnv(key: string, fallback: string): string {
+  try {
+    return (import.meta as any).env?.[key] ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 /**
  * In dev mode (Vite HMR), allow non-localhost hosts for Docker networking.
  * In production builds, only localhost is permitted.
  */
-const isDevMode = import.meta.env.DEV;
+const isDevMode = viteEnv('MODE', 'production') === 'development';
 
 /**
  * In dev mode, allow Docker container names and any hostname.
@@ -51,10 +149,10 @@ function assertLocalhost(host: string): void {
 }
 
 const DEFAULT_CONFIG: RpcConfig = {
-  host: import.meta.env.VITE_RPC_HOST ?? 'localhost',
-  port: Number(import.meta.env.VITE_RPC_PORT) ?? 28966,
-  user: import.meta.env.VITE_RPC_USER ?? '',
-  password: import.meta.env.VITE_RPC_PASSWORD ?? '',
+  host: viteEnv('VITE_RPC_HOST', 'localhost'),
+  port: Number(viteEnv('VITE_RPC_PORT', '28966')),
+  user: viteEnv('VITE_RPC_USER', ''),
+  password: viteEnv('VITE_RPC_PASSWORD', ''),
 };
 
 /** JSON-RPC client for phicoind */
@@ -115,176 +213,326 @@ export class RpcClient {
     }
   }
 
-  // ---- Wallet queries ----
+  // ---- Address index queries ----
 
-  async getBalance(): Promise<number> {
-    return this.raw<number>('getbalance');
-  }
-
-  async getWalletInfo(): Promise<unknown> {
-    return this.raw<unknown>('getwalletinfo');
-  }
-
-  async getNewAddress(label?: string): Promise<string> {
-    const params: unknown[] = [];
-    if (label) params.push(label);
-    return this.raw<string>('getnewaddress', params);
+  /**
+   * Get the total received balance for one or more addresses.
+   * Calls: z_getaddressbalance (address-index)
+   */
+  async getAddressBalance(addresses: string[], includeAssets = false): Promise<unknown> {
+    const params: unknown[] = [addresses];
+    if (includeAssets) params.push(true);
+    return this.raw<unknown>('getaddressbalance', params);
   }
 
   /**
-   * REMOVED: dumpPubKey (dumpprivkey) — private key extraction is not
-   * allowed in the web UI. Use phicoin-cli dumpprivkey instead.
+   * Get all unspent outputs for one or more addresses.
+   * Calls: z_getaddressutxos (address-index)
    */
-
-  async listAddresses(): Promise<unknown[]> {
-    return this.raw<unknown[]>('listreceivedbyaddress', [0, true, false]);
+  async getAddressUTXOs(addresses: string[]): Promise<unknown[]> {
+    return this.raw<unknown[]>('getaddressutxos', [addresses]);
   }
 
-  // ---- Transactions ----
-
-  async sendToAddress(destination: string, amount: number, comment?: string): Promise<string> {
-    return this.raw<string>('sendtoaddress', [destination, amount, comment || '', '', false]);
+  /**
+   * Get all transaction IDs for one or more addresses.
+   * Calls: z_getaddresstxids (address-index)
+   */
+  async getAddressTxIds(addresses: string[], includeAssets = false): Promise<string[]> {
+    const params: unknown[] = [addresses];
+    if (includeAssets) params.push(true);
+    return this.raw<string[]>('getaddresstxids', params);
   }
 
-  async getTransaction(txid: string): Promise<unknown> {
-    return this.raw<unknown>('gettransaction', [txid]);
+  /**
+   * Get all mempool transactions for one or more addresses.
+   * Calls: z_getaddressmempool (address-index)
+   */
+  async getAddressMempool(addresses: string[], includeAssets = false): Promise<unknown[]> {
+    const params: unknown[] = [addresses];
+    if (includeAssets) params.push(true);
+    return this.raw<unknown[]>('getaddressmempool', params);
   }
 
-  async listTransactions(label?: string, count = 10, from = 0): Promise<unknown[]> {
-    return this.raw<unknown[]>('listtransactions', [label, count, from, false]);
+  // ---- Raw transaction operations ----
+
+  /**
+   * Get a raw transaction by txid.
+   * Verbose 0: hex string, Verbose 1: JSON, Verbose 2: JSON with hex.
+   * Calls: getrawtransaction
+   */
+  async getRawTransaction(txid: string, verbose = 2): Promise<unknown> {
+    return this.raw<unknown>('getrawtransaction', [txid, verbose]);
   }
 
+  /**
+   * Submit a raw transaction to the mempool and relay network.
+   * Calls: testmempoolaccept
+   */
+  async testMempoolAccept(rawTx: string, allowHighFees = false): Promise<unknown[]> {
+    return this.raw<unknown[]>('testmempoolaccept', [[rawTx], allowHighFees]);
+  }
+
+  /**
+   * Decode a script hex string.
+   * Calls: decodescript
+   */
+  async decodeScript(hex: string): Promise<unknown> {
+    return this.raw<unknown>('decodescript', [hex]);
+  }
+
+  /**
+   * Create a raw transaction.
+   * Calls: createrawtransaction
+   */
+  async createRawTransaction(
+    inputs: Array<{ txid: string; vout: number }>,
+    outputs: Record<string, number>,
+    locktime = 0,
+    replaceable = false
+  ): Promise<string> {
+    const params: unknown[] = [inputs, outputs];
+    if (locktime > 0) params.push(locktime);
+    if (replaceable) params.push(replaceable);
+    return this.raw<string>('createrawtransaction', params);
+  }
+
+  /**
+   * Sign inputs of a raw transaction using provided private keys.
+   * Calls: signrawtransactionwithkey
+   */
+  async signRawTransactionWithPrivkeys(
+    hex: string,
+    prevTxs: unknown[] = [],
+    privKeys: string[] = []
+  ): Promise<unknown> {
+    return this.raw<unknown>('signrawtransactionwithkey', [hex, privKeys, prevTxs]);
+  }
+
+  /**
+   * Decode a raw transaction hex into its JSON representation.
+   * Calls: decoderawtransaction
+   */
   async decodeRawTransaction(hex: string): Promise<unknown> {
     return this.raw<unknown>('decoderawtransaction', [hex]);
   }
 
   /**
-   * REMOVED: signRawTransactionWithWallet — signing is not allowed in the
-   * web UI. Use phicoin-cli instead.
+   * Broadcast a signed raw transaction to the network.
+   * Calls: sendrawtransaction
    */
-
-  async sendRawTransaction(hex: string): Promise<string> {
-    return this.raw<string>('sendrawtransaction', [hex]);
+  async sendRawTransaction(hex: string, allowHighFees = true): Promise<string> {
+    return this.raw<string>('sendrawtransaction', [hex, allowHighFees]);
   }
 
-  // ---- Blockchain ----
-
-  async getBlockCount(): Promise<number> {
-    return this.raw<number>('getblockcount');
-  }
-
-  async getBlockHash(height: number): Promise<string> {
-    return this.raw<string>('getblockhash', [height]);
-  }
-
-  async getBlock(hash: string, verbosity = 1): Promise<unknown> {
-    return this.raw<unknown>('getblock', [hash, verbosity]);
-  }
-
-  async getMempoolInfo(): Promise<unknown> {
-    return this.raw<unknown>('getmempoolinfo');
-  }
-
+  /**
+   * Estimate a smart fee rate for a given confirmation target.
+   * Calls: estimatesmartfee
+   */
   async estimateSmartFee(confTarget = 6): Promise<unknown> {
     return this.raw<unknown>('estimatesmartfee', [confTarget]);
   }
 
-  // ---- Assets ----
+  // ---- Blockchain queries ----
 
+  /**
+   * Get detailed blockchain state information.
+   * Calls: getblockchaininfo
+   */
+  async getBlockchainInfo(): Promise<unknown> {
+    return this.raw<unknown>('getblockchaininfo');
+  }
+
+  /**
+   * Get the current block count.
+   * Calls: getblockcount
+   */
+  async getBlockCount(): Promise<number> {
+    return this.raw<number>('getblockcount');
+  }
+
+  /**
+   * Get a block hash by height.
+   * Calls: getblockhash
+   */
+  async getBlockHash(height: number): Promise<string> {
+    return this.raw<string>('getblockhash', [height]);
+  }
+
+  /**
+   * Get a block by hash.
+   * Calls: getblock
+   */
+  async getBlock(hash: string, verbosity = 1): Promise<unknown> {
+    return this.raw<unknown>('getblock', [hash, verbosity]);
+  }
+
+  /**
+   * Get a block header by hash.
+   * Calls: getblockheader
+   */
+  async getBlockHeader(hash: string, verbose = true): Promise<unknown> {
+    return this.raw<unknown>('getblockheader', [hash, verbose]);
+  }
+
+  /**
+   * Get the best (tip) block hash.
+   * Calls: getbestblockhash
+   */
+  async getBestBlockHash(): Promise<string> {
+    return this.raw<string>('getbestblockhash');
+  }
+
+  /**
+   * Get the current network difficulty.
+   * Calls: getdifficulty
+   */
+  async getDifficulty(): Promise<number> {
+    return this.raw<number>('getdifficulty');
+  }
+
+  /**
+   * Get all chain tips (potential forks).
+   * Calls: getchaintips
+   */
+  async getChainTips(): Promise<unknown[]> {
+    return this.raw<unknown[]>('getchaintips');
+  }
+
+  // ---- Mempool queries ----
+
+  /**
+   * Get mempool information.
+   * Calls: getmempoolinfo
+   */
+  async getMempoolInfo(): Promise<unknown> {
+    return this.raw<unknown>('getmempoolinfo');
+  }
+
+  /**
+   * Get all transaction IDs in the mempool, or full entries if verbose.
+   * Calls: getrawmempool
+   */
+  async getRawMempool(verbose = false): Promise<unknown> {
+    return this.raw<unknown>('getrawmempool', [verbose]);
+  }
+
+  /**
+   * Get detailed mempool data for a single transaction.
+   * Calls: getmempoolentry
+   */
+  async getMempoolEntry(txid: string): Promise<unknown> {
+    return this.raw<unknown>('getmempoolentry', [txid]);
+  }
+
+  // ---- Asset queries (non-wallet) ----
+
+  /**
+   * List all assets on the blockchain (not wallet-scoped).
+   * Calls: listassets
+   */
   async listAssets(): Promise<unknown[]> {
     return this.raw<unknown[]>('listassets', ['', true, 1000, 0]);
   }
 
+  /**
+   * Get data about a specific asset by its ID.
+   * Calls: getassetdata
+   */
   async getAsset(assetId: string): Promise<unknown> {
     return this.raw<unknown>('getassetdata', [assetId]);
   }
 
-  async listAssetTransactions(_assetId: string, _count = 10, _from = 0): Promise<unknown[]> {
-    // listassettransactions RPC method does not exist on phicoin daemon
-    return [];
-  }
-
-  async listUnspentAsset(_assetId: string, _minConf = 0, _maxConf = 9999999): Promise<unknown[]> {
-    // listunspentasset RPC method does not exist on phicoin daemon
-    return [];
-  }
-
-  async issueAsset(
-    assetName: string,
-    qty: number,
-    toAddress = '',
-    changeAddress = '',
-    units = 8,
-    reissuable = false,
-    hasIPFS = false,
-    ipfsHash = ''
-  ): Promise<string> {
-    return this.raw<string>('issue', [
-      assetName,
-      qty,
-      toAddress,
-      changeAddress,
-      units,
-      reissuable,
-      hasIPFS,
-      ipfsHash,
-    ]);
-  }
-
-  /**
-   * Transfer an asset to an address.
-   * Signature: transfer(asset_name, qty, to_address, message, expire_time, change_address, asset_change_address)
-   */
-  async transferAsset(
-    assetName: string,
-    qty: number,
-    toAddress: string,
-    message = '',
-    expireTime = 0,
-    changeAddress = '',
-    assetChangeAddress = ''
-  ): Promise<string> {
-    return this.raw<string>('transfer', [
-      assetName,
-      qty,
-      toAddress,
-      message,
-      expireTime,
-      changeAddress,
-      assetChangeAddress,
-    ]);
-  }
-
   /**
    * List asset balances for a specific address.
-   * Signature: listassetbalancesbyaddress(address, onlytotal, count, start)
+   * Calls: listassetbalancesbyaddress
    */
   async getAssetBalances(address: string): Promise<unknown[]> {
     return this.raw<unknown[]>('listassetbalancesbyaddress', [address, false, 1000, 0]);
   }
 
-  // ---- Network ----
+  // ---- Network queries ----
 
+  /**
+   * Get network connection information.
+   * Calls: getnetworkinfo
+   */
   async getNetworkInfo(): Promise<unknown> {
     return this.raw<unknown>('getnetworkinfo');
   }
 
+  /**
+   * Get peer connection details.
+   * Calls: getpeerinfo
+   */
   async getPeerInfo(): Promise<unknown[]> {
     return this.raw<unknown[]>('getpeerinfo');
   }
 
-  // ---- UTXO ----
+  /**
+   * Get network byte totals (received / sent).
+   * Calls: getnettotals
+   */
+  async getNetTotals(): Promise<unknown> {
+    return this.raw<unknown>('getnettotals');
+  }
 
-  async listUnspent(minConf = 0, maxConf = 9999999): Promise<unknown[]> {
-    return this.raw<unknown[]>('listunspent', [minConf, maxConf]);
+  // ---- Ban management ----
+
+  /**
+   * Add, remove, or update a ban on a subnet or address.
+   * Commands: "add", "remove", "flush".
+   * Calls: setban
+   */
+  async setBan(
+    subnet: string,
+    command: string,
+    bantime?: number,
+    absolute?: boolean
+  ): Promise<boolean> {
+    const params: unknown[] = [subnet, command];
+    if (command === 'add' && bantime !== undefined) params.push(bantime);
+    if (command === 'add' && absolute !== undefined) params.push(absolute);
+    return this.raw<boolean>('setban', params);
+  }
+
+  /**
+   * List all banned addresses/subnets.
+   * Calls: listbanned
+   */
+  async listBanned(): Promise<unknown[]> {
+    return this.raw<unknown[]>('listbanned');
+  }
+
+  /**
+   * Clear all banned addresses.
+   * Calls: clearbanned
+   */
+  async clearBanned(): Promise<boolean> {
+    return this.raw<boolean>('clearbanned');
+  }
+
+  /**
+   * Ping other nodes to measure latency.
+   * Calls: ping
+   */
+  async ping(): Promise<void> {
+    return this.raw<void>('ping');
   }
 
   // ---- Mining ----
 
+  /**
+   * Get mining-related information.
+   * Calls: getmininginfo
+   */
   async getMiningInfo(): Promise<unknown> {
     return this.raw<unknown>('getmininginfo');
   }
 
+  /**
+   * Get a block template for mining.
+   * Calls: getblocktemplate
+   */
   async getBlockTemplate(): Promise<unknown> {
     return this.raw<unknown>('getblocktemplate', [{ mode: 'template' }]);
   }

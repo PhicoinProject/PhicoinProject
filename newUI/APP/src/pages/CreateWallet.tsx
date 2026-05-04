@@ -86,6 +86,7 @@ export const CreateWallet: React.FC = () => {
     setLoading(true);
     try {
       await createWalletV2(mnemonic, userSeed, password);
+      localStorage.setItem('phi:walletVersion', '2');
       sessionStorage.setItem('phi:createMnemonic', mnemonic);
       setStep('verifying');
       generateQuiz();

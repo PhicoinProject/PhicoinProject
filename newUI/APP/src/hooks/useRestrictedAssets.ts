@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { rpc } from '@/services/rpc';
+import { walletService } from '@/services/wallet';
 
 /** Restricted asset detail */
 export interface RestrictedAsset {
@@ -32,26 +33,33 @@ export interface AddressRestriction {
 
 /** Fetch restricted assets held by the wallet */
 async function fetchRestrictedAssets(): Promise<RestrictedAsset[]> {
-  // listmyassets(verbose) returns an object keyed by address:
-  // { address1: { assetInfo: { assetId: ..., restrictionType: ..., verifier: ... }, balance: ... }, ... }
-  const data = await rpc.raw<Record<string, unknown>>('listmyassets', ['', true]);
+  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+  if (!addresses.length) return [];
+
   const assets: RestrictedAsset[] = [];
-  for (const addressObj of Object.values(data)) {
-    const addr = addressObj as Record<string, unknown>;
-    // Each address entry has asset info records keyed by asset label
-    for (const assetEntry of Object.values(addr)) {
-      const info = assetEntry as Record<string, unknown>;
-      const assetInfo = (info.assetInfo ?? info) as Record<string, unknown>;
-      const restrictionType = String(assetInfo.restrictionType ?? 'none');
-      if (restrictionType !== 'none') {
+  const seen = new Set<string>();
+
+  for (const addr of addresses) {
+    try {
+      const balances = await rpc.getAssetBalances(addr);
+      for (const entry of (balances || []) as Record<string, unknown>[]) {
+        const assetId = String(entry.asset ?? entry.assetId ?? '');
+        if (!assetId || seen.has(assetId)) continue;
+        seen.add(assetId);
+
+        const restrictionType = String(entry.restrictionType ?? 'none');
+        if (restrictionType === 'none') continue;
+
         assets.push({
-          assetId: String(assetInfo.assetId ?? ''),
-          assetLabel: String(assetInfo.assetLabel ?? ''),
+          assetId,
+          assetLabel: assetId,
           restrictionType,
-          verifier: String(assetInfo.verifier ?? ''),
-          balance: Number(info.balance ?? assetInfo.balance ?? 0),
+          verifier: String(entry.verifier ?? ''),
+          balance: Number(entry.balance ?? entry.amount ?? 0),
         });
       }
+    } catch {
+      // Skip
     }
   }
   return assets;
@@ -59,25 +67,32 @@ async function fetchRestrictedAssets(): Promise<RestrictedAsset[]> {
 
 /** Fetch qualifiers owned by the wallet */
 async function fetchQualifiers(): Promise<Qualifier[]> {
-  // Qualifiers appear as restricted assets with restrictionType containing 'QUALIFIER'
-  // in listmyassets. Fetch from listmyassets and filter for QUALIFIER types.
-  const data = await rpc.raw<Record<string, unknown>>('listmyassets', ['', true]);
+  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+  if (!addresses.length) return [];
+
   const qualifiers: Qualifier[] = [];
-  for (const addressObj of Object.values(data)) {
-    const addr = addressObj as Record<string, unknown>;
-    for (const assetEntry of Object.values(addr)) {
-      const info = assetEntry as Record<string, unknown>;
-      const assetInfo = (info.assetInfo ?? info) as Record<string, unknown>;
-      const restrictionType = String(assetInfo.restrictionType ?? 'none');
-      if (restrictionType.toUpperCase().includes('QUALIFIER')) {
-        const qualifierStr = String(assetInfo.assetLabel ?? assetInfo.assetId ?? '');
-        if (qualifierStr && !qualifiers.find((q) => q.qualifier === qualifierStr)) {
+  const seen = new Set<string>();
+
+  for (const addr of addresses) {
+    try {
+      const balances = await rpc.getAssetBalances(addr);
+      for (const entry of (balances || []) as Record<string, unknown>[]) {
+        const assetId = String(entry.asset ?? entry.assetId ?? '');
+        if (!assetId || seen.has(assetId)) continue;
+        seen.add(assetId);
+
+        const restrictionType = String(entry.restrictionType ?? 'none');
+        if (!restrictionType.toUpperCase().includes('QUALIFIER')) continue;
+
+        if (!qualifiers.find((q) => q.qualifier === assetId)) {
           qualifiers.push({
-            qualifier: qualifierStr,
-            txid: String((assetInfo as any).assetTx ?? (info as any).assetTx ?? ''),
+            qualifier: assetId,
+            txid: String(entry.assetTx ?? entry.blockhash ?? ''),
           });
         }
       }
+    } catch {
+      // Skip
     }
   }
   return qualifiers;
@@ -85,39 +100,35 @@ async function fetchQualifiers(): Promise<Qualifier[]> {
 
 /** Fetch address tags */
 async function fetchAddressTags(): Promise<AddressTag[]> {
-  // The daemon has listtagsforaddress(address) and listaddressesfortag(tag) RPCs,
-  // but there is no "list all tags" RPC. We would need wallet addresses first
-  // (via listreceivedbyaddress) and then call listtagsforaddress for each one.
-  // For now, stubbed as empty array.
+  // Requires wallet addresses + listtagsforaddress per address
   return [];
 }
 
 /** Fetch frozen/restricted addresses */
 async function fetchAddressRestrictions(): Promise<AddressRestriction[]> {
-  // The daemon has listaddressrestrictions(address) RPC, but we don't know
-  // addresses a priori. We could get addresses from listreceivedbyaddress and
-  // then call listaddressrestrictions for each one, but that's expensive.
-  // listreceivedbyaddress returns {address, amount, confirmations, label, txids}
-  // which does NOT include assetId, assetLabel, or status fields. Stubbing
-  // to return empty array until we have a proper way to enumerate restrictions.
+  // Requires wallet addresses + listaddressrestrictions per address
   return [];
 }
 
 /** Hook for restricted assets */
 export function useRestrictedAssets() {
+  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
   return useQuery({
-    queryKey: ['restrictedAssets'],
+    queryKey: ['restrictedAssets', addresses.join(',')],
     queryFn: fetchRestrictedAssets,
     staleTime: 30_000,
+    enabled: addresses.length > 0,
   });
 }
 
 /** Hook for qualifiers */
 export function useQualifiers() {
+  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
   return useQuery({
-    queryKey: ['qualifiers'],
+    queryKey: ['qualifiers', addresses.join(',')],
     queryFn: fetchQualifiers,
     staleTime: 60_000,
+    enabled: addresses.length > 0,
   });
 }
 

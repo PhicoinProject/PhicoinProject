@@ -18,7 +18,7 @@ services:
     environment:
       - CHOKIDAR_USEPOLLING=true
       - VITE_RPC_HOST=phicoin-daemon
-      - VITE_RPC_PORT=28966
+      - VITE_RPC_PORT=16611
       - VITE_RPC_USER=phicoin
       - VITE_RPC_PASSWORD=phicoinpass
     command: npm run dev -- --host
@@ -31,18 +31,17 @@ services:
     image: phicoin:latest
     ports:
       - "28964:28964"
-      - "28966:28966"
+      - "28966:16611"
     volumes:
       - phicoin-data:/var/lib/phicoin
       - ../../../release_test/phicoin-data:/prebuilt:ro
-    user: "1000:1000"
     entrypoint: ["/bin/bash", "-c"]
     command:
       - |
         if [ ! -d /var/lib/phicoin/blocks ]; then
           cp -r /prebuilt/* /var/lib/phicoin/ 2>/dev/null || true
         fi
-        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -server=1 -rpcuser=phicoin -rpcpassword=phicoinpass -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0 -rpcport=28966
+        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -server=1 -disablewallet -txindex -addressindex -spentindex -rpcuser=phicoin -rpcpassword=phicoinpass -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0
     networks:
       - phicoin-net
 

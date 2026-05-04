@@ -10,8 +10,8 @@ export function useSyncStatus() {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const walletInfo = await rpc.getWalletInfo();
-        const info = walletInfo as Record<string, unknown>;
+        const blockchainInfo = await rpc.getBlockchainInfo();
+        const info = blockchainInfo as Record<string, unknown>;
         const blocks = Number(info.blocks ?? 0);
         const headers = Number(info.headers ?? 0);
         const behind = Math.max(0, headers - blocks);

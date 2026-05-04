@@ -96,25 +96,33 @@ export class AddressTracker {
 
   /**
    * Scan blockchain for address usage.
-   * Checks each derived address against known transaction history.
+   * Uses z_getaddresstxids (address-index) to check each derived address
+   * for transaction activity instead of wallet-bound listtransactions.
    */
   async scanForUsage(_network: 'mainnet' | 'testnet'): Promise<void> {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return;
 
     try {
-      // Get transactions from RPC to find used addresses
-      const transactions = await rpc.listTransactions('*', 100, 0);
+      // Collect all tracked addresses
+      const trackedAddresses = Array.from(this.records.values()).map((r) => r.address);
+      if (!trackedAddresses.length) return;
 
+      // Build a set of addresses that have transaction activity
       const usedAddresses = new Set<string>();
 
-      // Extract addresses from transaction history
-      for (const tx of transactions as Record<string, unknown>[]) {
-        const address = tx.address as string;
-        if (address) usedAddresses.add(address);
+      for (const addr of trackedAddresses) {
+        try {
+          const txIds = await rpc.getAddressTxIds([addr], true);
+          if (txIds.length > 0) {
+            usedAddresses.add(addr);
+          }
+        } catch {
+          // Skip addresses that fail to query
+        }
       }
 
-      // Mark addresses as used if they appear in transaction history
+      // Mark addresses as used if they have transaction activity
       for (const [, record] of this.records) {
         if (usedAddresses.has(record.address)) {
           record.used = true;

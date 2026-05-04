@@ -393,12 +393,22 @@ function compressPublicKey(pubKey: Uint8Array): Uint8Array {
   throw new Error('Invalid public key length');
 }
 
-/** Broadcast a signed transaction */
-export async function broadcastTx(rawTxHex: string): Promise<string> {
-  return rpc.sendRawTransaction(rawTxHex);
+/** Broadcast a signed transaction with optional allowHighFees flag */
+export async function broadcastTx(rawTxHex: string, allowHighFees = false): Promise<string> {
+  return rpc.sendRawTransaction(rawTxHex, allowHighFees);
 }
 
-/** Build, sign, and broadcast in one step */
+/**
+ * Run testmempoolaccept pre-flight validation on a raw transaction.
+ * Returns the RPC response; throws on rejection.
+ */
+export async function testMempoolAccept(rawTxHex: string): Promise<unknown[]> {
+  return rpc.testMempoolAccept(rawTxHex);
+}
+
+/**
+ * Build, sign, and broadcast in one step.
+ */
 export async function buildAndBroadcast(
   options: PSBTBuildOptions
 ): Promise<{ txid: string; rawTx: string }> {
@@ -406,6 +416,19 @@ export async function buildAndBroadcast(
   const txidHash = sha256(sha256(fromHex(rawTx)));
   const txid = toHex(new Uint8Array([...txidHash].reverse()));
   await broadcastTx(rawTx);
+  return { txid, rawTx };
+}
+
+/**
+ * Build and sign only -- does NOT broadcast.
+ * Returns the raw hex and computed txid for pre-flight checks.
+ */
+export async function buildAndSignOnly(
+  options: PSBTBuildOptions
+): Promise<{ txid: string; rawTx: string }> {
+  const rawTx = await buildP2PKHTx(options);
+  const txidHash = sha256(sha256(fromHex(rawTx)));
+  const txid = toHex(new Uint8Array([...txidHash].reverse()));
   return { txid, rawTx };
 }
 

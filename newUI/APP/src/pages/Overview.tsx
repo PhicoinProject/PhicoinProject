@@ -12,7 +12,11 @@ export const Overview: React.FC = () => {
   const error = useWalletStore((s) => s.error);
 
   // Recent transactions
-  const { data: transactions, isLoading: txLoading, isError: txError } = useTransactions(5);
+  const {
+    data: transactions,
+    isLoading: txLoading,
+    isError: txError,
+  } = useTransactions({ count: 5 });
 
   // Network status (block count, peers)
   const { data: networkStatus, isLoading: netLoading, isError: netError } = useNetworkStatus();
@@ -168,7 +172,9 @@ export const Overview: React.FC = () => {
                 d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 002-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
               />
             </svg>
-            <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">No transactions yet</p>
+            <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
+              No transactions yet
+            </p>
             <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
               Your transaction history will appear here
             </p>

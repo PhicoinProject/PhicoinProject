@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMyAssets } from '@/hooks';
 import { assetService } from '@/services/assets';
+import { walletService } from '@/services/wallet';
 import type { Asset } from '@/types';
 import { AssetTable, AssetIssuer } from '@/components/assets';
 import { Button } from '@/components/common/Button';
@@ -46,6 +47,15 @@ export const Assets: React.FC = () => {
   const [receiveLoading, setReceiveLoading] = useState(false);
 
   const { data: assets, isLoading } = useMyAssets();
+
+  // Derive address pool for asset address lookups
+  const addressList = (() => {
+    try {
+      return walletService.getDerivedAddressPool().map((a) => a.address);
+    } catch {
+      return [];
+    }
+  })();
 
   const filteredAssets = (assets ?? []).filter((a: Asset) => {
     if (!search) return true;
@@ -99,7 +109,7 @@ export const Assets: React.FC = () => {
     setReceiveLoading(true);
     setReceiveOpen(true);
     try {
-      const addr = await assetService.getAssetAddress(asset.assetId);
+      const addr = await assetService.getAssetAddress(asset.assetId, addressList);
       setReceiveAddr(addr);
     } catch {
       setReceiveAddr('Use any wallet address to receive this asset.');
@@ -187,7 +197,9 @@ export const Assets: React.FC = () => {
             </div>
             <div>
               <span className="text-gray-500 dark:text-dark-mutedText">Nonce:</span>{' '}
-              <span className="ml-2 text-gray-800 dark:text-dark-secondary">{selectedAsset.nonce}</span>
+              <span className="ml-2 text-gray-800 dark:text-dark-secondary">
+                {selectedAsset.nonce}
+              </span>
             </div>
             {selectedAsset.ipfsHash && (
               <div>
