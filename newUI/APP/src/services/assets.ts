@@ -307,10 +307,29 @@ function writeVarInt(number: number): Uint8Array {
   return b;
 }
 
+interface RawTxInput {
+  prevTxId: string;
+  vout: number;
+  scriptSig: Uint8Array;
+  sequence: number;
+}
+
+interface RawTxOutput {
+  value: bigint;
+  scriptPubKey: Uint8Array;
+}
+
+interface ParsedRawTx {
+  version: number;
+  inputs: RawTxInput[];
+  outputs: RawTxOutput[];
+  locktime: number;
+}
+
 /**
  * Parse a raw tx hex into structured inputs/outputs for sighash computation.
  */
-function parseRawTx(rawHex: string) {
+function parseRawTx(rawHex: string): ParsedRawTx {
   const bytes = hexToArray(rawHex);
   let offset = 0;
 
@@ -363,7 +382,7 @@ function parseRawTx(rawHex: string) {
  * replace input's scriptSig with the scriptPubKey, clear other inputs' scriptSigs.
  */
 function computeP2PKHSighash(
-  tx: { version: number; inputs: any[]; outputs: any[]; locktime: number },
+  tx: ParsedRawTx,
   inputIndex: number,
   scriptPubKey: Uint8Array
 ): Uint8Array {
