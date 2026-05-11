@@ -1,10 +1,11 @@
 import { rpc } from './rpc';
+import { HDKey } from '@scure/bip32';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { deriveReceiveAddress, deriveChangeAddress, isValidPHICoinAddress, getScriptPubKeyFromPublicKey } from './addressDerivation';
 import { buildAndSignOnly, testMempoolAccept, broadcastTx } from './psbt';
 import { scanChain } from './chainScanner';
 import { toHex } from './crypto';
-import type { Address, WalletState, UTXO, DerivedAddress } from '@/types';
+import type { Address, WalletState, UTXO, DerivedAddress, AddressBalanceResult } from '@/types';
 import type { PSBTInput, PSBTOutput } from './psbt';
 import type { ChainScanResult } from './chainScanner';
 
@@ -27,9 +28,9 @@ export class WalletService {
     for (const addr of addresses) {
       try {
         const result = await rpc.getAddressBalance(addr);
-        const data = result as Record<string, unknown>;
-        const rawBalance = (data as any).balance ?? (data as any).result?.balance ?? 0;
-        total += Number(rawBalance) / 1e8;
+        const data = result as AddressBalanceResult;
+        const rawBalance = 'balance' in data ? data.balance : data.result.balance;
+        total += Number(rawBalance ?? 0) / 1e8;
       } catch {
         // Skip addresses with errors
       }
@@ -85,8 +86,9 @@ export class WalletService {
       let totalReceived = 0;
       try {
         const result = await rpc.getAddressBalance(addr);
-        const data = result as Record<string, unknown>;
-        totalReceived = Number((data as any).balance ?? (data as any).result?.balance ?? 0) / 1e8;
+        const data = result as AddressBalanceResult;
+        const balanceVal = 'balance' in data ? data.balance : data.result.balance;
+        totalReceived = Number(balanceVal ?? 0) / 1e8;
       } catch {
         // Skip addresses with errors
       }
@@ -462,8 +464,9 @@ export class WalletService {
     try {
       const changeAddr = deriveChangeAddress(hdKey, 'mainnet', currentChangeIndex);
       const result = await rpc.getAddressBalance(changeAddr.address);
-      const data = result as Record<string, unknown>;
-      const balance = Number((data as any).balance ?? 0);
+      const data = result as AddressBalanceResult;
+      const balanceVal = 'balance' in data ? data.balance : data.result.balance;
+      const balance = Number(balanceVal ?? 0);
 
       // If balance is zero, the change address is fully spent — advance
       if (balance === 0 && currentChangeIndex < 99) {
@@ -509,7 +512,7 @@ export class WalletService {
   }
 
   private deriveAddressPool(
-    hdKey: any,
+    hdKey: HDKey,
     network: 'mainnet' | 'testnet',
     start: number,
     count: number

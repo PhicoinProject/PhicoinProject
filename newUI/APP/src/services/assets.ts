@@ -215,7 +215,7 @@ async function buildAndBroadcastAssetTx(params: {
   // Collect private keys for all input scriptPubKeys using batch lookup
   const privKeys = new Set<string>();
   for (const u of selectedUtxos) {
-    const scriptKey = String((u as any).scriptPubKey ?? '');
+    const scriptKey = String(u.scriptPubKey ?? '');
     if (scriptKey) {
       const pk = await getPrivateKeyForScript(scriptKey, keyMap);
       if (pk) privKeys.add(pk);

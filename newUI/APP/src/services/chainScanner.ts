@@ -1,5 +1,6 @@
 import { HDKey } from '@scure/bip32';
 import { deriveReceiveAddress } from './addressDerivation';
+import type { AddressBalance, AddressBalanceResult, AddressMempoolEntry } from '@/types';
 import { rpc } from './rpc';
 
 /** Default gap limit -- stop scanning after this many consecutive unused addresses. */
@@ -157,8 +158,9 @@ export async function scanChain(
   for (const entry of usedEntries) {
     try {
       const result = await getBalanceFn(entry.address);
-      const data = result as Record<string, unknown>;
-      entry.balance = Number((data as any).balance ?? 0) / 1e8;
+      const data = result as AddressBalanceResult;
+      const balanceVal = 'balance' in data ? data.balance : data.result.balance;
+      entry.balance = Number(balanceVal ?? 0) / 1e8;
     } catch {
       // RPC error -- balance remains 0
     }
@@ -217,8 +219,8 @@ export async function pollMempool(addresses: string[]): Promise<MempoolPollResul
       () => rpc.getMempoolInfo(),
     ]);
 
-    const entries = Array.isArray(mempoolEntries) ? (mempoolEntries as any[]) : [];
-    const txIds = entries.map((e: any) => String(e.txid ?? e.txHash ?? ''));
+    const entries = Array.isArray(mempoolEntries) ? (mempoolEntries as AddressMempoolEntry[]) : [];
+    const txIds = entries.map((e) => String(e.txid ?? ''));
 
     const info = mempoolInfo as Record<string, unknown> | undefined;
     const mempoolSize = Number(info?.size ?? 0);
@@ -287,16 +289,16 @@ export async function pollChainSnapshot(addresses: string[]): Promise<ChainSnaps
     let totalBalance = 0;
     if (balMap) {
       for (const addr of addresses) {
-        const entry = balMap[addr] as Record<string, unknown> | undefined;
+        const entry = balMap[addr] as AddressBalanceResult | undefined;
         if (entry) {
-          totalBalance +=
-            Number((entry as any).balance ?? (entry as any).result?.balance ?? 0) / 1e8;
+          const balObj = 'balance' in entry ? entry : (entry as { result: AddressBalance }).result;
+          totalBalance += Number(balObj.balance ?? 0) / 1e8;
         }
       }
     }
 
-    const entries = Array.isArray(mempoolEntries) ? (mempoolEntries as any[]) : [];
-    const mempoolTxIds = entries.map((e: any) => String(e.txid ?? e.txHash ?? ''));
+    const entries = Array.isArray(mempoolEntries) ? (mempoolEntries as AddressMempoolEntry[]) : [];
+    const mempoolTxIds = entries.map((e) => String(e.txid ?? ''));
 
     return { blockHeight: height, balance: totalBalance, mempoolTxIds };
   } catch {

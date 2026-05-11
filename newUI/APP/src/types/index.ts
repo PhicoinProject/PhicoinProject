@@ -208,3 +208,25 @@ export interface DerivedAddress {
   network: number;
   label: string;
 }
+
+// Re-export RPC response types
+export type {
+  AddressBalance,
+  AddressBalanceResult,
+  AddressUtxo,
+  AddressMempoolEntry,
+  RawTransactionVerbose,
+  MempoolAcceptEntry,
+  EstimateSmartFeeResult,
+  SignRawTransactionResult,
+  DecodedScriptResult,
+  BlockchainInfo,
+  NetworkInfo,
+  MempoolInfo,
+  BlockVerbose,
+  NetTotals,
+  PeerInfo,
+  MiningInfo,
+  BannedEntry,
+  ChainTip,
+} from './rpc';

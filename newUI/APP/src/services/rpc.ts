@@ -121,7 +121,8 @@ const BLOCKED_METHODS = new Set([
  */
 function viteEnv(key: string, fallback: string): string {
   try {
-    return (import.meta as any).env?.[key] ?? fallback;
+    const env = (import.meta as unknown as { env?: Record<string, string> })?.env;
+    return env?.[key] ?? fallback;
   } catch {
     return fallback;
   }
