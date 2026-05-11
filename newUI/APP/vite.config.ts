@@ -53,6 +53,17 @@ export default defineConfig({
     outDir: 'dist',
     // SECURITY: Disable sourcemaps in production to prevent source code exposure
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@noble/')) return 'vendor-crypto';
+          if (id.includes('@scure/')) return 'vendor-hd';
+          if (id.includes('/qrcode/')) return 'vendor-qrcode';
+          if (id.includes('/react/') || id.includes('/react-dom/')) return 'vendor-react';
+          if (id.includes('/@tanstack/react-query/')) return 'vendor-query';
+        },
+      },
+    },
   },
   // SECURITY: Content Security Policy headers for production
   // These should be enforced by the web server. Recommended server headers:
