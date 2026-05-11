@@ -25,7 +25,7 @@ describe('RPC Integration', () => {
       const count = await rpc.raw('getblockcount');
       expect(typeof count).toBe('number');
       expect(count).toBeGreaterThanOrEqual(0);
-    });
+    }, 15000);
   });
 
   describe('getnetworkinfo', () => {

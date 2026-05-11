@@ -1,6 +1,8 @@
 import { base58 } from '@scure/base';
+import * as nobleSecp from '@noble/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { hmac } from '@noble/hashes/hmac';
 import { rpc } from './rpc';
 import { walletService } from './wallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
@@ -17,6 +19,15 @@ import {
   QualifierType,
 } from './assetSerialization';
 import type { Asset, UTXO } from '@/types';
+
+// Initialize noble/secp256k1 for deterministic signing
+const hmacSha256 = (key: Uint8Array, ...msgs: Uint8Array[]) => {
+  const data = new Uint8Array(msgs.reduce((s, m) => s + m.length, 0));
+  let off = 0;
+  for (const m of msgs) { data.set(m, off); off += m.length; }
+  return hmac(sha256, data, key);
+};
+nobleSecp.utils.hmacSha256Sync = hmacSha256;
 
 const OP_DUP = 0x76;
 const OP_HASH160 = 0xa9;
@@ -101,6 +112,17 @@ function compressPublicKey(pubKey: Uint8Array): Uint8Array {
     return compressed;
   }
   throw new Error('Invalid public key length');
+}
+
+function concatBytes(...arrays: Uint8Array[]): Uint8Array {
+  const total = arrays.reduce((s, a) => s + a.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const a of arrays) {
+    result.set(a, offset);
+    offset += a.length;
+  }
+  return result;
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -212,41 +234,313 @@ async function buildAndBroadcastAssetTx(params: {
     }
   }
 
-  // Collect private keys for all input scriptPubKeys using batch lookup
-  const privKeys = new Set<string>();
+  // Verify: private keys found for all inputs (private keys never leave the browser)
   for (const u of selectedUtxos) {
     const scriptKey = String(u.scriptPubKey ?? '');
     if (scriptKey) {
       const pk = await getPrivateKeyForScript(scriptKey, keyMap);
-      if (pk) privKeys.add(pk);
-      else console.warn(`Could not find private key for scriptPubKey: ${scriptKey}`);
+      if (!pk) console.warn(`Could not find private key for scriptPubKey: ${scriptKey}`);
     }
   }
 
-  if (privKeys.size === 0) {
+  // Sign locally with @noble/secp256k1 — private keys never leave the browser
+  const signed = signRawTransactionLocally(rawTxHex, selectedUtxos, prevTxs, keyMap);
+  if (!signed) {
     throw new Error(
-      'Could not find private keys for any UTXO inputs. ' +
+      'Transaction signing failed. ' +
         'Ensure wallet is unlocked and addresses are derived from this wallet.'
     );
   }
 
-  // Sign via RPC signrawtransactionwithkey
-  const signResult = await rpc.signRawTransactionWithPrivkeys(rawTxHex, prevTxs, [...privKeys]);
-  const signObj = signResult as Record<string, unknown>;
+  return rpc.sendRawTransaction(signed, true);
+}
 
-  if (signResult && signObj.complete === true) {
-    const hex = String(signObj.hex ?? '');
-    if (!hex) throw new Error('Sign successful but no hex returned');
-    return rpc.sendRawTransaction(hex, true);
+// ============================================================================
+// Local Transaction Signing with @noble/secp256k1
+// Private keys never leave the browser.
+// ============================================================================
+
+function hexToArray(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return bytes;
+}
+
+function readVarInt(bytes: Uint8Array, offset: number): { value: number; size: number } {
+  if (bytes[offset] < 0xfd) {
+    return { value: bytes[offset], size: 1 };
+  }
+  if (bytes[offset] === 0xfd) {
+    const value = bytes[offset + 1] | (bytes[offset + 2] << 8);
+    return { value, size: 3 };
+  }
+  if (bytes[offset] === 0xfe) {
+    const value =
+      bytes[offset + 1] |
+      (bytes[offset + 2] << 8) |
+      (bytes[offset + 3] << 16) |
+      (bytes[offset + 4] << 24);
+    return { value, size: 5 };
+  }
+  // 0xff — 64-bit, we only need 32-bit for tx parsing but handle for completeness
+  const lo =
+    bytes[offset + 1] |
+    (bytes[offset + 2] << 8) |
+    (bytes[offset + 3] << 16) |
+    (bytes[offset + 4] << 24);
+  return { value: lo, size: 9 };
+}
+
+function writeVarInt(number: number): Uint8Array {
+  if (number < 0xfd) return new Uint8Array([number]);
+  if (number <= 0xffff) {
+    const b = new Uint8Array(3);
+    b[0] = 0xfd;
+    new DataView(b.buffer).setUint16(1, number, true);
+    return b;
+  }
+  const b = new Uint8Array(5);
+  b[0] = 0xfe;
+  new DataView(b.buffer).setUint32(1, number, true);
+  return b;
+}
+
+/**
+ * Parse a raw tx hex into structured inputs/outputs for sighash computation.
+ */
+function parseRawTx(rawHex: string) {
+  const bytes = hexToArray(rawHex);
+  let offset = 0;
+
+  // Version (4 bytes)
+  const version = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getInt32(0, true);
+  offset += 4;
+
+  // Inputs
+  const inLen = readVarInt(bytes, offset);
+  offset += inLen.size;
+  const inputs = [];
+  for (let i = 0; i < inLen.value; i++) {
+    const prevTxId = toHex(bytes.slice(offset, offset + 32));
+    offset += 32;
+    const vout = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
+    offset += 4;
+    const scriptLen = readVarInt(bytes, offset);
+    offset += scriptLen.size;
+    const scriptSig = bytes.slice(offset, offset + scriptLen.value);
+    offset += scriptLen.value;
+    const sequence = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
+    offset += 4;
+    inputs.push({ prevTxId, vout, scriptSig, sequence });
   }
 
-  throw new Error(
-    `Transaction signing incomplete. ${
-      (signObj.errors as unknown[])?.map((e: unknown) => String(e)).join(', ') ??
-      'Unknown signing error'
-    }`
-  );
+  // Outputs
+  const outLen = readVarInt(bytes, offset);
+  offset += outLen.size;
+  const outputs = [];
+  for (let i = 0; i < outLen.value; i++) {
+    const value = new DataView(bytes.buffer, bytes.byteOffset + offset, 8).getBigInt64(0, true);
+    offset += 8;
+    const scriptLen = readVarInt(bytes, offset);
+    offset += scriptLen.size;
+    const scriptPubKey = bytes.slice(offset, offset + scriptLen.value);
+    offset += scriptLen.value;
+    outputs.push({ value, scriptPubKey });
+  }
+
+  // Locktime
+  const locktime = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
+  offset += 4;
+
+  return { version, inputs, outputs, locktime };
 }
+
+/**
+ * Compute BIP143-style sighash for a P2PKH input.
+ * For non-SegWit P2PKH, this is the Legacy sighash:
+ * replace input's scriptSig with the scriptPubKey, clear other inputs' scriptSigs.
+ */
+function computeP2PKHSighash(
+  tx: { version: number; inputs: any[]; outputs: any[]; locktime: number },
+  inputIndex: number,
+  scriptPubKey: Uint8Array
+): Uint8Array {
+  const parts: Uint8Array[] = [];
+
+  // Version
+  const versionBuf = new Uint8Array(4);
+  new DataView(versionBuf.buffer).setInt32(0, tx.version, true);
+  parts.push(versionBuf);
+
+  // Input count
+  parts.push(writeVarInt(tx.inputs.length));
+
+  for (let i = 0; i < tx.inputs.length; i++) {
+    const inp = tx.inputs[i];
+    // prevout
+    const prevTxIdBytes = hexToArray(inp.prevTxId.split('').reverse().join(''));
+    parts.push(prevTxIdBytes);
+    const voutBuf = new Uint8Array(4);
+    new DataView(voutBuf.buffer).setUint32(0, inp.vout, true);
+    parts.push(voutBuf);
+
+    if (i === inputIndex) {
+      // Replace scriptSig with scriptPubKey for the current input
+      parts.push(writeVarInt(scriptPubKey.length));
+      parts.push(scriptPubKey);
+    } else {
+      // Empty scriptSig for other inputs
+      parts.push(writeVarInt(0));
+    }
+
+    // Sequence
+    const seqBuf = new Uint8Array(4);
+    new DataView(seqBuf.buffer).setUint32(0, inp.sequence, true);
+    parts.push(seqBuf);
+  }
+
+  // Output count
+  parts.push(writeVarInt(tx.outputs.length));
+
+  for (const out of tx.outputs) {
+    // Value (8 bytes LE)
+    const valBuf = new Uint8Array(8);
+    new DataView(valBuf.buffer).setBigInt64(0, BigInt(out.value), true);
+    parts.push(valBuf);
+    // ScriptPubKey
+    parts.push(writeVarInt(out.scriptPubKey.length));
+    parts.push(out.scriptPubKey);
+  }
+
+  // Locktime
+  const locktimeBuf = new Uint8Array(4);
+  new DataView(locktimeBuf.buffer).setUint32(0, tx.locktime, true);
+  parts.push(locktimeBuf);
+
+  // SIGHASH_ALL = 0x01
+  const sighashBuf = new Uint8Array(4);
+  new DataView(sighashBuf.buffer).setUint32(0, 1, true);
+  parts.push(sighashBuf);
+
+  const serialized = concatBytes(...parts);
+  return sha256(sha256(serialized));
+}
+
+/**
+ * Sign a raw transaction locally using @noble/secp256k1.
+ * Returns signed hex or null if any input fails.
+ */
+function signRawTransactionLocally(
+  rawHex: string,
+  utxos: UTXO[],
+  prevTxs: Record<string, unknown>[],
+  keyMap: Map<string, string>
+): string | null {
+  try {
+    const tx = parseRawTx(rawHex);
+
+    // Get scriptPubKeys from previous transactions
+    const inputScripts: Uint8Array[] = [];
+    for (let i = 0; i < tx.inputs.length; i++) {
+      const u = utxos[i];
+      if (u && u.scriptPubKey) {
+        inputScripts.push(hexToArray(String(u.scriptPubKey)));
+      } else {
+        // Fallback: extract from prev tx
+        let prevTx = null;
+        for (const pt of prevTxs) {
+          if (String(pt.txid ?? '') === tx.inputs[i].prevTxId ||
+              String(pt.txid ?? '').split('').reverse().join('') === tx.inputs[i].prevTxId) {
+            prevTx = pt;
+            break;
+          }
+        }
+        if (prevTx && prevTx.vout && Array.isArray(prevTx.vout)) {
+          const out = prevTx.vout[tx.inputs[i].vout];
+          if (out && out.scriptPubKey && out.scriptPubKey.hex) {
+            inputScripts.push(hexToArray(out.scriptPubKey.hex));
+          } else {
+            inputScripts.push(new Uint8Array(0));
+          }
+        } else {
+          inputScripts.push(new Uint8Array(0));
+        }
+      }
+    }
+
+    // Sign each input
+    const signedScriptSigs: Uint8Array[] = [];
+    for (let i = 0; i < tx.inputs.length; i++) {
+      const scriptPubKey = inputScripts[i];
+      if (!scriptPubKey || scriptPubKey.length === 0) return null;
+
+      const pkHex = keyMap.get(toHex(scriptPubKey));
+      if (!pkHex) {
+        console.warn(`No private key for input ${i} scriptPubKey ${toHex(scriptPubKey)}`);
+        return null;
+      }
+
+      const sighash = computeP2PKHSighash(tx, i, scriptPubKey);
+      const sig = nobleSecp.signSync(sighash, pkHex, { der: true });
+
+      // scriptSig = DER_SIG + SIGHASH_BYTE
+      const scriptSig = new Uint8Array(sig.length + 1);
+      scriptSig.set(sig);
+      scriptSig[sig.length] = 0x01; // SIGHASH_ALL
+      signedScriptSigs.push(scriptSig);
+    }
+
+    // Rebuild transaction with signatures
+    const parts: Uint8Array[] = [];
+
+    // Version
+    const versionBuf = new Uint8Array(4);
+    new DataView(versionBuf.buffer).setInt32(0, tx.version, true);
+    parts.push(versionBuf);
+
+    // Inputs
+    parts.push(writeVarInt(tx.inputs.length));
+    for (let i = 0; i < tx.inputs.length; i++) {
+      const inp = tx.inputs[i];
+      const prevTxIdBytes = hexToArray(inp.prevTxId.split('').reverse().join(''));
+      parts.push(prevTxIdBytes);
+      const voutBuf = new Uint8Array(4);
+      new DataView(voutBuf.buffer).setUint32(0, inp.vout, true);
+      parts.push(voutBuf);
+      // scriptSig with signature
+      const sig = signedScriptSigs[i];
+      parts.push(writeVarInt(sig.length));
+      parts.push(sig);
+      const seqBuf = new Uint8Array(4);
+      new DataView(seqBuf.buffer).setUint32(0, inp.sequence, true);
+      parts.push(seqBuf);
+    }
+
+    // Outputs
+    parts.push(writeVarInt(tx.outputs.length));
+    for (const out of tx.outputs) {
+      const valBuf = new Uint8Array(8);
+      new DataView(valBuf.buffer).setBigInt64(0, BigInt(out.value), true);
+      parts.push(valBuf);
+      parts.push(writeVarInt(out.scriptPubKey.length));
+      parts.push(out.scriptPubKey);
+    }
+
+    // Locktime
+    const locktimeBuf = new Uint8Array(4);
+    new DataView(locktimeBuf.buffer).setUint32(0, tx.locktime, true);
+    parts.push(locktimeBuf);
+
+    return toHex(concatBytes(...parts));
+  } catch (err) {
+    console.error('signRawTransactionLocally failed:', err);
+    return null;
+  }
+}
+
+// ============================================================================
 
 /** Service for PHICOIN native asset protocol operations */
 export class AssetService {
