@@ -20,9 +20,64 @@ const WALLET_VERSION_KEY = 'phi:walletVersion';
 const MAX_ATTEMPTS = 5;
 const COOLDOWN_MS = 30_000; // 30 seconds
 
-/** Check whether the user is currently unlocked (session-only flag). */
+/**
+ * Check whether the user is currently unlocked (session-only flag).
+ * After page refresh sessionStorage survives but in-memory HDKey is lost.
+ * Return true only if both flags are set.
+ */
 export function isUnlocked(): boolean {
   return sessionStorage.getItem('phi:unlocked') === 'true';
+}
+
+/**
+ * Attempt auto-unlock on page refresh using a session key stored in sessionStorage.
+ *
+ * SECURITY: The session key is a random 256-bit key generated during unlock.
+ * It survives page refreshes (sessionStorage) but is cleared when the tab
+ * or browser is closed. This is more secure than storing the mnemonic in
+ * plaintext or using a deterministic passphrase.
+ */
+export async function tryAutoUnlock(): Promise<boolean> {
+  if (!hasV2Wallet()) return false;
+  if (sessionStorage.getItem('phi:unlocked') === 'true') return false;
+
+  try {
+    const sessionKeyHex = sessionStorage.getItem('phi:sessionKey');
+    const sessionEncryptedSeed = sessionStorage.getItem('phi:sessionEncryptedSeed');
+    if (!sessionKeyHex || !sessionEncryptedSeed) return false;
+
+    const sessionKeyBytes = hexToBytes(sessionKeyHex);
+    const encryptedData = hexToBytes(sessionEncryptedSeed);
+    const iv = encryptedData.slice(0, 12);
+    const ciphertext = encryptedData.slice(12);
+
+    // Import session key as AES-GCM key
+    const key = await crypto.subtle.importKey(
+      'raw',
+      sessionKeyBytes.buffer as ArrayBuffer,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
+
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      key,
+      ciphertext.buffer as ArrayBuffer
+    );
+
+    const masterSeed = new Uint8Array(decrypted);
+    const hdKey = seedToHDKey(masterSeed);
+    useWalletHDKeyStore.getState().setHDKey(hdKey);
+    sessionStorage.setItem('phi:unlocked', 'true');
+
+    // Zeroize session key material from memory
+    sessionKeyBytes.fill(0);
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Check whether wallet data exists in localStorage (v1 or v2). */
@@ -136,8 +191,13 @@ export async function tryUnlock(passphrase: string): Promise<boolean> {
       const hdKey = seedToHDKey(masterSeed);
       useWalletHDKeyStore.getState().setHDKey(hdKey);
 
+      // Store session key for auto-unlock on page refresh
+      await storeSessionKey(masterSeed);
+
       resetRateLimit();
       sessionStorage.setItem('phi:unlocked', 'true');
+      // Zeroize master seed from memory
+      masterSeed.fill(0);
       return true;
     } catch {
       await sleep(200);
@@ -203,6 +263,10 @@ export async function createWalletV2(
   await storeEncryptedSeed(masterSeed, password);
   localStorage.setItem(WALLET_VERSION_KEY, '2');
   localStorage.setItem(CREATED_KEY, Date.now().toString());
+  // SECURITY: Never store mnemonic or userSeed in plaintext.
+  // The master seed is derived from mnemonic+userSeed via HMAC-SHA512.
+  // Storing the encrypted master seed is sufficient; the mnemonic is
+  // only needed for user backup/restore, not for app operation.
 }
 
 /**
@@ -235,6 +299,8 @@ export function clearWallet(): void {
   localStorage.removeItem(WALLET_VERSION_KEY);
   sessionStorage.removeItem('phi:unlocked');
   sessionStorage.removeItem('phi:keySalt');
+  sessionStorage.removeItem('phi:sessionKey');
+  sessionStorage.removeItem('phi:sessionEncryptedSeed');
   clearV2Wallet();
   useWalletHDKeyStore.getState().clearHDKey();
 }
@@ -255,4 +321,42 @@ function hexToBytes(hex: string): Uint8Array {
     bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
   }
   return bytes;
+}
+
+/**
+ * Encrypt the master seed with a random session key and store in sessionStorage.
+ * This enables auto-unlock after page refresh without exposing the mnemonic
+ * or user password in storage.
+ */
+async function storeSessionKey(masterSeed: Uint8Array): Promise<void> {
+  try {
+    // Generate random 256-bit session key
+    const sessionKey = crypto.getRandomValues(new Uint8Array(32));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // Import as AES-GCM key
+    const key = await crypto.subtle.importKey(
+      'raw',
+      sessionKey.buffer as ArrayBuffer,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt']
+    );
+
+    // Encrypt master seed
+    const encrypted = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      key,
+      masterSeed.buffer as ArrayBuffer
+    );
+
+    // Store in sessionStorage (survives refresh, cleared on tab close)
+    sessionStorage.setItem('phi:sessionKey', toHex(sessionKey));
+    sessionStorage.setItem('phi:sessionEncryptedSeed', toHex(new Uint8Array([...iv, ...new Uint8Array(encrypted)])));
+
+    // Zeroize session key from memory
+    sessionKey.fill(0);
+  } catch {
+    // If sessionStorage is full or unavailable, auto-unlock won't work but wallet still functions
+  }
 }

@@ -57,7 +57,6 @@ export const ManageAssets: React.FC = () => {
   const queryClient = useQueryClient();
   const [activeSection, setActiveSection] = useState<'my-assets' | 'admin'>('my-assets');
   const [modalMode, setModalMode] = useState<ModalMode>('none');
-  const [_selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successTxid, setSuccessTxid] = useState<string | null>(null);
@@ -76,7 +75,6 @@ export const ManageAssets: React.FC = () => {
 
   // ---- Reissue ----
   const openReissue = (asset: Asset) => {
-    setSelectedAsset(asset);
     setReissueForm({
       assetName: asset.assetLabel,
       quantity: '0',
@@ -124,7 +122,6 @@ export const ManageAssets: React.FC = () => {
   // ---- Admin Operations ----
   const openAdminModal = (mode: ModalMode, asset?: Asset) => {
     setModalMode(mode);
-    setSelectedAsset(asset ?? null);
     setAdminForm({
       ...initialAdminForm,
       assetName: asset?.assetLabel ?? initialAdminForm.assetName,
@@ -214,7 +211,6 @@ export const ManageAssets: React.FC = () => {
 
   const closeModal = () => {
     setModalMode('none');
-    setSelectedAsset(null);
     setError(null);
     setSuccessTxid(null);
     setReissueForm(initialReissueForm);

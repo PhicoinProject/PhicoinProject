@@ -2,10 +2,19 @@ import { describe, it, expect } from '@jest/globals';
 import * as nobleSecp from '@noble/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { hmac } from '@noble/hashes/hmac';
 import { base58 } from '@scure/base';
 
+const hmacSha256 = (key: Uint8Array, ...msgs: Uint8Array[]) => {
+  const data = new Uint8Array(msgs.reduce((s, m) => s + m.length, 0));
+  let off = 0;
+  for (const m of msgs) { data.set(m, off); off += m.length; }
+  return hmac(sha256, data, key);
+};
+nobleSecp.utils.hmacSha256Sync = hmacSha256;
+
 // Inline the message signer functions for testing
-const PUB_KEY_HASH = 0x37;
+const PUB_KEY_HASH = 0x38;
 
 function hash160(data: Uint8Array): Uint8Array {
   return ripemd160(sha256(data));
@@ -46,21 +55,23 @@ function verifyMessage(message: string, signature: string, address: string): boo
     const sigBytes = Uint8Array.from(Buffer.from(signature, 'base64'));
     if (sigBytes.length < 2) return false;
 
-    const recoveryId = sigBytes[sigBytes.length - 1] - 27;
-    if (recoveryId < 0 || recoveryId > 3) return false;
-
+    const storedRecoveryId = sigBytes[sigBytes.length - 1];
     const derSig = sigBytes.slice(0, -1);
+
     const prefix = '\x18PHICOIN Signed Message:\n';
     const payload = new TextEncoder().encode(prefix + message.length + message);
     const hash = sha256(sha256(payload));
 
-    const pubKey = nobleSecp.recoverPublicKey(hash, derSig, recoveryId);
-    const compressedPub = pubKey.length === 65
-      ? new Uint8Array([pubKey[64] & 1 ? 0x03 : 0x02, ...pubKey.slice(1, 33)])
-      : pubKey;
-
-    const derivedAddress = publicKeyToAddress(compressedPub);
-    return derivedAddress === address;
+    // Try all recovery IDs since signSync does not return the recovery ID
+    for (let recId = 0; recId <= 3; recId++) {
+      try {
+        const sig = nobleSecp.Signature.fromDER(derSig);
+        const pubKey = nobleSecp.recoverPublicKey(hash, sig, recId, true);
+        const derivedAddress = publicKeyToAddress(pubKey);
+        if (derivedAddress === address) return true;
+      } catch { /* try next recovery ID */ }
+    }
+    return false;
   } catch {
     return false;
   }

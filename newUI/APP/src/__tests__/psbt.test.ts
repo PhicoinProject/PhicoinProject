@@ -61,7 +61,7 @@ describe('PSBT Transaction Builder', () => {
     it('should reverse txid bytes correctly', () => {
       const txid = '0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20';
       const reversed = txid.split('').reverse().join('');
-      expect(reversed).toBe('02f1e1d1c1b1a19181716151413121110f0e0d0c0b0a0908070605040302010');
+      expect(reversed).toBe('02f1e1d1c1b1a191817161514131211101f0e0d0c0b0a0908070605040302010');
     });
 
     it('should compute double-SHA256 hash correctly', () => {

@@ -1,23 +1,6 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { HDKey } from '@scure/bip32';
-
-// Mock modules before importing
-const mockDeriveFn = jest.fn();
-const mockTxIdsFn = jest.fn();
-const mockBalanceFn = jest.fn();
-
-jest.mock('@/services/addressDerivation', () => ({
-  deriveReceiveAddress: mockDeriveFn,
-}));
-
-jest.mock('@/services/rpc', () => ({
-  rpc: {
-    getAddressTxIds: mockTxIdsFn,
-    getAddressBalance: mockBalanceFn,
-  },
-}));
-
-import { scanChain } from '@/services/chainScanner';
+import { scanChain, ScanDeps } from '@/services/chainScanner';
 
 function createTestHDKey(): HDKey {
   const seed = new Uint8Array(64);
@@ -27,18 +10,20 @@ function createTestHDKey(): HDKey {
 
 describe('Chain Scanner', () => {
   let hdKey: HDKey;
+  let mockDeps: ScanDeps;
 
   beforeEach(() => {
-    jest.clearAllMocks();
     hdKey = createTestHDKey();
 
-    mockDeriveFn.mockImplementation((_hdKey: HDKey, _network: string, index: number) => ({
-      address: `PtestAddress${index}`,
-      path: `m/0'/0'/0'/0/${index}`,
-      index,
-    }));
-    mockTxIdsFn.mockResolvedValue([]);
-    mockBalanceFn.mockResolvedValue({ balance: 0 });
+    mockDeps = {
+      derive: (_hdKey, _network, index) => ({
+        address: `PtestAddress${index}`,
+        path: `m/0'/0'/0'/0/${index}`,
+        index,
+      }),
+      getAddressTxIds: async () => [],
+      getAddressBalance: async () => ({ balance: 0 }),
+    };
   });
 
   describe('scanChain - address derivation', () => {
@@ -47,7 +32,7 @@ describe('Chain Scanner', () => {
         network: 'mainnet',
         gapLimit: 5,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.totalScanned).toBe(5);
       expect(result.lastUsedIndex).toBe(-1);
@@ -59,35 +44,43 @@ describe('Chain Scanner', () => {
         network: 'mainnet',
         gapLimit,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.totalScanned).toBe(gapLimit);
       expect(result.unusedAddresses.length).toBe(gapLimit);
     });
 
     it('should derive addresses for the correct network', async () => {
+      let lastNetwork = '';
+      mockDeps.derive = (_hdKey, network, index) => {
+        lastNetwork = network;
+        return {
+          address: `PtestAddress${index}`,
+          path: `m/0'/0'/0'/0/${index}`,
+          index,
+        };
+      };
+
       await scanChain(hdKey, {
         network: 'testnet',
         gapLimit: 3,
         batchSize: 3,
-      });
+      }, mockDeps);
 
-      for (const call of mockDeriveFn.mock.calls) {
-        expect(call[1]).toBe('testnet');
-      }
+      expect(lastNetwork).toBe('testnet');
     });
   });
 
   describe('scanChain - used address detection', () => {
     it('should mark addresses as used when tx history exists', async () => {
-      mockTxIdsFn.mockResolvedValue(['txid1', 'txid2']);
-      mockBalanceFn.mockResolvedValue({ balance: 10000000000 });
+      mockDeps.getAddressTxIds = async () => ['txid1', 'txid2'];
+      mockDeps.getAddressBalance = async () => ({ balance: 10000000000 });
 
       const result = await scanChain(hdKey, {
         network: 'mainnet',
         gapLimit: 20,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.usedAddresses.length).toBeGreaterThan(0);
       expect(result.lastUsedIndex).toBeGreaterThanOrEqual(0);
@@ -98,7 +91,7 @@ describe('Chain Scanner', () => {
         network: 'mainnet',
         gapLimit: 5,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.usedAddresses.length).toBe(0);
       expect(result.unusedAddresses.length).toBe(5);
@@ -107,19 +100,19 @@ describe('Chain Scanner', () => {
 
     it('should continue scanning past used addresses until gap limit', async () => {
       let batchCount = 0;
-      mockTxIdsFn.mockImplementation(async () => {
+      mockDeps.getAddressTxIds = async () => {
         batchCount++;
         if (batchCount === 1) {
           return ['txid1', 'txid2'];
         }
         return [];
-      });
+      };
 
       const result = await scanChain(hdKey, {
         network: 'mainnet',
         gapLimit: 10,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.totalScanned).toBe(15);
       expect(result.lastUsedIndex).toBeGreaterThanOrEqual(0);
@@ -128,27 +121,27 @@ describe('Chain Scanner', () => {
 
   describe('scanChain - balance aggregation', () => {
     it('should aggregate total balance from used addresses', async () => {
-      mockTxIdsFn.mockResolvedValue(['txid1']);
-      mockBalanceFn.mockResolvedValue({ balance: 5050000000 });
+      mockDeps.getAddressTxIds = async () => ['txid1'];
+      mockDeps.getAddressBalance = async () => ({ balance: 5050000000 });
 
       const result = await scanChain(hdKey, {
         network: 'mainnet',
         gapLimit: 20,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.totalBalance).toBeGreaterThan(0);
     });
 
     it('should report zero balance when RPC fails', async () => {
-      mockTxIdsFn.mockResolvedValue(['txid1']);
-      mockBalanceFn.mockRejectedValue(new Error('RPC error'));
+      mockDeps.getAddressTxIds = async () => ['txid1'];
+      mockDeps.getAddressBalance = async () => { throw new Error('RPC error'); };
 
       const result = await scanChain(hdKey, {
         network: 'mainnet',
         gapLimit: 5,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result.totalBalance).toBe(0);
     });
@@ -158,7 +151,7 @@ describe('Chain Scanner', () => {
         network: 'mainnet',
         gapLimit: 3,
         batchSize: 3,
-      });
+      }, mockDeps);
 
       expect(result.totalBalance).toBe(0);
       expect(result.usedAddresses.length).toBe(0);
@@ -171,7 +164,7 @@ describe('Chain Scanner', () => {
         network: 'mainnet',
         gapLimit: 5,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       expect(result).toHaveProperty('totalScanned');
       expect(result).toHaveProperty('usedAddresses');
@@ -187,14 +180,14 @@ describe('Chain Scanner', () => {
     });
 
     it('should include path and index in used address entries', async () => {
-      mockTxIdsFn.mockResolvedValue(['txid1']);
-      mockBalanceFn.mockResolvedValue({ balance: 1000000000 });
+      mockDeps.getAddressTxIds = async () => ['txid1'];
+      mockDeps.getAddressBalance = async () => ({ balance: 1000000000 });
 
       const result = await scanChain(hdKey, {
         network: 'mainnet',
         gapLimit: 20,
         batchSize: 5,
-      });
+      }, mockDeps);
 
       if (result.usedAddresses.length > 0) {
         const entry = result.usedAddresses[0];
@@ -214,7 +207,7 @@ describe('Chain Scanner', () => {
     it('should use default gap limit of 20 when not specified', async () => {
       const result = await scanChain(hdKey, {
         network: 'mainnet',
-      });
+      }, mockDeps);
 
       expect(result.totalScanned).toBe(20);
     });

@@ -48,7 +48,7 @@ export const Transactions: React.FC = () => {
     enabled: addressList.length > 0,
   });
 
-  const txs = (transactions ?? []) as TxEntry[];
+  const txs = useMemo(() => (transactions ?? []) as TxEntry[], [transactions]);
 
   // Client-side search filter on top of RPC-level filters
   const filtered = useMemo(() => {

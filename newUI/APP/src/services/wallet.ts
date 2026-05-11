@@ -1,9 +1,12 @@
 import { rpc } from './rpc';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
-import { deriveReceiveAddress, isValidPHICoinAddress } from './addressDerivation';
+import { deriveReceiveAddress, deriveChangeAddress, isValidPHICoinAddress, getScriptPubKeyFromPublicKey } from './addressDerivation';
 import { buildAndSignOnly, testMempoolAccept, broadcastTx } from './psbt';
+import { scanChain } from './chainScanner';
+import { toHex } from './crypto';
 import type { Address, WalletState, UTXO, DerivedAddress } from '@/types';
 import type { PSBTInput, PSBTOutput } from './psbt';
+import type { ChainScanResult } from './chainScanner';
 
 // Number of addresses to pre-generate for the pool
 const ADDRESS_POOL_SIZE = 10;
@@ -20,9 +23,18 @@ export class WalletService {
    */
   async getBalance(addresses: string[]): Promise<number> {
     if (!addresses.length) return 0;
-    const result = await rpc.getAddressBalance(addresses);
-    const data = result as Record<string, unknown>;
-    return Number((data as any).balance ?? 0) / 1e8;
+    let total = 0;
+    for (const addr of addresses) {
+      try {
+        const result = await rpc.getAddressBalance(addr);
+        const data = result as Record<string, unknown>;
+        const rawBalance = (data as any).balance ?? (data as any).result?.balance ?? 0;
+        total += Number(rawBalance) / 1e8;
+      } catch {
+        // Skip addresses with errors
+      }
+    }
+    return total;
   }
 
   /**
@@ -62,9 +74,6 @@ export class WalletService {
   async getAddresses(addresses: string[]): Promise<Address[]> {
     if (!addresses.length) return [];
 
-    const balanceResult = await rpc.getAddressBalance(addresses, true);
-    const balances = balanceResult as Record<string, unknown> | { result: number };
-
     const results: Address[] = [];
 
     for (const addr of addresses) {
@@ -73,16 +82,13 @@ export class WalletService {
 
       if (!hasActivity) continue;
 
-      // Extract per-address data if the RPC returns a map
       let totalReceived = 0;
-      if (typeof balances === 'object' && 'result' in balances) {
-        const val = (balances as any).result;
-        if (typeof val === 'object' && val[addr]) {
-          const entry = val[addr] as { balance?: number; total_received?: number };
-          totalReceived = Number(entry.total_received ?? entry.balance ?? 0) / 1e8;
-        } else if (typeof val === 'number') {
-          totalReceived = val / 1e8;
-        }
+      try {
+        const result = await rpc.getAddressBalance(addr);
+        const data = result as Record<string, unknown>;
+        totalReceived = Number((data as any).balance ?? (data as any).result?.balance ?? 0) / 1e8;
+      } catch {
+        // Skip addresses with errors
       }
 
       results.push({
@@ -106,7 +112,15 @@ export class WalletService {
   async getTransactions(addresses: string[], count = 20): Promise<unknown[]> {
     if (!addresses.length) return [];
 
-    const allTxIds = await rpc.getAddressTxIds(addresses, true);
+    const allTxIds: string[] = [];
+    for (const addr of addresses) {
+      try {
+        const txids = await rpc.getAddressTxIds(addr);
+        allTxIds.push(...txids);
+      } catch {
+        // Skip addresses with errors
+      }
+    }
     const recentTxIds = allTxIds.slice(0, count);
 
     const txs: unknown[] = [];
@@ -168,7 +182,7 @@ export class WalletService {
       if (r.value <= 0) throw new Error('Recipient amount must be positive');
     }
 
-    const utxos = await rpc.getAddressUTXOs(addresses);
+    const utxos = await rpc.getAddressUTXOsBatch(addresses);
     if (!utxos || utxos.length === 0) {
       throw new Error('No UTXOs found for the given addresses');
     }
@@ -184,14 +198,19 @@ export class WalletService {
       const valueSat = Number(u.value ?? u.amount ?? 0);
       const scriptPubKey = String(u.scriptPubKey ?? u.scriptPubKeyHex ?? '');
 
-      totalInputSat += valueSat;
+      const path = this.derivePathForAddress(scriptPubKey);
+      if (!path) {
+        console.warn(`Could not derive path for scriptPubKey: ${scriptPubKey}`);
+        continue;
+      }
 
+      totalInputSat += valueSat;
       psbtInputs.push({
         txid,
         vout,
         scriptPubKey,
         value: valueSat / 1e8,
-        derivationPath: this.derivePathForAddress(scriptPubKey),
+        derivationPath: path,
       });
 
       // Estimate: inputs * 180 + (recipients + 1 change) * 34
@@ -222,8 +241,10 @@ export class WalletService {
       if (!hdKey) throw new Error('Wallet not unlocked');
 
       const network: 'mainnet' | 'testnet' = 'mainnet';
-      const usedCount = await this.getUsedAddressCount(network);
-      const changeAddr = deriveReceiveAddress(hdKey, network, usedCount + 1);
+      // Use change chain (m/44'/4343'/0'/1/{n}) for change outputs — BIP44 compliance.
+      // Reuse current change address until fully spent (Electrum model).
+      const changeIndex = this.getCurrentChangeIndex(network);
+      const changeAddr = deriveChangeAddress(hdKey, network, changeIndex);
       outputs.push({ address: changeAddr.address, value: changeSat / 1e8, isChange: true });
     }
 
@@ -232,25 +253,23 @@ export class WalletService {
 
     // Pre-flight validation via testmempoolaccept
     if (!options.skipPreFlight) {
-      try {
-        const mempoolResult = await testMempoolAccept(rawTx);
-        if (mempoolResult && mempoolResult.length > 0) {
-          const first = mempoolResult[0] as Record<string, unknown>;
-          if (first.allowed !== true && (first.allowed as unknown) !== 1) {
-            const rejectReason = (String(first['reject-reason']) ??
-              String(first.reason) ??
-              'unknown') as string;
-            throw new Error('Transaction rejected by mempool: ' + rejectReason);
-          }
+      const mempoolResult = await testMempoolAccept(rawTx);
+      if (mempoolResult && mempoolResult.length > 0) {
+        const first = mempoolResult[0] as Record<string, unknown>;
+        if (first.allowed !== true && (first.allowed as unknown) !== 1) {
+          const rejectReason = (String(first['reject-reason']) ??
+            String(first.reason) ??
+            'unknown') as string;
+          throw new Error('Transaction rejected by mempool: ' + rejectReason);
         }
-      } catch (err) {
-        // If testmempoolaccept itself throws (RPC error), propagate
-        throw err;
       }
     }
 
     // Broadcast
     await broadcastTx(rawTx, true);
+
+    // Auto-advance change index if current change address is fully spent
+    await this.maybeAdvanceChangeIndex();
 
     // Compute and return txid
     const { sha256 } = await import('@noble/hashes/sha256');
@@ -291,7 +310,16 @@ export class WalletService {
   async getUnspent(addresses: string[]): Promise<UTXO[]> {
     if (!addresses.length) return [];
 
-    const raw = await rpc.getAddressUTXOs(addresses);
+    const rawList: unknown[] = [];
+    for (const addr of addresses) {
+      try {
+        const utxos = await rpc.getAddressUTXOs(addr);
+        rawList.push(...(utxos as unknown[]));
+      } catch {
+        // Skip addresses with errors
+      }
+    }
+    const raw = rawList;
     return (raw || []).map((u) => {
       const obj = u as Record<string, unknown>;
       return {
@@ -352,11 +380,106 @@ export class WalletService {
     return rpc.getBlockCount();
   }
 
+  /**
+   * Full wallet recovery scan after import.
+   * Scans both receive and change chains to discover all used addresses,
+   * their balances, and transaction history. Persists change index state.
+   */
+  async recoverWallet(gapLimit = 20): Promise<ChainScanResult> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) {
+      throw new Error('Wallet not unlocked. Import a mnemonic or seed phrase first.');
+    }
+
+    const network: 'mainnet' | 'testnet' = 'mainnet';
+
+    // Scan receive chain
+    const receiveScan = await scanChain(hdKey, {
+      network,
+      gapLimit,
+      batchSize: 10,
+    });
+
+    // Scan change chain starting from index 0 (only if any receive addresses were used)
+    let changeScan: ChainScanResult = {
+      totalScanned: 0,
+      usedAddresses: [],
+      unusedAddresses: [],
+      totalBalance: 0,
+      lastUsedIndex: -1,
+    };
+
+    if (receiveScan.usedAddresses.length > 0) {
+      changeScan = await scanChain(hdKey, {
+        network,
+        gapLimit: Math.min(gapLimit, 10),
+        batchSize: 10,
+      }, {
+        // Override derivation to scan change chain
+        derive: (hdKey, network, index) => {
+          const addr = deriveChangeAddress(hdKey, network, index);
+          return {
+            address: addr.address,
+            path: addr.path,
+            index: addr.index,
+          };
+        },
+        getAddressTxIds: rpc.getAddressTxIds.bind(rpc),
+        getAddressBalance: rpc.getAddressBalance.bind(rpc),
+      });
+
+      // Persist the highest used change index
+      if (changeScan.lastUsedIndex >= 0) {
+        localStorage.setItem('phi:changeIndex', String(changeScan.lastUsedIndex + 1));
+      }
+    }
+
+    return {
+      totalScanned: receiveScan.totalScanned + changeScan.totalScanned,
+      usedAddresses: [
+        ...receiveScan.usedAddresses,
+        ...changeScan.usedAddresses,
+      ],
+      unusedAddresses: [
+        ...receiveScan.unusedAddresses,
+        ...changeScan.unusedAddresses,
+      ],
+      totalBalance: receiveScan.totalBalance + changeScan.totalBalance,
+      lastUsedIndex: Math.max(receiveScan.lastUsedIndex, changeScan.lastUsedIndex),
+    };
+  }
+
+  /**
+   * Auto-advance change index when current change address is fully spent.
+   * Call after each successful transaction broadcast.
+   */
+  private async maybeAdvanceChangeIndex(): Promise<void> {
+    const currentChangeIndex = this.getCurrentChangeIndex('mainnet');
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return;
+
+    // Check if current change address has zero balance
+    try {
+      const changeAddr = deriveChangeAddress(hdKey, 'mainnet', currentChangeIndex);
+      const result = await rpc.getAddressBalance(changeAddr.address);
+      const data = result as Record<string, unknown>;
+      const balance = Number((data as any).balance ?? 0);
+
+      // If balance is zero, the change address is fully spent — advance
+      if (balance === 0 && currentChangeIndex < 99) {
+        const nextIndex = currentChangeIndex + 1;
+        localStorage.setItem('phi:changeIndex', String(nextIndex));
+      }
+    } catch {
+      // RPC error — ignore, change index remains unchanged
+    }
+  }
+
   // ---- Private helpers ----
 
   private async getAddressTxidsFor(address: string): Promise<string[]> {
     try {
-      return await rpc.getAddressTxIds([address], true);
+      return await rpc.getAddressTxIds(address);
     } catch {
       return [];
     }
@@ -400,12 +523,43 @@ export class WalletService {
 
   /**
    * Derive a BIP44 path for a given scriptPubKey.
-   * Tries common receive/change paths and returns the first match.
+   * Scans both receive chain (m/44'/486'/0'/0/{0..49}) and change chain
+   * (m/44'/486'/0'/1/{0..49}) to find matching scriptPubKey.
    */
-  private derivePathForAddress(_scriptPubKey: string): string {
-    // Default to first receive path; psbt.ts will derive the correct key.
-    // In a full implementation this would scan paths to find the matching address.
-    return "m/0'/0'/0'/0/0";
+  private derivePathForAddress(scriptPubKey: string): string | null {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return null;
+
+    const coinType = 486; // PHICOIN
+
+    // Scan receive chain first
+    for (let i = 0; i < 50; i++) {
+      const path = `m/44'/${coinType}'/0'/0/${i}`;
+      try {
+        const spk = getScriptPubKeyFromPublicKey(hdKey, path);
+        if (toHex(spk) === scriptPubKey) return path;
+      } catch { /* skip */ }
+    }
+
+    // Scan change chain
+    for (let i = 0; i < 50; i++) {
+      const path = `m/44'/${coinType}'/0'/1/${i}`;
+      try {
+        const spk = getScriptPubKeyFromPublicKey(hdKey, path);
+        if (toHex(spk) === scriptPubKey) return path;
+      } catch { /* skip */ }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get the current change address index. Reuses until fully spent (Electrum model).
+   * Stored in localStorage for persistence across sessions.
+   */
+  private getCurrentChangeIndex(_network: 'mainnet' | 'testnet'): number {
+    const stored = localStorage.getItem('phi:changeIndex');
+    return stored ? parseInt(stored, 10) : 0;
   }
 }
 

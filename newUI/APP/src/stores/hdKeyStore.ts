@@ -16,13 +16,9 @@ interface HDKeyStore {
 function zeroizeHdKey(key: HDKey | null) {
   if (!key) return;
   try {
-    // Zero out private key material if accessible
-    if (key.privateKey) {
-      key.privateKey.fill(0);
-    }
-    if (key.publicKey) {
-      key.publicKey.fill(0);
-    }
+    if (key.privateKey) key.privateKey.fill(0);
+    if (key.publicKey) key.publicKey.fill(0);
+    if (key.chainCode) key.chainCode.fill(0);
   } catch {
     // Some implementations may throw on fill(0) — ignore and proceed
   }

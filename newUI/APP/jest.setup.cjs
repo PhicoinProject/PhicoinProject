@@ -11,6 +11,16 @@ global.crypto = {
   },
 };
 
+// Initialize @noble/secp256k1 for sync signing (required by signSync/sign)
+const { hmac } = require('@noble/hashes/hmac');
+const { sha256 } = require('@noble/hashes/sha256');
+const nobleSecp = require('@noble/secp256k1');
+const hmacSha256 = (key, ...msgs) => {
+  const data = Buffer.concat(msgs.map(m => Buffer.from(m)));
+  return hmac(sha256, data, key);
+};
+nobleSecp.utils.hmacSha256Sync = hmacSha256;
+
 // Polyfill localStorage
 const store = {};
 global.localStorage = {

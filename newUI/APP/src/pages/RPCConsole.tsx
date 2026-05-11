@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { rpc, RpcError } from '@/services/rpc';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
@@ -259,7 +259,7 @@ export const RPCConsole: React.FC = () => {
   const [banCooldown, setBanCooldown] = useState<number>(86400);
   const [banActionLoading, setBanActionLoading] = useState(false);
 
-  const fetchBanList = async () => {
+  const fetchBanList = useCallback(async () => {
     setBanLoading(true);
     try {
       const result = await rpc.raw<BanEntry[]>('listbanned');
@@ -269,7 +269,7 @@ export const RPCConsole: React.FC = () => {
     } finally {
       setBanLoading(false);
     }
-  };
+  }, []);
 
   const handleBan = async () => {
     if (!banIp.trim()) return;
@@ -299,7 +299,7 @@ export const RPCConsole: React.FC = () => {
     if (activeTab === 'bans') {
       fetchBanList();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchBanList]);
 
   // ---- Peers Tab ----
   interface PeerEntry {
@@ -324,7 +324,7 @@ export const RPCConsole: React.FC = () => {
   const [peerLoading, setPeerLoading] = useState(false);
   const [networkInfo, setNetworkInfo] = useState<Record<string, unknown> | null>(null);
 
-  const fetchPeerList = async () => {
+  const fetchPeerList = useCallback(async () => {
     setPeerLoading(true);
     try {
       const result = await rpc.raw<PeerEntry[]>('getpeerinfo');
@@ -334,16 +334,16 @@ export const RPCConsole: React.FC = () => {
     } finally {
       setPeerLoading(false);
     }
-  };
+  }, []);
 
-  const fetchNetworkInfo = async () => {
+  const fetchNetworkInfo = useCallback(async () => {
     try {
       const result = await rpc.raw('getnetworkinfo');
       setNetworkInfo(result as Record<string, unknown>);
     } catch {
       // Silent
     }
-  };
+  }, []);
 
   // Load peers and network info when tab switches
   useEffect(() => {
@@ -351,7 +351,7 @@ export const RPCConsole: React.FC = () => {
       fetchPeerList();
       fetchNetworkInfo();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchPeerList, fetchNetworkInfo]);
 
   const quickCommands = [
     { label: 'getblockcount', cmd: 'getblockcount' },
