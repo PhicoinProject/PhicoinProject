@@ -14,6 +14,7 @@ const ToastContext = createContext<ToastContextType>({
   showToast: () => {},
 });
 
+// eslint-disable-next-line react-refresh/only-export-components -- hook + provider in one file for simplicity
 export const useToast = () => useContext(ToastContext);
 
 let nextId = 0;

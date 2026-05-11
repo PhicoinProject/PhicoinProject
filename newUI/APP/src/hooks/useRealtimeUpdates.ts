@@ -87,6 +87,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
       }
     });
     return unsubscribe;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- explicitAddresses is derived from stable `addresses` param; adding it causes re-subscriptions
   }, []);
 
   // Refs to avoid re-creating intervals on every render when queryClient
@@ -112,6 +113,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
     fetchMempool();
     const id = setInterval(fetchMempool, MEMPOOL_POLL_INTERVAL);
     return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- addrList is the source of truth; explicitAddresses is derived from stable `addresses` param
   }, [addrList]);
 
   // ---- Block height polling ----
@@ -156,7 +158,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
             typeof entry === 'object' &&
             !('balance' in (entry as Record<string, unknown>) === false)
           ) {
-            totalBalance += Number((entry as any).balance ?? (entry as any).result?.balance ?? 0);
+            totalBalance += Number((entry as Record<string, unknown>).balance ?? ((entry as Record<string, unknown>).result as Record<string, unknown>)?.balance ?? 0);
           }
         }
         setBalance(totalBalance / 1e8);

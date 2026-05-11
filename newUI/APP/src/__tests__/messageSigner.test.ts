@@ -55,7 +55,6 @@ function verifyMessage(message: string, signature: string, address: string): boo
     const sigBytes = Uint8Array.from(Buffer.from(signature, 'base64'));
     if (sigBytes.length < 2) return false;
 
-    const storedRecoveryId = sigBytes[sigBytes.length - 1];
     const derSig = sigBytes.slice(0, -1);
 
     const prefix = '\x18PHICOIN Signed Message:\n';

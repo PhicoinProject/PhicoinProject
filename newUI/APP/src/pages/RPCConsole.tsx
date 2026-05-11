@@ -4,6 +4,14 @@ import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Spinner } from '@/components/common/Spinner';
 
+/** Safe accessor for `Record<string, unknown>` network info — avoids `as any`. */
+function netInfo(networkInfo: Record<string, unknown> | null, key: string, fallback = '-'): string {
+  if (!networkInfo) return fallback;
+  const v = networkInfo[key];
+  if (v === undefined || v === null) return fallback;
+  return String(v);
+}
+
 /** RPC Console page -- interactive RPC command interface (Qt parity: rpcconsole) */
 export const RPCConsole: React.FC = () => {
   const [input, setInput] = useState('');
@@ -499,25 +507,25 @@ export const RPCConsole: React.FC = () => {
             <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 shadow-sm">
               <p className="text-xs text-gray-500 dark:text-dark-mutedText">Version</p>
               <p className="text-sm font-mono font-semibold text-gray-900 dark:text-dark-text">
-                {String((networkInfo as any)?.version ?? '-')}
+                {String(netInfo(networkInfo, 'version'))}
               </p>
             </div>
             <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 shadow-sm">
               <p className="text-xs text-gray-500 dark:text-dark-mutedText">Connections</p>
               <p className="text-2xl font-bold text-green-600">
-                {(networkInfo as any)?.connections ?? peerList.length}
+                {netInfo(networkInfo, 'connections', String(peerList.length))}
               </p>
             </div>
             <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 shadow-sm">
               <p className="text-xs text-gray-500 dark:text-dark-mutedText">Protocol</p>
               <p className="text-sm font-mono font-semibold text-gray-900 dark:text-dark-text">
-                v{(networkInfo as any)?.protocolversion ?? '-'}
+                v{netInfo(networkInfo, 'protocolversion')}
               </p>
             </div>
             <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 shadow-sm">
               <p className="text-xs text-gray-500 dark:text-dark-mutedText">Network</p>
               <p className="text-sm font-semibold text-gray-900 dark:text-dark-text capitalize">
-                {(networkInfo as any)?.network ?? '-'}
+                {netInfo(networkInfo, 'network')}
               </p>
             </div>
           </div>
@@ -719,7 +727,7 @@ export const RPCConsole: React.FC = () => {
             <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 shadow-sm">
               <p className="text-xs text-gray-500 dark:text-dark-mutedText">Network</p>
               <p className="text-sm font-semibold text-gray-900 dark:text-dark-text capitalize">
-                {(networkInfo as any)?.network ?? '-'}
+                {netInfo(networkInfo, 'network')}
               </p>
             </div>
           </div>
@@ -768,18 +776,18 @@ export const RPCConsole: React.FC = () => {
                 </div>
                 <div>
                   <span className="text-gray-500 dark:text-dark-mutedText">Relay Fee:</span>{' '}
-                  <span className="font-mono">{(networkInfo as any)?.relayfee ?? '-'} BTC/kB</span>
+                  <span className="font-mono">{netInfo(networkInfo, 'relayfee', '- BTC/kB')}</span>
                 </div>
                 <div>
                   <span className="text-gray-500 dark:text-dark-mutedText">Total Sent:</span>{' '}
                   <span className="font-mono">
-                    {(networkInfo as any)?.totalbytessent ?? '-'} bytes
+                    {netInfo(networkInfo, 'totalbytessent', '-')} bytes
                   </span>
                 </div>
                 <div>
                   <span className="text-gray-500 dark:text-dark-mutedText">Total Received:</span>{' '}
                   <span className="font-mono">
-                    {(networkInfo as any)?.totalbytesrecv ?? '-'} bytes
+                    {netInfo(networkInfo, 'totalbytesrecv', '-')} bytes
                   </span>
                 </div>
               </div>
