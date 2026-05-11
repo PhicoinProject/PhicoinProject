@@ -6,3 +6,4 @@ export { Spinner } from './Spinner';
 export { Navbar } from './Navbar';
 export { Sidebar } from './Sidebar';
 export { ToastProvider, useToast } from './Toast';
+export { ErrorBoundary } from './ErrorBoundary';

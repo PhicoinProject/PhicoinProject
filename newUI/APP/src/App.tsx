@@ -5,6 +5,7 @@ import { useWalletStore } from '@/stores';
 import { Sidebar } from '@/components/common/Sidebar';
 import { Navbar } from '@/components/common/Navbar';
 import { ToastProvider } from '@/components/common/Toast';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { Overview } from '@/pages/Overview';
 import { Send } from '@/pages/Send';
 import { Receive } from '@/pages/Receive';
@@ -252,10 +253,12 @@ function MainApp() {
 
 export const App: React.FC = () => {
   return (
-    <ToastProvider>
-      <AuthGate>
-        <MainApp />
-      </AuthGate>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AuthGate>
+          <MainApp />
+        </AuthGate>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 };
