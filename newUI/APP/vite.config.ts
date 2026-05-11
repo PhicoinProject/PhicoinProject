@@ -28,13 +28,11 @@ export default defineConfig({
     // Proxy RPC requests to phicoind with Basic Auth (dev only)
     proxy: {
       '/api': {
-        target: `http://${process.env.VITE_RPC_HOST || 'localhost'}:${process.env.VITE_RPC_PORT || '28966'}`,
+        target: 'http://127.0.0.1:28966',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
         headers: {
-          Authorization: `Basic ${Buffer.from(
-            `${process.env.VITE_RPC_USER || ''}:${process.env.VITE_RPC_PASSWORD || ''}`
-          ).toString('base64')}`,
+          Authorization: `Basic ${Buffer.from('phi:phi').toString('base64')}`,
         },
       },
     },
@@ -42,7 +40,8 @@ export default defineConfig({
   preview: {
     // SECURITY: Production preview server headers
     headers: {
-      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' http://localhost:*; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
       'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',

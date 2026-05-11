@@ -18,7 +18,7 @@ export interface TxEntry {
   addresses: string[]; // relevant wallet addresses
   asset?: string; // asset name if asset transaction
   hex?: string; // raw transaction hex
-  vin: VinSummary[];  // input summaries
+  vin: VinSummary[]; // input summaries
   vout: VoutSummary[]; // output summaries
   size?: number;
   vsize?: number;
@@ -78,7 +78,7 @@ export async function getTransactionHistory(
   const walletSet = new Set(addresses);
 
   try {
-    const allTxIds = await rpc.getAddressTxIds(addresses, true);
+    const allTxIds = await rpc.getAddressTxIdsBatch(addresses);
     const recentTxIds = allTxIds.slice(0, count);
 
     const currentHeight = await rpc.getBlockCount();
@@ -125,7 +125,11 @@ export async function getTransactionHistory(
         };
 
         // Apply direction filter
-        if (filters.direction && filters.direction !== 'all' && entry.direction !== filters.direction) {
+        if (
+          filters.direction &&
+          filters.direction !== 'all' &&
+          entry.direction !== filters.direction
+        ) {
           continue;
         }
 
@@ -297,10 +301,7 @@ function extractFee(tx: Record<string, unknown>): number {
 /**
  * Extract input summaries from the decoded transaction.
  */
-function extractVinSummary(
-  tx: Record<string, unknown>,
-  walletSet: Set<string>
-): VinSummary[] {
+function extractVinSummary(tx: Record<string, unknown>, walletSet: Set<string>): VinSummary[] {
   const vin = (tx.vin ?? []) as Record<string, unknown>[];
   const result: VinSummary[] = [];
 

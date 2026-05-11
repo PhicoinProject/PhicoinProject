@@ -1,4 +1,3 @@
-export { useWalletBalance } from './useWalletBalance';
 export { useTransactions } from './useTransactions';
 export { useAssets } from './useAssets';
 export { useMyAssets } from './useMyAssets';

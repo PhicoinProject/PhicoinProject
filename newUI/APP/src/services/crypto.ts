@@ -11,7 +11,12 @@ function toCryptoBuffer(data: Uint8Array): Uint8Array<ArrayBuffer> {
 
 /** @deprecated Use deriveWalletKey */
 export async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
-  return deriveWalletKey(passphrase, salt, SCRYPT_PARAMS.n * SCRYPT_PARAMS.r * SCRYPT_PARAMS.p);
+  const bufferSalt = toCryptoBuffer(salt);
+  return deriveWalletKey(
+    passphrase,
+    bufferSalt,
+    SCRYPT_PARAMS.n * SCRYPT_PARAMS.r * SCRYPT_PARAMS.p
+  );
 }
 
 export async function deriveWalletKey(

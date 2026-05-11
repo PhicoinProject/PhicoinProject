@@ -25,6 +25,7 @@ import { ImportWallet } from '@/pages/ImportWallet';
 import { BackupVerify } from '@/pages/BackupVerify';
 import { SignVerify } from '@/pages/SignVerify';
 import { hasWallet, isUnlocked } from '@/services/auth';
+import { useWalletHDKeyStore } from '@/stores';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard' },
@@ -71,6 +72,27 @@ const PAGES = [
 function AuthGate({ children }: { children: React.ReactNode }) {
   const [authState, setAuthState] = useState({ walletExists: hasWallet(), unlocked: isUnlocked() });
 
+  // Auto-unlock on page refresh: attempt secure session recovery
+  useEffect(() => {
+    const autoUnlock = async () => {
+      if (!hasWallet()) return;
+
+      const hdKeyStore = useWalletHDKeyStore.getState();
+      if (hdKeyStore.hdKey) return;
+
+      try {
+        const { tryAutoUnlock } = await import('@/services/auth');
+        const recovered = await tryAutoUnlock();
+        if (recovered) {
+          setAuthState((prev) => ({ ...prev, unlocked: true }));
+        }
+      } catch (e) {
+        console.error('[AutoUnlock] Failed:', e);
+      }
+    };
+    autoUnlock();
+  }, []);
+
   // Apply dark mode class on mount and when localStorage changes
   useEffect(() => {
     const applyDark = () => {
@@ -98,6 +120,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Always allow navigation to /import regardless of auth state
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  if (currentPath === '/import') {
+    return <>{children}</>;
+  }
+
   if (!authState.walletExists) {
     return <CreateWallet />;
   }
@@ -111,6 +139,35 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 /** Main app wrapper - only renders after unlock, starts RPC polling here */
 function MainApp() {
+  // All hooks must come first — no conditionals, no async before hooks.
+  const error = useWalletStore((s) => s.error);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const init = async () => {
+      if (sessionStorage.getItem('phi:unlocked') === 'true') {
+        const hdKeyStore = useWalletHDKeyStore.getState();
+        if (!hdKeyStore.hdKey) {
+          // Auto-unlock: recover HDKey from stored mnemonic + userSeed
+          try {
+            const storedMnemonic = localStorage.getItem('phi:v2:mnemonic');
+            const userSeed = localStorage.getItem('phi:v2:userSeed') || '';
+            if (storedMnemonic) {
+              const { deriveMasterSeed, seedToHDKey } = await import('@/services/HDWallet');
+              const masterSeed = await deriveMasterSeed(storedMnemonic, userSeed);
+              const hdKey = seedToHDKey(masterSeed);
+              hdKeyStore.setHDKey(hdKey);
+            }
+          } catch (e) {
+            console.error('MainApp auto-unlock failed:', e);
+          }
+        }
+      }
+    };
+    init();
+  }, []);
+
   useRealtimeUpdates();
   useSyncStatus();
 
@@ -119,10 +176,6 @@ function MainApp() {
     if (dark) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, []);
-  const error = useWalletStore((s) => s.error);
-
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const handleToggleSidebar = () => setSidebarOpen((prev) => !prev);
   const handleMobileOpen = () => setMobileSidebarOpen(true);

@@ -216,41 +216,118 @@ export class RpcClient {
   // ---- Address index queries ----
 
   /**
-   * Get the total received balance for one or more addresses.
-   * Calls: z_getaddressbalance (address-index)
+   * Get the total received balance for a single address.
+   * Calls: getaddressbalance (address-index)
    */
-  async getAddressBalance(addresses: string[], includeAssets = false): Promise<unknown> {
-    const params: unknown[] = [addresses];
-    if (includeAssets) params.push(true);
-    return this.raw<unknown>('getaddressbalance', params);
+  async getAddressBalance(address: string): Promise<unknown> {
+    return this.raw<unknown>('getaddressbalance', [address]);
   }
 
   /**
-   * Get all unspent outputs for one or more addresses.
-   * Calls: z_getaddressutxos (address-index)
+   * Get the total received balance for multiple addresses (batched).
+   * Calls getaddressbalance for each address and returns a map.
    */
-  async getAddressUTXOs(addresses: string[]): Promise<unknown[]> {
-    return this.raw<unknown[]>('getaddressutxos', [addresses]);
+  async getAddressBalanceBatch(addresses: string[]): Promise<Record<string, unknown>> {
+    if (addresses.length === 0) return {};
+    try {
+      const result = await this.raw<unknown>('getaddressbalance', [{ addresses }]);
+      return { combined: result };
+    } catch {
+      const results: Record<string, unknown> = {};
+      await Promise.all(
+        addresses.map(async (addr) => {
+          try { results[addr] = await this.getAddressBalance(addr); }
+          catch { results[addr] = 0; }
+        })
+      );
+      return results;
+    }
   }
 
   /**
-   * Get all transaction IDs for one or more addresses.
-   * Calls: z_getaddresstxids (address-index)
+   * Get all unspent outputs for a single address.
+   * Calls: getaddressutxos (address-index)
    */
-  async getAddressTxIds(addresses: string[], includeAssets = false): Promise<string[]> {
-    const params: unknown[] = [addresses];
-    if (includeAssets) params.push(true);
-    return this.raw<string[]>('getaddresstxids', params);
+  async getAddressUTXOs(address: string): Promise<unknown[]> {
+    return this.raw<unknown[]>('getaddressutxos', [address]);
   }
 
   /**
-   * Get all mempool transactions for one or more addresses.
-   * Calls: z_getaddressmempool (address-index)
+   * Get all unspent outputs for multiple addresses (batched).
+   * Calls getaddressutxos for each address.
    */
-  async getAddressMempool(addresses: string[], includeAssets = false): Promise<unknown[]> {
-    const params: unknown[] = [addresses];
-    if (includeAssets) params.push(true);
-    return this.raw<unknown[]>('getaddressmempool', params);
+  async getAddressUTXOsBatch(addresses: string[]): Promise<unknown[]> {
+    if (addresses.length === 0) return [];
+    try {
+      return (await this.raw<unknown[]>('getaddressutxos', [{ addresses }])) ?? [];
+    } catch {
+      const all: unknown[] = [];
+      await Promise.all(
+        addresses.map(async (addr) => {
+          try {
+            const utxos = await this.getAddressUTXOs(addr);
+            all.push(...(utxos as unknown[]));
+          } catch { /* skip */ }
+        })
+      );
+      return all;
+    }
+  }
+
+  /**
+   * Get all transaction IDs for a single address.
+   * Calls: getaddresstxids (address-index)
+   */
+  async getAddressTxIds(address: string): Promise<string[]> {
+    return this.raw<string[]>('getaddresstxids', [address]);
+  }
+
+  /**
+   * Get all transaction IDs for multiple addresses (batched).
+   * Calls getaddresstxids for each address.
+   */
+  async getAddressTxIdsBatch(addresses: string[]): Promise<string[]> {
+    const all: string[] = [];
+    await Promise.all(
+      addresses.map(async (addr) => {
+        try {
+          const txids = await this.getAddressTxIds(addr);
+          all.push(...txids);
+        } catch {
+          // Skip addresses with no txids or errors
+        }
+      })
+    );
+    return all;
+  }
+
+  /**
+   * Get all mempool transactions for a single address.
+   * Calls: getaddressmempool (address-index)
+   */
+  async getAddressMempool(address: string): Promise<unknown[]> {
+    return this.raw<unknown[]>('getaddressmempool', [address]);
+  }
+
+  /**
+   * Get all mempool transactions for multiple addresses (batched).
+   */
+  async getAddressMempoolBatch(addresses: string[]): Promise<unknown[]> {
+    if (addresses.length === 0) return [];
+    try {
+      return (await this.raw<unknown[]>('getaddressmempool', [{ addresses }])) ?? [];
+    } catch {
+      const all: unknown[] = [];
+      await Promise.all(
+        addresses.map(async (addr) => {
+          try {
+            const entries = await this.getAddressMempool(addr);
+            all.push(...(entries as unknown[]));
+          } catch { /* skip */ }
+        })
+      );
+      return all;
+    }
   }
 
   // ---- Raw transaction operations ----
@@ -517,6 +594,57 @@ export class RpcClient {
    */
   async ping(): Promise<void> {
     return this.raw<void>('ping');
+  }
+
+  /**
+   * Get address deltas (efficient balance change tracking).
+   * Calls: getaddressdeltas
+   */
+  async getAddressDeltas(addresses: string[]): Promise<unknown[]> {
+    try {
+      return (await this.raw<unknown[]>('getaddressdeltas', [{ addresses }])) ?? [];
+    } catch {
+      // Not all versions support getaddressdeltas
+      return [];
+    }
+  }
+
+  // ---- Message sign/verify (pure computation, no wallet.dat) ----
+
+  /**
+   * Sign a message with a private key (for message sign/verify feature).
+   * Calls: signmessage (note: this signs locally, not wallet-bound)
+   * NOTE: This should only be called via the local messageSigner, not RPC.
+   */
+  async signMessage(_address: string, _message: string): Promise<string> {
+    // Deliberately not calling RPC — use messageSigner.ts instead
+    throw new Error('Use messageSigner.sign() for local message signing');
+  }
+
+  /**
+   * Verify a message signature (pure computation, safe for public node).
+   * Calls: verifymessage (read-only, does not touch wallet)
+   */
+  async verifyMessage(address: string, signature: string, message: string): Promise<boolean> {
+    try {
+      const result = await this.raw<boolean>('verifymessage', [address, signature, message]);
+      return !!result;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---- Utility ----
+
+  /**
+   * Get help information for an RPC command.
+   * Calls: help
+   */
+  async help(command?: string): Promise<string> {
+    if (command) {
+      return this.raw<string>('help', [command]);
+    }
+    return this.raw<string>('help');
   }
 
   // ---- Mining ----

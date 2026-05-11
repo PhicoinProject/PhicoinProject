@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.dev
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
       - ../src:/app/src
       - ../public:/app/public
@@ -17,37 +17,16 @@ services:
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_RPC_HOST=phicoin-daemon
-      - VITE_RPC_PORT=16611
-      - VITE_RPC_USER=phicoin
-      - VITE_RPC_PASSWORD=phicoinpass
+      - VITE_RPC_HOST=phicoin-daemon-1
+      - VITE_RPC_PORT=28969
+      - VITE_RPC_USER=phi
+      - VITE_RPC_PASSWORD=phi
     command: npm run dev -- --host
-    depends_on:
-      - phicoin-daemon
     networks:
-      - phicoin-net
-
-  phicoin-daemon:
-    image: phicoin:latest
-    ports:
-      - "28964:28964"
-      - "28966:16611"
-    volumes:
-      - phicoin-data:/var/lib/phicoin
-      - ../../../release_test/phicoin-data:/prebuilt:ro
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        if [ ! -d /var/lib/phicoin/blocks ]; then
-          cp -r /prebuilt/* /var/lib/phicoin/ 2>/dev/null || true
-        fi
-        exec phicoind -printtoconsole -daemon=0 -datadir=/var/lib/phicoin -server=1 -disablewallet -txindex -addressindex -spentindex -rpcuser=phicoin -rpcpassword=phicoinpass -rpcallowip=0.0.0.0/0 -rpcbind=0.0.0.0
-    networks:
-      - phicoin-net
-
-volumes:
-  phicoin-data:
+      phicoin_default:
+        aliases:
+          - phicoin-wallet
 
 networks:
-  phicoin-net:
-    driver: bridge
+  phicoin_default:
+    external: true

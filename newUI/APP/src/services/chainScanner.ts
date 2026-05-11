@@ -69,8 +69,8 @@ export interface ScanDeps {
     path: string;
     index: number;
   };
-  getAddressTxIds: (addresses: string[]) => Promise<unknown[]>;
-  getAddressBalance: (addresses: string[]) => Promise<unknown>;
+  getAddressTxIds: (address: string) => Promise<string[]>;
+  getAddressBalance: (address: string) => Promise<unknown>;
 }
 
 /**
@@ -104,17 +104,10 @@ export async function scanChain(
   let index = 0;
 
   while (consecutiveUnused < gapLimit && index < MAX_SCAN_LIMIT) {
-    // Collect a batch of addresses to query
-    const batchAddresses: string[] = [];
-    const batchPaths: string[] = [];
-    const batchIndices: number[] = [];
-
     for (let i = 0; i < batchSize && index + i < MAX_SCAN_LIMIT; i++) {
+      let derivedAddr: { address: string; path: string; index: number };
       try {
-        const derived = deriveFn(hdKey, network, index + i);
-        batchAddresses.push(derived.address);
-        batchPaths.push(derived.path);
-        batchIndices.push(derived.index);
+        derivedAddr = deriveFn(hdKey, network, index + i);
       } catch {
         // Skip derivation failures -- treat as unused
         consecutiveUnused++;
@@ -126,22 +119,23 @@ export async function scanChain(
           txCount: 0,
           balance: 0,
         });
+        continue;
       }
-    }
 
-    index += batchSize;
+      // Single-address RPC call
+      let txCount = 0;
+      try {
+        const txids = await getTxIdsFn(derivedAddr.address);
+        txCount = Array.isArray(txids) ? txids.length : 0;
+      } catch {
+        // RPC error -- treat as unused
+      }
 
-    // Batch-check transaction history for this group
-    const txIds = await fetchTxIdsForAddresses(batchAddresses, getTxIdsFn);
-
-    for (let i = 0; i < batchAddresses.length; i++) {
-      const txCount = txIds[batchAddresses[i]] ?? 0;
       const used = txCount > 0;
-
       entries.push({
-        address: batchAddresses[i],
-        path: batchPaths[i],
-        index: batchIndices[i],
+        address: derivedAddr.address,
+        path: derivedAddr.path,
+        index: derivedAddr.index,
         used,
         txCount,
         balance: 0,
@@ -149,17 +143,25 @@ export async function scanChain(
 
       if (used) {
         consecutiveUnused = 0;
-        lastUsedIndex = batchIndices[i];
+        lastUsedIndex = derivedAddr.index;
       } else {
         consecutiveUnused++;
       }
     }
+
+    index += batchSize;
   }
 
-  // Fetch balances for used addresses
+  // Fetch balances for used addresses (single-address RPC calls)
   const usedEntries = entries.filter((e) => e.used);
-  if (usedEntries.length > 0) {
-    await fetchBalances(usedEntries, getBalanceFn);
+  for (const entry of usedEntries) {
+    try {
+      const result = await getBalanceFn(entry.address);
+      const data = result as Record<string, unknown>;
+      entry.balance = Number((data as any).balance ?? 0) / 1e8;
+    } catch {
+      // RPC error -- balance remains 0
+    }
   }
 
   const usedAddresses = usedEntries.map((e) => ({
@@ -180,78 +182,6 @@ export async function scanChain(
     totalBalance,
     lastUsedIndex,
   };
-}
-
-/**
- * Fetch transaction IDs for a batch of addresses.
- * Returns a map of address -> number of transactions.
- */
-async function fetchTxIdsForAddresses(
-  addresses: string[],
-  getTxIdsFn: (addresses: string[]) => Promise<unknown[]>
-): Promise<Record<string, number>> {
-  const result: Record<string, number> = {};
-
-  for (const addr of addresses) {
-    result[addr] = 0;
-  }
-
-  if (addresses.length === 0) return result;
-
-  try {
-    // getaddresstxids returns objects like { txid, blockhash, confirmations }
-    const raw = await getTxIdsFn(addresses);
-    const txList = Array.isArray(raw) ? raw : [];
-
-    // Count total txs per-batch (RPC aggregates across all addresses)
-    // We can't distinguish per-address without individual calls,
-    // so mark all batch addresses as used if any txs exist.
-    if (txList.length > 0) {
-      for (const addr of addresses) {
-        result[addr] = txList.length;
-      }
-    }
-  } catch {
-    // RPC error -- treat all addresses as unused
-  }
-
-  return result;
-}
-
-/**
- * Fetch balances for used addresses and populate the balance field.
- */
-async function fetchBalances(
-  entries: AddressScanEntry[],
-  getBalanceFn: (addresses: string[]) => Promise<unknown>
-): Promise<void> {
-  if (entries.length === 0) return;
-
-  const addresses = entries.map((e) => e.address);
-
-  try {
-    const balanceResult = await getBalanceFn(addresses);
-
-    // getaddressbalance returns { balance: number, ... }
-    if (balanceResult && typeof balanceResult === 'object' && 'balance' in balanceResult) {
-      const totalBalance = Number((balanceResult as any).balance) || 0;
-
-      // Distribute proportionally by tx count, or equally
-      const totalTxs = entries.reduce((sum, e) => sum + e.txCount, 0);
-      if (totalTxs > 0) {
-        for (const entry of entries) {
-          entry.balance = totalBalance * (entry.txCount / totalTxs);
-        }
-      } else {
-        const perAddress = totalBalance / entries.length;
-        for (const entry of entries) {
-          entry.balance = perAddress;
-        }
-      }
-    }
-  } catch {
-    // RPC error -- balances remain 0
-  }
 }
 
 // ---- Mempool polling ----
@@ -283,7 +213,7 @@ export async function pollMempool(addresses: string[]): Promise<MempoolPollResul
 
   try {
     const [mempoolEntries, mempoolInfo] = await batchRpcCalls([
-      () => rpc.getAddressMempool(addresses, true),
+      () => rpc.getAddressMempoolBatch(addresses),
       () => rpc.getMempoolInfo(),
     ]);
 
@@ -347,19 +277,28 @@ export async function pollChainSnapshot(addresses: string[]): Promise<ChainSnaps
   try {
     const [blockHeight, balanceResult, mempoolEntries] = await batchRpcCalls([
       () => rpc.getBlockCount(),
-      () => rpc.getAddressBalance(addresses),
-      () => rpc.getAddressMempool(addresses, true),
+      () => rpc.getAddressBalanceBatch(addresses),
+      () => rpc.getAddressMempoolBatch(addresses),
     ]);
 
     const height = (blockHeight as number) ?? 0;
 
-    const balData = balanceResult as Record<string, unknown> | undefined;
-    const balance = balData ? Number((balData as any).balance ?? 0) / 1e8 : 0;
+    const balMap = balanceResult as Record<string, unknown> | undefined;
+    let totalBalance = 0;
+    if (balMap) {
+      for (const addr of addresses) {
+        const entry = balMap[addr] as Record<string, unknown> | undefined;
+        if (entry) {
+          totalBalance +=
+            Number((entry as any).balance ?? (entry as any).result?.balance ?? 0) / 1e8;
+        }
+      }
+    }
 
     const entries = Array.isArray(mempoolEntries) ? (mempoolEntries as any[]) : [];
     const mempoolTxIds = entries.map((e: any) => String(e.txid ?? e.txHash ?? ''));
 
-    return { blockHeight: height, balance, mempoolTxIds };
+    return { blockHeight: height, balance: totalBalance, mempoolTxIds };
   } catch {
     return { blockHeight: 0, balance: 0, mempoolTxIds: [] };
   }

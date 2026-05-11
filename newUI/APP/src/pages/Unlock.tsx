@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { tryUnlock, clearWallet, checkRateLimit } from '@/services/auth';
+import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 
 /**
  * Wallet unlock page - passphrase entry for existing encrypted wallets.
@@ -55,6 +56,9 @@ export const Unlock: React.FC = () => {
         setLoading(false);
         return;
       }
+      // Verify HDKey was set by tryUnlock
+      const hdKeyStore = useWalletHDKeyStore.getState();
+      console.log('[Unlock] HDKey set after unlock:', !!hdKeyStore.hdKey);
       navigate('/');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to unlock wallet';

@@ -1,4 +1,6 @@
 import { base58 } from '@scure/base';
+import { sha256 } from '@noble/hashes/sha256';
+import { ripemd160 } from '@noble/hashes/ripemd160';
 import { rpc } from './rpc';
 import { walletService } from './wallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
@@ -33,7 +35,6 @@ function buildP2PKHScriptPubKeyHex(address: string): string {
   const payload = decoded.slice(0, -4);
 
   // Verify checksum
-  const { sha256 } = require('@noble/hashes/sha256');
   const h1 = sha256(payload);
   const h2 = sha256(h1);
   if (
@@ -51,15 +52,17 @@ function buildP2PKHScriptPubKeyHex(address: string): string {
 }
 
 // Build a lookup map of scriptPubKey → private key for all derived addresses.
+// Paths must match the convention in HDWallet.ts: m/0'/coinType'/0'/change/index
 async function buildKeyLookupMap(): Promise<Map<string, string>> {
   const hdKey = useWalletHDKeyStore.getState().hdKey;
   if (!hdKey) return new Map();
 
   const map = new Map<string, string>();
+  const coinType = 0; // PHICOIN mainnet
   for (let change = 0; change <= 1; change++) {
     for (let index = 0; index < 50; index++) {
       try {
-        const derived = hdKey.derive(`m/44'/486'/0'/${change}/${index}`);
+        const derived = hdKey.derive(`m/0'/${coinType}'/0'/${change}/${index}`);
         const pk = derived.privateKey;
         const pubKey = derived.publicKey;
         if (!pk || !pubKey) continue;
@@ -107,8 +110,6 @@ function toHex(bytes: Uint8Array): string {
 }
 
 function hash160(data: Uint8Array): Uint8Array {
-  const { sha256 } = require('@noble/hashes/sha256');
-  const { ripemd160 } = require('@noble/hashes/ripemd160');
   return ripemd160(sha256(data));
 }
 
@@ -332,7 +333,7 @@ export class AssetService {
    * Uses z_getaddresstxids with includeAssets flag.
    */
   async getAssetTransactions(address: string, _count = 10, _from = 0): Promise<string[]> {
-    return rpc.getAddressTxIds([address], true);
+    return rpc.getAddressTxIds(address);
   }
 
   /**

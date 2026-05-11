@@ -113,7 +113,7 @@ export class AddressTracker {
 
       for (const addr of trackedAddresses) {
         try {
-          const txIds = await rpc.getAddressTxIds([addr], true);
+          const txIds = await rpc.getAddressTxIds(addr);
           if (txIds.length > 0) {
             usedAddresses.add(addr);
           }

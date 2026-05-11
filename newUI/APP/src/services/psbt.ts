@@ -1,10 +1,21 @@
 import { HDKey } from '@scure/bip32';
+import { bech32 } from '@scure/base';
 import * as nobleSecp from '@noble/secp256k1';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { hmac } from '@noble/hashes/hmac';
 import { toHex, fromHex } from './crypto';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { rpc } from './rpc';
+
+// Initialize noble/secp256k1 for deterministic signing
+const hmacSha256 = (key: Uint8Array, ...msgs: Uint8Array[]) => {
+  const data = new Uint8Array(msgs.reduce((s, m) => s + m.length, 0));
+  let off = 0;
+  for (const m of msgs) { data.set(m, off); off += m.length; }
+  return hmac(sha256, data, key);
+};
+nobleSecp.utils.hmacSha256Sync = hmacSha256;
 
 /**
  * PSBT-like transaction builder and signer using pure @scure libraries.
@@ -133,6 +144,8 @@ export interface PSBTBuildOptions {
   locktime?: number;
   changeAddress?: string;
   changePath?: string;
+  /** Enable BIP125 Replace-By-Fee: set nSequence < 0xFFFFFFFE on all inputs */
+  replaceable?: boolean;
 }
 
 /**
@@ -155,8 +168,12 @@ function computeSighashP2PKH(
   parts.push(writeVarInt(inputs.length));
 
   for (let i = 0; i < inputs.length; i++) {
-    const txidBytes = fromHex(inputs[i].txid.split('').reverse().join(''));
-    parts.push(txidBytes);
+    const txidBytes = fromHex(inputs[i].txid);
+    const reversed = new Uint8Array(32);
+    for (let j = 0; j < 32; j++) {
+      reversed[j] = txidBytes[31 - j];
+    }
+    parts.push(reversed);
 
     const vout = new Uint8Array(4);
     new DataView(vout.buffer).setUint32(0, inputs[i].vout, true);
@@ -196,14 +213,139 @@ function computeSighashP2PKH(
 }
 
 /**
- * Build, sign, and serialize a complete P2PKH transaction.
- * Returns raw transaction hex.
+ * Compute SIGHASH_ALL for a SegWit input (BIP143).
+ * Differences from legacy P2PKH sighash:
+ * - scriptCode = OP_0 <hash160> (P2WPKH witness script)
+ * - amount (little-endian) is included
+ * - sequence fields are zeroed for non-current inputs
+ * - nHashOutputs uses SIGHASHAnyOutputs mask
+ */
+function computeSighashBIP143(
+  inputs: PSBTInput[],
+  outputs: { value: number; scriptPubKey: Uint8Array }[],
+  inputIndex: number,
+  scriptCode: Uint8Array,
+  amountSat: number,
+  sighashFlags: number
+): Uint8Array {
+  const parts: Uint8Array[] = [];
+
+  const version = new Uint8Array(4);
+  new DataView(version.buffer).setInt32(0, 2, true);
+  parts.push(version);
+
+  const hashPrevOutputs = sha256(sha256(buildPrevOutputs(inputs)));
+  parts.push(hashPrevOutputs);
+
+  const hashSequence = sha256(sha256(buildSequences(inputs, inputIndex)));
+  parts.push(hashSequence);
+
+  // Outpoint
+  const prevTxid = fromHex(inputs[inputIndex].txid);
+  const reversed = new Uint8Array(32);
+  for (let j = 0; j < 32; j++) reversed[j] = prevTxid[31 - j];
+  parts.push(reversed);
+
+  const prevOutput = new Uint8Array(4);
+  new DataView(prevOutput.buffer).setUint32(0, inputs[inputIndex].vout, true);
+  parts.push(prevOutput);
+
+  const scriptCodeLen = writeVarInt(scriptCode.length);
+  parts.push(scriptCodeLen);
+  parts.push(scriptCode);
+
+  const amount = new Uint8Array(8);
+  new DataView(amount.buffer).setBigInt64(0, BigInt(amountSat), true);
+  parts.push(amount);
+
+  const nSequence = new Uint8Array(4);
+  new DataView(nSequence.buffer).setUint32(0, inputs[inputIndex].sequence ?? 0xffffffff, true);
+  parts.push(nSequence);
+
+  const hashOutputs = sha256(sha256(buildOutputsSegWit(outputs, sighashFlags)));
+  parts.push(hashOutputs);
+
+  const locktime = new Uint8Array(4);
+  new DataView(locktime.buffer).setUint32(0, 0, true);
+  parts.push(locktime);
+
+  const sighash = new Uint8Array(4);
+  new DataView(sighash.buffer).setUint32(0, sighashFlags, true);
+  parts.push(sighash);
+
+  const serialized = concatArrays(parts);
+  return sha256(sha256(serialized));
+}
+
+/** Build prev_outpoint data for hashPrevOutputs */
+function buildPrevOutputs(inputs: PSBTInput[]): Uint8Array {
+  const parts: Uint8Array[] = [];
+  for (const input of inputs) {
+    const txidBytes = fromHex(input.txid);
+    const reversed = new Uint8Array(32);
+    for (let j = 0; j < 32; j++) reversed[j] = txidBytes[31 - j];
+    parts.push(reversed);
+    const vout = new Uint8Array(4);
+    new DataView(vout.buffer).setUint32(0, input.vout, true);
+    parts.push(vout);
+  }
+  return concatArrays(parts);
+}
+
+/**
+ * Build sequence data for hashSequence.
+ * Zero out sequences for non-current inputs (prevents cross-input malleability).
+ */
+function buildSequences(inputs: PSBTInput[], currentInput: number): Uint8Array {
+  const parts: Uint8Array[] = [];
+  for (let i = 0; i < inputs.length; i++) {
+    const seq = new Uint8Array(4);
+    const val = i === currentInput ? (inputs[i].sequence ?? 0xffffffff) : 0;
+    new DataView(seq.buffer).setUint32(0, val, true);
+    parts.push(seq);
+  }
+  return concatArrays(parts);
+}
+
+/**
+ * Build outputs data for hashOutputs.
+ * If SIGHASH_ANYONECANPAY is not set, hash all outputs.
+ * Otherwise hash none (empty).
+ */
+function buildOutputsSegWit(
+  outputs: { value: number; scriptPubKey: Uint8Array }[],
+  sighashFlags: number
+): Uint8Array {
+  if ((sighashFlags & 0x80) !== 0) {
+    return new Uint8Array(0);
+  }
+  const parts: Uint8Array[] = [];
+  for (const out of outputs) {
+    const value = new Uint8Array(8);
+    new DataView(value.buffer).setBigInt64(0, BigInt(out.value), true);
+    parts.push(value);
+    parts.push(writeVarInt(out.scriptPubKey.length));
+    parts.push(out.scriptPubKey);
+  }
+  return concatArrays(parts);
+}
+
+/**
+ * Build, sign, and serialize a transaction with mixed P2PKH and SegWit inputs.
+ * Auto-detects input type from scriptPubKey format.
+ * Supports P2PKH (P), P2WPKH (PHC1), and P2SH-P2WPKH (H) inputs.
  */
 export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
   const hdKey = getHDKey();
   if (!hdKey) throw new Error('Wallet not unlocked');
 
-  const { inputs, outputs, feeRate = 1, locktime = 0 } = options;
+  const { inputs, outputs, feeRate = 1, locktime = 0, replaceable = false } = options;
+
+  // Apply RBF sequence: set nSequence = 0xFFFFFFFD (< 0xFFFFFFFE) on all inputs (BIP125)
+  const effectiveInputs = inputs.map((inp) => ({
+    ...inp,
+    sequence: replaceable ? 0xFFFFFFFD : inp.sequence ?? 0xFFFFFFFF,
+  }));
 
   // Calculate total input value in satoshis
   const totalInput = inputs.reduce((s, i) => s + Math.floor(i.value * 1e8), 0);
@@ -229,11 +371,22 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
     });
   }
 
-  // Sign each input and build scriptSigs
-  const scriptSigs: Uint8Array[] = [];
+  // Determine input types from scriptPubKey
+  const inputTypes: ('p2pkh' | 'segwit')[] = effectiveInputs.map((inp) => {
+    const spk = inp.scriptPubKey ? inp.scriptPubKey.replace(/[^a-fA-F0-9]/g, '') : '';
+    // P2WPKH: 00 <20 bytes> = 0x0014...
+    // P2SH-P2WPKH: a9 14 <20 bytes> 87 = 0xa914...87
+    if (spk.startsWith('0014') || spk.startsWith('0020')) return 'segwit';
+    if (spk.startsWith('a914') && spk.endsWith('87')) return 'segwit';
+    return 'p2pkh';
+  });
 
-  for (let i = 0; i < inputs.length; i++) {
-    const input = inputs[i];
+  // Sign each input and build scriptSigs + witness stacks
+  const scriptSigs: Uint8Array[] = [];
+  const witnessStacks: Uint8Array[][] = [];
+
+  for (let i = 0; i < effectiveInputs.length; i++) {
+    const input = effectiveInputs[i];
     const derivedKey = hdKey.derive(input.derivationPath);
 
     const privateKey = derivedKey.privateKey;
@@ -243,48 +396,71 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
     if (!publicKey) throw new Error('No public key at ' + input.derivationPath);
 
     const compressedKey = publicKey.length === 33 ? publicKey : compressPublicKey(publicKey);
-    const scriptCode = p2pkhScriptPubKey(compressedKey);
 
-    // Compute SIGHASH
-    const sighash = computeSighashP2PKH(inputs, outputScripts, i, scriptCode, SIGHASH_ALL);
+    let sighash: Uint8Array;
+    const amountSat = Math.floor(input.value * 1e8);
+
+    if (inputTypes[i] === 'segwit') {
+      // SegWit: scriptCode = OP_0 <hash160>
+      const h160 = hash160(compressedKey);
+      const scriptCode = new Uint8Array(22);
+      scriptCode[0] = 0x00; // OP_0
+      scriptCode.set(h160, 1);
+
+      sighash = computeSighashBIP143(inputs, outputScripts, i, scriptCode, amountSat, SIGHASH_ALL);
+    } else {
+      // Legacy P2PKH: scriptCode = scriptPubKey
+      const scriptCode = p2pkhScriptPubKey(compressedKey);
+      sighash = computeSighashP2PKH(inputs, outputScripts, i, scriptCode, SIGHASH_ALL);
+    }
 
     // Sign with secp256k1
     const privateKeyBytes = privateKey.slice(0, 32);
     const derSig = nobleSecp.signSync(sighash, privateKeyBytes, { der: true });
 
-    // Build scriptSig: [sigLen][sig+SIGHASH][pubLen][pubKey]
     const sigWithHash = new Uint8Array(derSig.length + 1);
     sigWithHash.set(derSig);
     sigWithHash[derSig.length] = SIGHASH_ALL;
 
-    const sigLen = writeVarInt(sigWithHash.length);
-    const pubLen = writeVarInt(compressedKey.length);
+    if (inputTypes[i] === 'segwit') {
+      // SegWit: witness stack = [sig+pubKey], empty scriptSig
+      scriptSigs.push(new Uint8Array(0));
+      witnessStacks.push([sigWithHash, compressedKey]);
+    } else {
+      // P2PKH: scriptSig = [sig+pubKey], empty witness
+      const sigLen = writeVarInt(sigWithHash.length);
+      const pubLen = writeVarInt(compressedKey.length);
 
-    const scriptSig = new Uint8Array(
-      sigLen.length + sigWithHash.length + pubLen.length + compressedKey.length
-    );
-    let off = 0;
-    scriptSig.set(sigLen, off);
-    off += sigLen.length;
-    scriptSig.set(sigWithHash, off);
-    off += sigWithHash.length;
-    scriptSig.set(pubLen, off);
-    off += pubLen.length;
-    scriptSig.set(compressedKey, off);
+      const scriptSig = new Uint8Array(
+        sigLen.length + sigWithHash.length + pubLen.length + compressedKey.length
+      );
+      let off = 0;
+      scriptSig.set(sigLen, off);
+      off += sigLen.length;
+      scriptSig.set(sigWithHash, off);
+      off += sigWithHash.length;
+      scriptSig.set(pubLen, off);
+      off += pubLen.length;
+      scriptSig.set(compressedKey, off);
 
-    scriptSigs.push(scriptSig);
+      scriptSigs.push(scriptSig);
+      witnessStacks.push([]);
+    }
   }
 
-  // Serialize final transaction
-  return serializeTx(inputs, outputs, scriptSigs, locktime);
+  // Serialize final transaction (with witness support if any segwit inputs)
+  const hasSegwit = inputTypes.some((t) => t === 'segwit');
+  return serializeTx(effectiveInputs, outputs, scriptSigs, witnessStacks, locktime, hasSegwit);
 }
 
-/** Serialize transaction to hex */
+/** Serialize transaction to hex (with optional SegWit witness data, BIP144) */
 function serializeTx(
   inputs: PSBTInput[],
   outputs: PSBTOutput[],
   scriptSigs: Uint8Array[],
-  locktime: number
+  witnessStacks: Uint8Array[][],
+  locktime: number,
+  hasSegwit: boolean
 ): string {
   const parts: Uint8Array[] = [];
 
@@ -296,8 +472,10 @@ function serializeTx(
   // Inputs
   parts.push(writeVarInt(inputs.length));
   for (let i = 0; i < inputs.length; i++) {
-    const txidBytes = fromHex(inputs[i].txid.split('').reverse().join(''));
-    parts.push(txidBytes);
+    const txidBytes = fromHex(inputs[i].txid);
+    const reversed = new Uint8Array(32);
+    for (let j = 0; j < 32; j++) reversed[j] = txidBytes[31 - j];
+    parts.push(reversed);
 
     const vout = new Uint8Array(4);
     new DataView(vout.buffer).setUint32(0, inputs[i].vout, true);
@@ -312,6 +490,12 @@ function serializeTx(
     parts.push(seq);
   }
 
+  // Witness marker + flag (BIP144)
+  if (hasSegwit) {
+    parts.push(new Uint8Array([0x00])); // witnessMarker
+    parts.push(new Uint8Array([0x01])); // witnessFlag
+  }
+
   // Outputs
   parts.push(writeVarInt(outputs.length));
   for (const out of outputs) {
@@ -322,6 +506,18 @@ function serializeTx(
     const script = buildScriptFromAddress(out.address);
     parts.push(writeVarInt(script.length));
     parts.push(script);
+  }
+
+  // Witness stacks (one per input, after all outputs)
+  if (hasSegwit) {
+    for (let i = 0; i < inputs.length; i++) {
+      const stack = witnessStacks[i] || [];
+      parts.push(writeVarInt(stack.length));
+      for (const item of stack) {
+        parts.push(writeVarInt(item.length));
+        parts.push(item);
+      }
+    }
   }
 
   // Locktime
@@ -336,7 +532,7 @@ function serializeTx(
 /** Build scriptPubKey from a PHICOIN address */
 function buildScriptFromAddress(address: string): Uint8Array {
   if (address.startsWith('P')) {
-    // P2PKH: version 0x37
+    // P2PKH: Base58Check (version 0x38)
     const { hash160 } = decodeBase58Check(address);
     const s = new Uint8Array(25);
     s[0] = 0x76;
@@ -363,13 +559,12 @@ function buildScriptFromAddress(address: string): Uint8Array {
 
 /** Decode bech32 PHICOIN SegWit address to witness program */
 function bech32Decode(address: string): Uint8Array {
-  // Import dynamic to avoid Node issues
-  const { bech32 } = require('@scure/base');
   try {
-    const { prefix, words } = bech32.decode(address);
-    if (prefix !== 'PHC') throw new Error('Unexpected bech32 prefix: ' + prefix);
+    const decoded = bech32.decodeUnsafe(address);
+    if (!decoded) throw new Error('Invalid bech32 address');
+    if (decoded.prefix !== 'PHC') throw new Error('Unexpected bech32 prefix: ' + decoded.prefix);
     // words is already in 5-bit format, convert to bytes
-    const bytes = bech32.fromWords(words);
+    const bytes = bech32.fromWords(decoded.words);
     if (bytes[0] !== 0) throw new Error('Non-version-0 witness');
     const s = new Uint8Array(22);
     s[0] = 0x00;
@@ -426,6 +621,29 @@ export async function buildAndBroadcast(
 export async function buildAndSignOnly(
   options: PSBTBuildOptions
 ): Promise<{ txid: string; rawTx: string }> {
+  const rawTx = await buildP2PKHTx(options);
+  const txidHash = sha256(sha256(fromHex(rawTx)));
+  const txid = toHex(new Uint8Array([...txidHash].reverse()));
+  return { txid, rawTx };
+}
+
+/**
+ * Build a replacement transaction with higher fee (BIP125 RBF).
+ * Takes the same inputs as the original tx, same outputs, but with a higher feeRate.
+ * The replacement fee must be at least 1.25x the original fee (BIP125 minimum relay increment).
+ */
+export async function buildRBFReplacement(
+  inputs: PSBTInput[],
+  outputs: PSBTOutput[],
+  newFeeRate: number
+): Promise<{ txid: string; rawTx: string }> {
+  const options: PSBTBuildOptions = {
+    inputs,
+    outputs,
+    feeRate: newFeeRate,
+    replaceable: true,
+  };
+
   const rawTx = await buildP2PKHTx(options);
   const txidHash = sha256(sha256(fromHex(rawTx)));
   const txid = toHex(new Uint8Array([...txidHash].reverse()));

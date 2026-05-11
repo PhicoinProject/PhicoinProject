@@ -6,8 +6,8 @@ import { getCoinType, receivePath, changePath } from './HDWallet';
 import type { DerivedAddress } from '@/types';
 
 // PHICOIN network address prefixes (Base58Check)
-const PUB_KEY_HASH = 0x37; // 'P' prefix for P2PKH addresses
-const SCRIPT_HASH = 0x3c; // 'H' prefix for P2SH addresses
+const PUB_KEY_HASH = 0x38; // 'P' prefix for P2PKH (PHICOIN mainnet chainparams: 56 = 0x38)
+const SCRIPT_HASH = 0x10; // 'H' prefix for P2SH (PHICOIN mainnet chainparams: 16 = 0x10)
 
 // PHICOIN Bech32 prefix for SegWit addresses
 const BECH32_PREFIX = 'PHC';

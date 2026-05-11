@@ -1,10 +1,10 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { rpc } from '@/services/rpc';
 import { walletService } from '@/services/wallet';
 import { pollMempool } from '@/services/chainScanner';
 import { notificationManager } from '@/services/notifications';
-import { useWalletStore } from '@/stores';
+import { useWalletStore, useWalletHDKeyStore } from '@/stores';
 import { useToast } from '@/components/common/Toast';
 import {
   MEMPOOL_POLL_INTERVAL,
@@ -27,8 +27,15 @@ import {
  * On new mempool transactions, it fires a toast notification and invalidates
  * the ['transactions'] query key.
  *
- * Callers pass an optional address list; if omitted, the wallet's derived
- * address pool is used.
+ * The hook derives addresses from the HDKey asynchronously. Polling loops
+ * only start once addresses are available (ready === true), preventing
+ * race conditions when the wallet auto-unlocks on page refresh.
+ *
+ * Address derivation runs once on mount. The address pool is never re-derived
+ * unless the HDKey changes (wallet unlock/relock).
+ *
+ * @param addresses - Optional explicit address list. If omitted, derives
+ *   from the wallet's HDKey using walletService.
  */
 export function useRealtimeUpdates(addresses?: string[]) {
   const queryClient = useQueryClient();
@@ -37,11 +44,50 @@ export function useRealtimeUpdates(addresses?: string[]) {
   const setError = useWalletStore((s) => s.setError);
   const setWalletState = useWalletStore((s) => s.setWalletState);
 
-  // Stable address list for the polling loops.
-  const addrList = useMemo(() => {
-    if (addresses && addresses.length > 0) return addresses;
+  // Stable address list from explicit param, or null to derive from HDKey.
+  const explicitAddresses = addresses && addresses.length > 0 ? addresses : null;
+
+  // Derive addresses once HDKey is available (or use explicit addresses).
+  const [addrList, setAddrList] = useState<string[]>(() => {
+    if (explicitAddresses) return explicitAddresses;
     return walletService.getDerivedAddressPool().map((a) => a.address);
-  }, [addresses]);
+  });
+
+  // Track whether we have a valid address list so polling loops can guard
+  // against starting before addresses are ready (race condition with auto-unlock).
+  const [ready, setReady] = useState(!!(explicitAddresses || addrList.length > 0));
+
+  // Derive addresses once on mount when HDKey is available.
+  // Only re-derive if HDKey changes (wallet unlock/relock).
+  useEffect(() => {
+    if (explicitAddresses) {
+      setAddrList(explicitAddresses);
+      setReady(true);
+      return;
+    }
+
+    // Immediate check: if HDKey is already set, derive now
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (hdKey) {
+      const newAddrs = walletService.getDerivedAddressPool().map((a) => a.address);
+      if (newAddrs.length > 0) {
+        setAddrList(newAddrs);
+        setReady(true);
+      }
+    }
+
+    // Subscribe to HDKey changes: when wallet unlocks, re-derive addresses.
+    const unsubscribe = useWalletHDKeyStore.subscribe((state) => {
+      if (state.hdKey) {
+        const newAddrs = walletService.getDerivedAddressPool().map((a) => a.address);
+        if (newAddrs.length > 0) {
+          setAddrList(newAddrs);
+          setReady(true);
+        }
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Refs to avoid re-creating intervals on every render when queryClient
   // or showToast change identity.
@@ -52,7 +98,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
 
   // ---- Mempool polling ----
   useEffect(() => {
-    if (!addrList.length) return;
+    if (!ready) return;
 
     const fetchMempool = async () => {
       try {
@@ -97,16 +143,23 @@ export function useRealtimeUpdates(addresses?: string[]) {
 
   // ---- Balance polling ----
   useEffect(() => {
+    if (!ready) return; // Don't start polling until addresses are ready
+
     const fetchBalance = async () => {
       try {
-        if (!addrList.length) {
-          setBalance(0);
-          return;
+        const totalSat = await rpc.getAddressBalanceBatch(addrList);
+        let totalBalance = 0;
+        for (const addr of addrList) {
+          const entry = totalSat[addr];
+          if (
+            entry &&
+            typeof entry === 'object' &&
+            !('balance' in (entry as Record<string, unknown>) === false)
+          ) {
+            totalBalance += Number((entry as any).balance ?? (entry as any).result?.balance ?? 0);
+          }
         }
-        const result = await rpc.getAddressBalance(addrList);
-        const data = result as Record<string, unknown>;
-        const balanceSat = Number((data as any).balance ?? 0);
-        setBalance(balanceSat / 1e8);
+        setBalance(totalBalance / 1e8);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to fetch balance';
         setError(message);
@@ -116,7 +169,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
     fetchBalance();
     const id = setInterval(fetchBalance, BALANCE_POLL_INTERVAL);
     return () => clearInterval(id);
-  }, [addrList, setBalance, setError]);
+  }, [addrList, ready, setBalance, setError]);
 
   // ---- New transaction notification listener ----
   useEffect(() => {

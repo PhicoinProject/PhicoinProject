@@ -1,13 +1,12 @@
 import React from 'react';
-import { useWalletBalance, useTransactions, useNetworkStatus, useMyAssets } from '@/hooks';
+import { useTransactions, useNetworkStatus, useMyAssets } from '@/hooks';
 import { useWalletStore } from '@/stores';
 import { Spinner } from '@/components/common/Spinner';
 import { truncate, formatRelativeTime, formatConfirmations } from '@/utils/format';
 
 /** Dashboard overview page showing balance, recent transactions, and network status */
 export const Overview: React.FC = () => {
-  // Real-time balance via hook (periodically fetches and updates store)
-  useWalletBalance();
+  // Balance is maintained by useRealtimeUpdates in MainApp (prevents duplicate polling race)
   const phiBalance = useWalletStore((s) => s.phiBalance);
   const error = useWalletStore((s) => s.error);
 
