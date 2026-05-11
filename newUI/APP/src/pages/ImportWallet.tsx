@@ -219,3 +219,5 @@ export const ImportWallet: React.FC = () => {
     </div>
   );
 };
+
+export default ImportWallet;

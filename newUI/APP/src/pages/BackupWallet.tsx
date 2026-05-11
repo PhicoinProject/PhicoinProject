@@ -308,3 +308,5 @@ export const BackupWallet: React.FC = () => {
     </div>
   );
 };
+
+export default BackupWallet;

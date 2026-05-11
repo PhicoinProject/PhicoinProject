@@ -597,3 +597,5 @@ export const ManageAssets: React.FC = () => {
     </div>
   );
 };
+
+export default ManageAssets;

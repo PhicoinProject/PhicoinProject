@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useRealtimeUpdates, useSyncStatus } from '@/hooks';
 import { useWalletStore } from '@/stores';
@@ -11,21 +11,39 @@ import { Receive } from '@/pages/Receive';
 import { Wallet } from '@/pages/Wallet';
 import { Assets } from '@/pages/Assets';
 import { Transactions } from '@/pages/Transactions';
-import { Settings } from '@/pages/Settings';
-import { AddressBook } from '@/pages/AddressBook';
 import { RestrictedAssets } from '@/pages/RestrictedAssets';
 import { CreateAsset } from '@/pages/CreateAsset';
-import { ManageAssets } from '@/pages/ManageAssets';
-import { RPCConsole } from '@/pages/RPCConsole';
-import { Mining } from '@/pages/Mining';
 import { Unlock } from '@/pages/Unlock';
 import { CreateWallet } from '@/pages/CreateWallet';
-import { BackupWallet } from '@/pages/BackupWallet';
-import { ImportWallet } from '@/pages/ImportWallet';
 import { BackupVerify } from '@/pages/BackupVerify';
-import { SignVerify } from '@/pages/SignVerify';
-import { hasWallet, isUnlocked } from '@/services/auth';
+import { hasWallet, isUnlocked, tryAutoUnlock } from '@/services/auth';
 import { useWalletHDKeyStore } from '@/stores';
+
+// Lazy-load heavy pages to reduce initial bundle
+const RPCConsole = lazy(() => import('@/pages/RPCConsole'));
+const Mining = lazy(() => import('@/pages/Mining'));
+const Settings = lazy(() => import('@/pages/Settings'));
+const ManageAssets = lazy(() => import('@/pages/ManageAssets'));
+const SignVerify = lazy(() => import('@/pages/SignVerify'));
+const BackupWallet = lazy(() => import('@/pages/BackupWallet'));
+const ImportWallet = lazy(() => import('@/pages/ImportWallet'));
+const AddressBook = lazy(() => import('@/pages/AddressBook'));
+
+/** Suspense boundary with a lightweight loading fallback */
+const LazyRoute: React.FC<{ component: React.LazyExoticComponent<React.FC> }> = (props) => {
+  const Component = props.component;
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-full items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-phi-purple border-t-transparent" />
+        </div>
+      }
+    >
+      <Component />
+    </Suspense>
+  );
+};
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard' },
@@ -52,17 +70,41 @@ const PAGES = [
   { path: '/wallet', element: <Wallet /> },
   { path: '/assets', element: <Assets /> },
   { path: '/create-asset', element: <CreateAsset /> },
-  { path: '/manage-assets', element: <ManageAssets /> },
+  {
+    path: '/manage-assets',
+    element: <LazyRoute component={ManageAssets} />,
+  },
   { path: '/restricted', element: <RestrictedAssets /> },
   { path: '/transactions', element: <Transactions /> },
-  { path: '/addressbook', element: <AddressBook /> },
-  { path: '/mining', element: <Mining /> },
-  { path: '/rpc', element: <RPCConsole /> },
-  { path: '/settings', element: <Settings /> },
-  { path: '/backup', element: <BackupWallet /> },
-  { path: '/import', element: <ImportWallet /> },
+  {
+    path: '/addressbook',
+    element: <LazyRoute component={AddressBook} />,
+  },
+  {
+    path: '/mining',
+    element: <LazyRoute component={Mining} />,
+  },
+  {
+    path: '/rpc',
+    element: <LazyRoute component={RPCConsole} />,
+  },
+  {
+    path: '/settings',
+    element: <LazyRoute component={Settings} />,
+  },
+  {
+    path: '/backup',
+    element: <LazyRoute component={BackupWallet} />,
+  },
+  {
+    path: '/import',
+    element: <LazyRoute component={ImportWallet} />,
+  },
   { path: '/backup-verify', element: <BackupVerify /> },
-  { path: '/sign-verify', element: <SignVerify /> },
+  {
+    path: '/sign-verify',
+    element: <LazyRoute component={SignVerify} />,
+  },
 ];
 
 /**
@@ -76,12 +118,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const autoUnlock = async () => {
       if (!hasWallet()) return;
-
       const hdKeyStore = useWalletHDKeyStore.getState();
       if (hdKeyStore.hdKey) return;
 
       try {
-        const { tryAutoUnlock } = await import('@/services/auth');
         const recovered = await tryAutoUnlock();
         if (recovered) {
           setAuthState((prev) => ({ ...prev, unlocked: true }));
@@ -149,18 +189,15 @@ function MainApp() {
       if (sessionStorage.getItem('phi:unlocked') === 'true') {
         const hdKeyStore = useWalletHDKeyStore.getState();
         if (!hdKeyStore.hdKey) {
-          // Auto-unlock: recover HDKey from stored mnemonic + userSeed
+          // Use tryAutoUnlock for session recovery (already called in AuthGate)
+          // but check as fallback if HDKey was cleared after unlock
           try {
-            const storedMnemonic = localStorage.getItem('phi:v2:mnemonic');
-            const userSeed = localStorage.getItem('phi:v2:userSeed') || '';
-            if (storedMnemonic) {
-              const { deriveMasterSeed, seedToHDKey } = await import('@/services/HDWallet');
-              const masterSeed = await deriveMasterSeed(storedMnemonic, userSeed);
-              const hdKey = seedToHDKey(masterSeed);
-              hdKeyStore.setHDKey(hdKey);
+            const recovered = await tryAutoUnlock();
+            if (!recovered) {
+              console.warn('MainApp: session marked unlocked but HDKey recovery failed');
             }
           } catch (e) {
-            console.error('MainApp auto-unlock failed:', e);
+            console.error('MainApp: HDKey recovery failed:', e);
           }
         }
       }
