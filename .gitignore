@@ -143,6 +143,7 @@ release_test/
 newUI/design/
 .playwright-mcp/
 newUI/goals
+newUI/goals.md
 
 # Agent work artifacts - DO NOT commit to public repo
 newUI/**/.bugs-report.md
