@@ -13,6 +13,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 3000,
     // SECURITY: Prevent HMR from accepting connections from arbitrary hosts
+    // Disable HMR to prevent headless Chrome/MCP WebSocket connection hangs
+    hmr: false,
     allowedHosts: false,
     // SECURITY: CORS enabled for dev server (only localhost access needed)
     cors: true,

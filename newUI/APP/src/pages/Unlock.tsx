@@ -58,7 +58,11 @@ export const Unlock: React.FC = () => {
       }
       // Verify HDKey was set by tryUnlock
       const hdKeyStore = useWalletHDKeyStore.getState();
-      console.log('[Unlock] HDKey set after unlock:', !!hdKeyStore.hdKey);
+      if (!hdKeyStore.hdKey) {
+        setLoading(false);
+        setError('Wallet unlock failed - HD key not derived');
+        return;
+      }
       navigate('/');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to unlock wallet';

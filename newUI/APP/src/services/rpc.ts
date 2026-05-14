@@ -121,18 +121,23 @@ const BLOCKED_METHODS = new Set([
  */
 function viteEnv(key: string, fallback: string): string {
   try {
-    const env = (import.meta as unknown as { env?: Record<string, string> })?.env;
-    return env?.[key] ?? fallback;
+    const env: Record<string, unknown> = import.meta.env;
+    const val = env?.[key];
+    if (val && typeof val === 'string') return val;
+    if (val !== undefined) return String(val);
   } catch {
-    return fallback;
+    // ignore
   }
+  return fallback;
 }
 
 /**
  * In dev mode (Vite HMR), allow non-localhost hosts for Docker networking.
  * In production builds, only localhost is permitted.
  */
-const isDevMode = viteEnv('MODE', 'production') === 'development';
+const isDevMode = typeof import.meta.env !== 'undefined'
+  ? (import.meta.env.DEV === true || import.meta.env.MODE === 'development')
+  : false;
 
 /**
  * In dev mode, allow Docker container names and any hostname.
@@ -230,19 +235,17 @@ export class RpcClient {
    */
   async getAddressBalanceBatch(addresses: string[]): Promise<Record<string, unknown>> {
     if (addresses.length === 0) return {};
-    try {
-      const result = await this.raw<unknown>('getaddressbalance', [{ addresses }]);
-      return { combined: result };
-    } catch {
-      const results: Record<string, unknown> = {};
-      await Promise.all(
-        addresses.map(async (addr) => {
-          try { results[addr] = await this.getAddressBalance(addr); }
-          catch { results[addr] = 0; }
-        })
-      );
-      return results;
-    }
+    // Call getaddressbalance individually for each address to get accurate
+    // per-address balances. The batch RPC form returns a combined total that
+    // cannot be correctly distributed per-address.
+    const results: Record<string, unknown> = {};
+    await Promise.all(
+      addresses.map(async (addr) => {
+        try { results[addr] = await this.getAddressBalance(addr); }
+        catch { results[addr] = { balance: 0, received: 0 }; }
+      })
+    );
+    return results;
   }
 
   /**

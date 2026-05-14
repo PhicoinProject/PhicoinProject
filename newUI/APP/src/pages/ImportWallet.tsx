@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { importEncryptedWallet } from '@/services/encryptedWallet';
+import { retrieveEncryptedSeed } from '@/services/encryptedWallet';
 import { createWalletV2 } from '@/services/auth';
-import { isValidMnemonic } from '@/services/HDWallet';
+import { isValidMnemonic, seedToHDKey } from '@/services/HDWallet';
+import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import { resetRateLimit } from '@/services/auth';
 
 export const ImportWallet: React.FC = () => {
   const navigate = useNavigate();
@@ -12,6 +15,7 @@ export const ImportWallet: React.FC = () => {
 
   // File import state
   const [jsonInput, setJsonInput] = useState('');
+  const [importPassword, setImportPassword] = useState('');
 
   // Phrase import state
   const [mnemonic, setMnemonic] = useState('');
@@ -23,10 +27,84 @@ export const ImportWallet: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      importEncryptedWallet(jsonInput);
-      navigate('/unlock');
+      const json = JSON.parse(jsonInput);
+
+      if (json.version === 2 || json.format === 'phicoin-encrypted-wallet') {
+        // V2 encrypted wallet — store to localStorage first
+        importEncryptedWallet(jsonInput);
+
+        // Verify password by attempting decryption
+        if (!importPassword.trim()) {
+          setError('Enter your wallet password to verify the import');
+          setLoading(false);
+          return;
+        }
+
+        try {
+          const masterSeed = await retrieveEncryptedSeed(importPassword);
+          const hdKey = seedToHDKey(masterSeed);
+          useWalletHDKeyStore.getState().setHDKey(hdKey);
+
+          // Unlock
+          sessionStorage.setItem('phi:unlocked', 'true');
+          resetRateLimit();
+
+          // Session key for auto-unlock on refresh
+          const sessionKey = crypto.getRandomValues(new Uint8Array(32));
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const toBuf = (arr: Uint8Array): ArrayBuffer => {
+            const ab = new ArrayBuffer(arr.length);
+            new Uint8Array(ab).set(arr);
+            return ab;
+          };
+          const aesKey = await crypto.subtle.importKey(
+            'raw', toBuf(sessionKey), { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+          );
+          const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: toBuf(iv) }, aesKey, toBuf(masterSeed)
+          );
+          const toHexArr = (b: Uint8Array) =>
+            Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+          sessionStorage.setItem('phi:sessionKey', toHexArr(sessionKey));
+          sessionStorage.setItem(
+            'phi:sessionEncryptedSeed',
+            toHexArr(new Uint8Array([...iv, ...new Uint8Array(encrypted)]))
+          );
+          sessionKey.fill(0);
+          masterSeed.fill(0);
+
+          navigate('/');
+        } catch {
+          setError('Incorrect password. Please try again.');
+          // Clear on wrong password
+          localStorage.removeItem('phi:v2:encryptedSeed');
+          localStorage.removeItem('phi:v2:salt');
+          localStorage.removeItem('phi:v2:iv');
+          localStorage.removeItem('phi:v2:meta');
+        }
+      } else if (json.version === 1) {
+        // V1 legacy backup — no password verification needed via this page,
+        // just store and redirect to unlock
+        if (!json.data?.salt || !json.data?.sentinel) {
+          throw new Error('Invalid v1 backup: missing data');
+        }
+        localStorage.setItem('phi:salt', json.data.salt);
+        localStorage.setItem('phi:sentinel', json.data.sentinel);
+        if (json.data.mnemonicHash) localStorage.setItem('phi:mnemonicHash', json.data.mnemonicHash);
+        if (json.data.created) localStorage.setItem('phi:created', json.data.created);
+
+        navigate('/unlock');
+      } else {
+        throw new Error('Unsupported backup format');
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Invalid wallet file');
+      if (err instanceof SyntaxError) {
+        setError('Invalid JSON. Please check the file content.');
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Invalid wallet backup file');
+      }
     }
     setLoading(false);
   };
@@ -68,6 +146,9 @@ export const ImportWallet: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       setJsonInput(ev.target?.result as string);
+    };
+    reader.onerror = () => {
+      setError('Failed to read file');
     };
     reader.readAsText(file);
   };
@@ -120,7 +201,7 @@ export const ImportWallet: React.FC = () => {
               </label>
               <input
                 type="file"
-                accept=".json"
+                accept=".json,application/json"
                 onChange={handleFileUpload}
                 className="w-full text-sm text-gray-600 dark:text-dark-mutedText"
               />
@@ -136,6 +217,36 @@ export const ImportWallet: React.FC = () => {
                 placeholder='{"version": 2, "format": "phicoin-encrypted-wallet", ...}'
               />
             </div>
+
+            {/* V2 backup password verification */}
+            {jsonInput && (() => {
+              try {
+                const j = JSON.parse(jsonInput);
+                return j.version === 2 || j.format === 'phicoin-encrypted-wallet';
+              } catch { return false; }
+            })() && (
+              <div>
+                <label
+                  htmlFor="importPassword"
+                  className="mb-1 block text-sm font-medium text-gray-700 dark:text-dark-secondary"
+                >
+                  Wallet Password
+                </label>
+                <input
+                  id="importPassword"
+                  type="password"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                  className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                  placeholder="Enter wallet password to verify"
+                  autoComplete="off"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
+                  We need your password to verify the backup is valid.
+                </p>
+              </div>
+            )}
+
             <button
               onClick={handleFileImport}
               disabled={loading || !jsonInput}
@@ -212,7 +323,7 @@ export const ImportWallet: React.FC = () => {
             onClick={() => navigate('/')}
             className="text-phi-primary hover:underline"
           >
-            Create new wallet instead
+            Back
           </button>
         </div>
       </div>

@@ -1,0 +1,12 @@
+# Test screenshots
+.test_pages/
+
+# Build/runtime
+node_modules/
+dist/
+
+# Sensitive
+.env*
+
+# OS
+.DS_Store
