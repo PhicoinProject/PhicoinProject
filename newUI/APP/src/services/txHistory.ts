@@ -228,23 +228,23 @@ function computeTransactionAmount(
   const vin = (tx.vin ?? []) as Record<string, unknown>[];
   const foundAddresses = new Set<string>();
 
-  // Sum of all outputs to wallet addresses (in satoshis)
-  let totalReceivedSat = 0;
+  // Sum of all outputs to wallet addresses (in PHI)
+  let totalReceivedPhi = 0;
   for (const output of vout) {
     const scriptPubKey = output.scriptPubKey as Record<string, unknown> | undefined;
     const addr = String(scriptPubKey?.address ?? '');
-    const valueSat = Number(output.value ?? 0);
+    const valuePhi = Number(output.value ?? 0);
     if (addr && walletSet.has(addr)) {
-      totalReceivedSat += valueSat;
+      totalReceivedPhi += valuePhi;
       foundAddresses.add(addr);
     }
   }
 
-  // Sum of all inputs from wallet addresses (in satoshis)
+  // Sum of all inputs from wallet addresses (in PHI)
   // We need the referenced output values to know how much was spent.
   // For simplicity, use the vin's previous output address if available,
   // otherwise check if any wallet address appears in the input's redeem script or signatures.
-  let totalSentSat = 0;
+  let totalSentPhi = 0;
   for (const input of vin) {
     const txinData = input as Record<string, unknown>;
     const prevOut = txinData.prevOut as Record<string, unknown> | undefined;
@@ -258,20 +258,19 @@ function computeTransactionAmount(
 
     if (inputAddr && walletSet.has(inputAddr)) {
       const prevValue = Number(prevOut?.value ?? 0);
-      totalSentSat += prevValue;
+      totalSentPhi += prevValue;
       foundAddresses.add(inputAddr);
     }
   }
 
-  const netSat = totalReceivedSat - totalSentSat;
-  const netPhi = netSat / 1e8; // convert from satoshis to PHI
+  const netPhi = totalReceivedPhi - totalSentPhi;
 
   let direction: TxDirection = 'other';
-  if (totalReceivedSat > 0 && totalSentSat > 0) {
+  if (totalReceivedPhi > 0 && totalSentPhi > 0) {
     direction = 'self';
-  } else if (totalReceivedSat > 0) {
+  } else if (totalReceivedPhi > 0) {
     direction = 'received';
-  } else if (totalSentSat > 0) {
+  } else if (totalSentPhi > 0) {
     direction = 'sent';
   }
 
@@ -289,7 +288,8 @@ function computeTransactionAmount(
 function extractFee(tx: Record<string, unknown>): number {
   const fees = tx.fees as Record<string, unknown> | undefined;
   if (fees && typeof fees === 'object') {
-    return Number((fees as Record<string, unknown>).base ?? 0) / 1e8;
+    // fees.base is already in PHI units
+    return Number((fees as Record<string, unknown>).base ?? 0);
   }
   return 0;
 }
@@ -320,7 +320,7 @@ function extractVinSummary(tx: Record<string, unknown>, walletSet: Set<string>):
       txid: String(txinData.txid ?? ''),
       vout: Number(txinData.vout ?? 0),
       addresses: addrs,
-      value: prevOut ? Number(prevOut.value ?? 0) / 1e8 : undefined,
+      value: prevOut ? Number(prevOut.value ?? 0) : undefined,
     });
   }
 
@@ -352,7 +352,8 @@ function extractVoutSummary(tx: Record<string, unknown>): VoutSummary[] {
 
     result.push({
       n: Number(output.n ?? 0),
-      value: Number(output.value ?? 0) / 1e8,
+      // value is already in PHI units from getrawtransaction verbose=2
+      value: Number(output.value ?? 0),
       address: scriptPubKey ? String(scriptPubKey.address ?? '') : undefined,
       scriptType: scriptPubKey ? String(scriptPubKey.type ?? '') : '',
       assetLabel: output.assetLabel ? String(output.assetLabel) : undefined,

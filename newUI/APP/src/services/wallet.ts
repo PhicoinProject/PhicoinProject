@@ -197,8 +197,8 @@ export class WalletService {
       const u = utxo as Record<string, unknown>;
       const txid = String(u.txid ?? u.txHash ?? '');
       const vout = Number(u.vout ?? u.outputIndex ?? 0);
-      const valueSat = Number(u.value ?? u.amount ?? 0);
-      const scriptPubKey = String(u.scriptPubKey ?? u.scriptPubKeyHex ?? '');
+      const valueSat = Number(u.satoshis ?? u.value ?? u.amount ?? 0);
+      const scriptPubKey = String(u.scriptPubKey ?? u.script ?? u.scriptPubKeyHex ?? '');
 
       const path = this.derivePathForAddress(scriptPubKey);
       if (!path) {
@@ -327,8 +327,8 @@ export class WalletService {
       return {
         txid: String(obj.txid ?? obj.txHash ?? ''),
         vout: Number(obj.vout ?? obj.outputIndex ?? 0),
-        scriptPubKey: String(obj.scriptPubKey ?? obj.scriptPubKeyHex ?? ''),
-        amount: Number(obj.value ?? obj.amount ?? 0) / 1e8,
+        scriptPubKey: String(obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? ''),
+        amount: Number(obj.satoshis ?? obj.value ?? obj.amount ?? 0) / 1e8,
         confirmations: Number(obj.confirmations ?? obj.confirmationCount ?? 0),
         coinbase: Boolean(obj.coinbase ?? false),
       };

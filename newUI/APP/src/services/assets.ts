@@ -63,17 +63,17 @@ function buildP2PKHScriptPubKeyHex(address: string): string {
 }
 
 // Build a lookup map of scriptPubKey → private key for all derived addresses.
-// Paths must match the convention in HDWallet.ts: m/0'/coinType'/0'/change/index
+// Paths must match the convention in wallet.ts: m/44'/486'/0'/change/index
 async function buildKeyLookupMap(): Promise<Map<string, string>> {
   const hdKey = useWalletHDKeyStore.getState().hdKey;
   if (!hdKey) return new Map();
 
   const map = new Map<string, string>();
-  const coinType = 0; // PHICOIN mainnet
+  const coinType = 486; // PHICOIN mainnet (must match wallet.ts derivation)
   for (let change = 0; change <= 1; change++) {
     for (let index = 0; index < 50; index++) {
       try {
-        const derived = hdKey.derive(`m/0'/${coinType}'/0'/${change}/${index}`);
+        const derived = hdKey.derive(`m/44'/${coinType}'/0'/${change}/${index}`);
         const pk = derived.privateKey;
         const pubKey = derived.publicKey;
         if (!pk || !pubKey) continue;
