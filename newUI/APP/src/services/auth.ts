@@ -29,6 +29,15 @@ export function isUnlocked(): boolean {
   return sessionStorage.getItem('phi:unlocked') === 'true';
 }
 
+  /**
+   * Safely convert a Uint8Array to an ArrayBuffer that crypto.subtle accepts.
+   * Using `.buffer` directly can return a SharedArrayBuffer or a larger-than-needed
+   * ArrayBuffer (when the view is a slice of a larger buffer).
+   */
+function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+  return view.slice(0).buffer;
+}
+
 /**
  * Attempt auto-unlock on page refresh using a session key stored in sessionStorage.
  *
@@ -39,7 +48,14 @@ export function isUnlocked(): boolean {
  */
 export async function tryAutoUnlock(): Promise<boolean> {
   if (!hasV2Wallet()) return false;
-  if (sessionStorage.getItem('phi:unlocked') === 'true') return false;
+
+  // If HDKey is already in memory (e.g., post-unlock before refresh), no need to retry.
+  if (useWalletHDKeyStore.getState().hdKey) return false;
+
+  // SessionStorage persists across page refreshes.
+  // If unlocked is true but HDKey is null, the page was refreshed and we need to recover it.
+  // If unlocked is false, no one has unlocked yet — bail out (let the Unlock page handle it).
+  if (sessionStorage.getItem('phi:unlocked') !== 'true') return false;
 
   try {
     const sessionKeyHex = sessionStorage.getItem('phi:sessionKey');
@@ -54,16 +70,16 @@ export async function tryAutoUnlock(): Promise<boolean> {
     // Import session key as AES-GCM key
     const key = await crypto.subtle.importKey(
       'raw',
-      sessionKeyBytes.buffer as ArrayBuffer,
+      toArrayBuffer(sessionKeyBytes),
       { name: 'AES-GCM', length: 256 },
       false,
       ['decrypt']
     );
 
     const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
       key,
-      ciphertext.buffer as ArrayBuffer
+      toArrayBuffer(ciphertext)
     );
 
     const masterSeed = new Uint8Array(decrypted);
@@ -223,9 +239,9 @@ export async function tryUnlock(passphrase: string): Promise<boolean> {
   let decrypted: ArrayBuffer;
   try {
     decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
       key,
-      ciphertext
+      toArrayBuffer(ciphertext)
     );
   } catch {
     await sleep(200);
@@ -330,33 +346,28 @@ function hexToBytes(hex: string): Uint8Array {
  */
 async function storeSessionKey(masterSeed: Uint8Array): Promise<void> {
   try {
-    // Generate random 256-bit session key
     const sessionKey = crypto.getRandomValues(new Uint8Array(32));
     const iv = crypto.getRandomValues(new Uint8Array(12));
 
-    // Import as AES-GCM key
     const key = await crypto.subtle.importKey(
       'raw',
-      sessionKey.buffer as ArrayBuffer,
+      toArrayBuffer(sessionKey),
       { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt']
     );
 
-    // Encrypt master seed
     const encrypted = await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: iv.buffer as ArrayBuffer },
+      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
       key,
-      masterSeed.buffer as ArrayBuffer
+      toArrayBuffer(masterSeed)
     );
 
-    // Store in sessionStorage (survives refresh, cleared on tab close)
     sessionStorage.setItem('phi:sessionKey', toHex(sessionKey));
     sessionStorage.setItem('phi:sessionEncryptedSeed', toHex(new Uint8Array([...iv, ...new Uint8Array(encrypted)])));
 
-    // Zeroize session key from memory
     sessionKey.fill(0);
   } catch {
-    // If sessionStorage is full or unavailable, auto-unlock won't work but wallet still functions
+    // Auto-unlock won't work but wallet still functions
   }
 }

@@ -161,23 +161,46 @@ const DEFAULT_CONFIG: RpcConfig = {
   password: viteEnv('VITE_RPC_PASSWORD', ''),
 };
 
+/** localStorage key for user-saved RPC config */
+export const RPC_CONFIG_KEY = 'phi:rpcConfig';
+
 /** JSON-RPC client for phicoind */
 export class RpcClient {
-  private client: AxiosInstance;
+  private client!: AxiosInstance;
   private idCounter = 0;
+  private config: RpcConfig;
 
   constructor(config: Partial<RpcConfig> = {}) {
-    const cfg = { ...DEFAULT_CONFIG, ...config };
+    this.config = { ...DEFAULT_CONFIG, ...config };
+    this.initClient(this.config);
+  }
+
+  /** Re-create the axios client with the given config */
+  private initClient(cfg: RpcConfig) {
     assertLocalhost(cfg.host);
-    // In dev mode, use the Vite proxy to avoid CORS and inject auth headers
-    const url = isDevMode ? '/api' : `http://${cfg.host}:${cfg.port}`;
+    // In dev mode, always use the Vite proxy to handle CORS.
+    // Direct browser requests to the daemon will be blocked by CORS.
+    // The proxy injects auth headers and forwards to the daemon.
+    const useProxy = isDevMode;
+    const url = useProxy ? '/api' : `http://${cfg.host}:${cfg.port}`;
 
     this.client = axios.create({
       baseURL: url,
-      auth: cfg.user ? { username: cfg.user, password: cfg.password } : undefined,
+      auth: !useProxy && cfg.user ? { username: cfg.user, password: cfg.password } : undefined,
       headers: { 'Content-Type': 'application/json' },
       timeout: 30_000,
     });
+  }
+
+  /** Update RPC config at runtime and re-create the axios client */
+  setConfig(newConfig: Partial<RpcConfig>) {
+    this.config = { ...this.config, ...newConfig };
+    this.initClient(this.config);
+  }
+
+  /** Return a copy of the current RPC config */
+  getConfig(): RpcConfig {
+    return { ...this.config };
   }
 
   /**
@@ -213,7 +236,26 @@ export class RpcClient {
     } catch (err) {
       if (err instanceof RpcError) throw err;
       if (axios.isAxiosError(err)) {
-        throw new Error(`RPC connection failed: ${err.message}`);
+        // Some daemons return JSON-RPC errors with HTTP 500 — extract and throw
+        // those as proper RpcErrors so the caller sees the daemon's error message.
+        const data = err.response?.data;
+        if (data && typeof data === 'object' && 'error' in data && data.error) {
+          throw new RpcError(
+            Number(data.error.code ?? -1),
+            String(data.error.message ?? 'unknown')
+          );
+        }
+        // For non-JSON-RPC errors, capture whatever body we can for debugging
+        let detail = err.message;
+        if (data) {
+          try {
+            const body = typeof data === 'string' ? data : JSON.stringify(data);
+            detail = body.substring(0, 300);
+          } catch { /* ignore */ }
+        }
+        throw new Error(
+          `RPC "${method}" failed: HTTP ${err.response?.status} — ${detail}`
+        );
       }
       throw err;
     }
@@ -681,5 +723,28 @@ export class RpcError extends Error {
   }
 }
 
+/**
+ * Load user-saved RPC config from localStorage (if any) and apply it to the singleton.
+ * This lets Settings page changes persist across page refreshes.
+ */
+function loadSavedRpcConfig(client: RpcClient): void {
+  try {
+    const raw = localStorage.getItem(RPC_CONFIG_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw) as Partial<RpcConfig>;
+    if (saved.host || typeof saved.port === 'number' || saved.user || saved.password !== undefined) {
+      client.setConfig({
+        host: saved.host,
+        port: typeof saved.port === 'number' ? saved.port : Number(saved.port),
+        user: saved.user,
+        password: saved.password,
+      });
+    }
+  } catch {
+    // ignore corrupt localStorage
+  }
+}
+
 /** Default singleton instance */
 export const rpc = new RpcClient();
+loadSavedRpcConfig(rpc);

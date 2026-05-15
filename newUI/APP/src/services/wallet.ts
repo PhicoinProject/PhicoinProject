@@ -525,28 +525,27 @@ export class WalletService {
   }
 
   /**
-   * Derive a BIP44 path for a given scriptPubKey.
-   * Scans both receive chain (m/44'/486'/0'/0/{0..49}) and change chain
-   * (m/44'/486'/0'/1/{0..49}) to find matching scriptPubKey.
+   * Derive a path for a given scriptPubKey by scanning both chains.
+   * Paths match HDWallet.ts: m/0'/coinType'/0'/change/index (coinType=0 for mainnet).
    */
   private derivePathForAddress(scriptPubKey: string): string | null {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return null;
 
-    const coinType = 486; // PHICOIN
+    const coinType = 0; // MAINNET_COIN_TYPE from HDWallet.ts
 
-    // Scan receive chain first
+    // Scan receive chain first: m/0'/0'/0'/0/{i}
     for (let i = 0; i < 50; i++) {
-      const path = `m/44'/${coinType}'/0'/0/${i}`;
+      const path = `m/0'/${coinType}'/0'/0/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
         if (toHex(spk) === scriptPubKey) return path;
       } catch { /* skip */ }
     }
 
-    // Scan change chain
+    // Scan change chain: m/0'/0'/0'/1/{i}
     for (let i = 0; i < 50; i++) {
-      const path = `m/44'/${coinType}'/0'/1/${i}`;
+      const path = `m/0'/${coinType}'/0'/1/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
         if (toHex(spk) === scriptPubKey) return path;

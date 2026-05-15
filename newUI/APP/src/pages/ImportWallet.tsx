@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { importEncryptedWallet } from '@/services/encryptedWallet';
 import { retrieveEncryptedSeed } from '@/services/encryptedWallet';
 import { createWalletV2 } from '@/services/auth';
-import { isValidMnemonic, seedToHDKey } from '@/services/HDWallet';
+import { isValidMnemonic, deriveMasterSeed, seedToHDKey } from '@/services/HDWallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { resetRateLimit } from '@/services/auth';
 
@@ -15,7 +15,9 @@ export const ImportWallet: React.FC = () => {
 
   // File import state
   const [jsonInput, setJsonInput] = useState('');
+  const [fileName, setFileName] = useState('');
   const [importPassword, setImportPassword] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
   // Phrase import state
   const [mnemonic, setMnemonic] = useState('');
@@ -133,24 +135,85 @@ export const ImportWallet: React.FC = () => {
     setLoading(true);
     try {
       await createWalletV2(mnemonic, userSeed, password);
-      navigate('/unlock');
+
+      // Auto-unlock: derive HDKey from mnemonic + seed and set it
+      const masterSeed = await deriveMasterSeed(mnemonic, userSeed);
+      const hdKey = seedToHDKey(masterSeed);
+      useWalletHDKeyStore.getState().setHDKey(hdKey);
+
+      // Set session unlock flags
+      sessionStorage.setItem('phi:unlocked', 'true');
+      resetRateLimit();
+
+      // Store session key for auto-unlock on refresh
+      const sessionKey = crypto.getRandomValues(new Uint8Array(32));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const toBuf = (arr: Uint8Array): ArrayBuffer => {
+        const ab = new ArrayBuffer(arr.length);
+        new Uint8Array(ab).set(arr);
+        return ab;
+      };
+      const aesKey = await crypto.subtle.importKey(
+        'raw', toBuf(sessionKey), { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+      );
+      const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: toBuf(iv) }, aesKey, toBuf(masterSeed)
+      );
+      const toHexArr = (b: Uint8Array) =>
+        Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
+      sessionStorage.setItem('phi:sessionKey', toHexArr(sessionKey));
+      sessionStorage.setItem(
+        'phi:sessionEncryptedSeed',
+        toHexArr(new Uint8Array([...iv, ...new Uint8Array(encrypted)]))
+      );
+      sessionKey.fill(0);
+      masterSeed.fill(0);
+
+      navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Wallet import failed');
     }
     setLoading(false);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const readFileDialog = (file: File) => {
     const reader = new FileReader();
     reader.onload = (ev) => {
       setJsonInput(ev.target?.result as string);
+      setFileName(file.name);
     };
     reader.onerror = () => {
       setError('Failed to read file');
     };
     reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    readFileDialog(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (file.name.endsWith('.json') || file.type === 'application/json') {
+      readFileDialog(file);
+    } else {
+      setError('Please drop a .json file');
+    }
   };
 
   return (
@@ -195,20 +258,53 @@ export const ImportWallet: React.FC = () => {
 
         {mode === 'file' ? (
           <div className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-dark-mutedText">
+              Upload the <code className="font-mono text-xs">phicoin-wallet-backup-*.json</code> file exported from your wallet, or paste the JSON below.
+            </p>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-dark-secondary">
-                Upload Backup File
-              </label>
               <input
                 type="file"
                 accept=".json,application/json"
                 onChange={handleFileUpload}
-                className="w-full text-sm text-gray-600 dark:text-dark-mutedText"
+                className="hidden"
+                id="backup-file-input"
               />
+              <label
+                htmlFor="backup-file-input"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 cursor-pointer transition-colors ${
+                  isDragging
+                    ? 'border-phi-primary bg-phi-primary/10'
+                    : 'border-gray-300 dark:border-dark-muted hover:border-phi-primary/50 dark:hover:border-phi-primary/50'
+                }`}
+              >
+                {fileName ? (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="mt-2 text-sm font-medium text-gray-900 dark:text-dark-text">{fileName}</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">Click or drag to replace</p>
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-400 dark:text-dark-mutedText" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-dark-mutedText">
+                      <span className="font-medium text-phi-primary">Click to choose</span> or drag and drop
+                    </p>
+                    <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">.json backup file</p>
+                  </>
+                )}
+              </label>
             </div>
+            <p className="text-center text-sm text-gray-400 dark:text-dark-mutedText">— or —</p>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-dark-secondary">
-                Or paste JSON
+                Paste Backup JSON
               </label>
               <textarea
                 value={jsonInput}
@@ -283,7 +379,7 @@ export const ImportWallet: React.FC = () => {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-dark-secondary">
-                New Encryption Password
+                Encryption Password
               </label>
               <input
                 type="password"

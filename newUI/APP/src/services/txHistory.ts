@@ -203,6 +203,29 @@ export async function getTransactionDetail(
 }
 
 // ---------------------------------------------------------------------------
+// Address extraction helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract addresses from a scriptPubKey object.
+ * PHICOIN/Ravencoin returns `addresses` (array), Bitcoin Core uses `address` (string).
+ * This helper normalizes both formats.
+ */
+function extractAddresses(scriptPubKey: Record<string, unknown> | undefined): string[] {
+  if (!scriptPubKey) return [];
+
+  // PHICOIN/Ravencoin: addresses is an array
+  const addrsArray = scriptPubKey.addresses as string[] | undefined;
+  if (Array.isArray(addrsArray)) return addrsArray.filter(Boolean);
+
+  // Bitcoin Core: address is a string
+  const singleAddr = scriptPubKey.address as string | undefined;
+  if (singleAddr) return [singleAddr];
+
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Amount computation
 // ---------------------------------------------------------------------------
 
@@ -232,11 +255,14 @@ function computeTransactionAmount(
   let totalReceivedPhi = 0;
   for (const output of vout) {
     const scriptPubKey = output.scriptPubKey as Record<string, unknown> | undefined;
-    const addr = String(scriptPubKey?.address ?? '');
+    const addrs = extractAddresses(scriptPubKey);
     const valuePhi = Number(output.value ?? 0);
-    if (addr && walletSet.has(addr)) {
-      totalReceivedPhi += valuePhi;
-      foundAddresses.add(addr);
+    for (const addr of addrs) {
+      if (walletSet.has(addr)) {
+        totalReceivedPhi += valuePhi;
+        foundAddresses.add(addr);
+        break;
+      }
     }
   }
 
@@ -248,18 +274,17 @@ function computeTransactionAmount(
   for (const input of vin) {
     const txinData = input as Record<string, unknown>;
     const prevOut = txinData.prevOut as Record<string, unknown> | undefined;
-    let inputAddr = '';
+    if (!prevOut) continue;
 
-    // prevOut is populated by address index when using verbose=2
-    if (prevOut) {
-      const scriptPubKey = prevOut.scriptPubKey as Record<string, unknown> | undefined;
-      inputAddr = String(scriptPubKey?.address ?? '');
-    }
+    const scriptPubKey = prevOut.scriptPubKey as Record<string, unknown> | undefined;
+    const inputAddrs = extractAddresses(scriptPubKey);
 
-    if (inputAddr && walletSet.has(inputAddr)) {
-      const prevValue = Number(prevOut?.value ?? 0);
-      totalSentPhi += prevValue;
-      foundAddresses.add(inputAddr);
+    for (const inputAddr of inputAddrs) {
+      if (walletSet.has(inputAddr)) {
+        const prevValue = Number(prevOut?.value ?? 0);
+        totalSentPhi += prevValue;
+        foundAddresses.add(inputAddr);
+      }
     }
   }
 
@@ -312,8 +337,10 @@ function extractVinSummary(tx: Record<string, unknown>, walletSet: Set<string>):
 
     if (prevOut) {
       const scriptPubKey = prevOut.scriptPubKey as Record<string, unknown> | undefined;
-      const addr = String(scriptPubKey?.address ?? '');
-      if (addr && walletSet.has(addr)) addrs.push(addr);
+      const prevAddrs = extractAddresses(scriptPubKey);
+      for (const addr of prevAddrs) {
+        if (walletSet.has(addr)) addrs.push(addr);
+      }
     }
 
     result.push({
@@ -350,11 +377,13 @@ function extractVoutSummary(tx: Record<string, unknown>): VoutSummary[] {
       }
     }
 
+    const voutAddress = scriptPubKey ? (extractAddresses(scriptPubKey)[0] ?? undefined) : undefined;
+
     result.push({
       n: Number(output.n ?? 0),
       // value is already in PHI units from getrawtransaction verbose=2
       value: Number(output.value ?? 0),
-      address: scriptPubKey ? String(scriptPubKey.address ?? '') : undefined,
+      address: voutAddress,
       scriptType: scriptPubKey ? String(scriptPubKey.type ?? '') : '',
       assetLabel: output.assetLabel ? String(output.assetLabel) : undefined,
       assetAmounts: assetAmounts.length > 0 ? assetAmounts : undefined,

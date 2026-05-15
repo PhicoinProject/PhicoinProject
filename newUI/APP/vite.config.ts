@@ -28,14 +28,20 @@ export default defineConfig({
       // Development server uses relaxed policy for HMR to function.
     },
     // Proxy RPC requests to phicoind with Basic Auth (dev only)
+    // Target is configurable via VITE_RPC_HOST/RPC_HOST env vars (set in docker-compose)
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:28966',
+        target: `http://${process.env.VITE_RPC_HOST || process.env.RPC_HOST || '127.0.0.1'}:${process.env.VITE_RPC_PORT || process.env.RPC_PORT || '28966'}`,
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
         headers: {
-          Authorization: `Basic ${Buffer.from('phi:phi').toString('base64')}`,
+          Authorization: `Basic ${Buffer.from(`${process.env.VITE_RPC_USER || process.env.RPC_USER || 'phi'}:${process.env.VITE_RPC_PASSWORD || process.env.RPC_PASSWORD || 'phi'}`).toString('base64')}`,
         },
+      },
+      '/proxy-price': {
+        target: 'https://explorer.phicoin.net',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/proxy-price/, '/ext/getcurrentprice'),
       },
     },
   },

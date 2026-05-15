@@ -6,6 +6,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { rpc } from './rpc';
 import { walletService } from './wallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import { receivePath, changePath, getCoinType } from './HDWallet';
 import {
   buildAssetScript,
   serializeCNewAsset,
@@ -17,6 +18,9 @@ import {
   toSatoshis,
   RestrictedType,
   QualifierType,
+  MAGIC_NEW_ASSET,
+  MAGIC_ASSET_TRANSFER,
+  MAGIC_REISSUE_ASSET,
 } from './assetSerialization';
 import type { Asset, UTXO } from '@/types';
 
@@ -63,17 +67,20 @@ function buildP2PKHScriptPubKeyHex(address: string): string {
 }
 
 // Build a lookup map of scriptPubKey → private key for all derived addresses.
-// Paths must match the convention in wallet.ts: m/44'/486'/0'/change/index
+// Paths must match HDWallet.ts: m/0'/coinType'/0'/change/index (coinType=0 for mainnet)
 async function buildKeyLookupMap(): Promise<Map<string, string>> {
   const hdKey = useWalletHDKeyStore.getState().hdKey;
   if (!hdKey) return new Map();
 
   const map = new Map<string, string>();
-  const coinType = 486; // PHICOIN mainnet (must match wallet.ts derivation)
+  const coinType = getCoinType('mainnet'); // matches HDWallet.ts derivation
   for (let change = 0; change <= 1; change++) {
     for (let index = 0; index < 50; index++) {
       try {
-        const derived = hdKey.derive(`m/44'/${coinType}'/0'/${change}/${index}`);
+        const path = change === 0
+          ? receivePath(coinType, index)
+          : changePath(coinType, index);
+        const derived = hdKey.derive(path);
         const pk = derived.privateKey;
         const pubKey = derived.publicKey;
         if (!pk || !pubKey) continue;
@@ -252,6 +259,23 @@ async function buildAndBroadcastAssetTx(params: {
     );
   }
 
+  // Pre-flight: validate and broadcast
+  try {
+    const mempoolResult = await rpc.testMempoolAccept(signed);
+    if (mempoolResult && Array.isArray(mempoolResult) && mempoolResult.length > 0) {
+      const first = mempoolResult[0] as Record<string, unknown>;
+      if (first.allowed !== true && (first.allowed as unknown) !== 1) {
+        const rejectReason = String(first['reject-reason'] ?? first.reason ?? 'unknown');
+        throw new Error('Transaction rejected by mempool: ' + rejectReason);
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('Transaction rejected'))
+      throw err;
+    // testmempoolaccept may fail on older daemons — proceed to broadcast
+    console.warn('testmempoolaccept pre-flight skipped:', err);
+  }
+
   return rpc.sendRawTransaction(signed, true);
 }
 
@@ -398,8 +422,8 @@ function computeP2PKHSighash(
 
   for (let i = 0; i < tx.inputs.length; i++) {
     const inp = tx.inputs[i];
-    // prevout
-    const prevTxIdBytes = hexToArray(inp.prevTxId.split('').reverse().join(''));
+    // prevTxId is stored in little-endian (as read from raw bytes by parseRawTx) — keep as-is
+    const prevTxIdBytes = hexToArray(inp.prevTxId);
     parts.push(prevTxIdBytes);
     const voutBuf = new Uint8Array(4);
     new DataView(voutBuf.buffer).setUint32(0, inp.vout, true);
@@ -504,10 +528,17 @@ function signRawTransactionLocally(
       const sighash = computeP2PKHSighash(tx, i, scriptPubKey);
       const sig = nobleSecp.signSync(sighash, pkHex, { der: true });
 
-      // scriptSig = DER_SIG + SIGHASH_BYTE
-      const scriptSig = new Uint8Array(sig.length + 1);
-      scriptSig.set(sig);
-      scriptSig[sig.length] = 0x01; // SIGHASH_ALL
+      // Get compressed public key from private key (33 bytes)
+      const compressedPubkey = nobleSecp.getPublicKeySync(pkHex, true);
+
+      // P2PKH scriptSig = PUSH(DER_SIG+SIGHASH) PUSH(PUBKEY)
+      const scriptSig = new Uint8Array(1 + sig.length + 1 + 1 + compressedPubkey.length);
+      let off = 0;
+      scriptSig[off++] = sig.length + 1; // push length of sig+sighash
+      scriptSig.set(sig, off); off += sig.length;
+      scriptSig[off++] = 0x01; // SIGHASH_ALL
+      scriptSig[off++] = compressedPubkey.length; // push length of pubkey (33)
+      scriptSig.set(compressedPubkey, off);
       signedScriptSigs.push(scriptSig);
     }
 
@@ -523,7 +554,8 @@ function signRawTransactionLocally(
     parts.push(writeVarInt(tx.inputs.length));
     for (let i = 0; i < tx.inputs.length; i++) {
       const inp = tx.inputs[i];
-      const prevTxIdBytes = hexToArray(inp.prevTxId.split('').reverse().join(''));
+      // prevTxId is already stored in little-endian from parseRawTx — keep it as-is
+      const prevTxIdBytes = hexToArray(inp.prevTxId);
       parts.push(prevTxIdBytes);
       const voutBuf = new Uint8Array(4);
       new DataView(voutBuf.buffer).setUint32(0, inp.vout, true);
@@ -696,7 +728,7 @@ export class AssetService {
       ipfsHash: hasIPFS ? ipfsHash : undefined,
     });
 
-    const assetScriptHex = buildAssetScript(serialized);
+    const assetScriptHex = buildAssetScript(serialized, MAGIC_NEW_ASSET);
 
     // Get first wallet address as sender
     const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
@@ -734,7 +766,7 @@ export class AssetService {
       message: message ?? '',
     });
 
-    const assetScriptHex = buildAssetScript(serialized);
+    const assetScriptHex = buildAssetScript(serialized, MAGIC_ASSET_TRANSFER);
 
     // Get first wallet address as sender
     const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
@@ -774,7 +806,7 @@ export class AssetService {
       ipfsHash: params.ipfsHash,
     });
 
-    const assetScriptHex = buildAssetScript(serialized);
+    const assetScriptHex = buildAssetScript(serialized, MAGIC_REISSUE_ASSET);
 
     const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
     if (!addresses.length) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { rpc } from '@/services/rpc';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { rpc, RPC_CONFIG_KEY } from '@/services/rpc';
 import {
   isNotificationSupported,
   getNotificationPermission,
@@ -14,11 +14,27 @@ interface RpcSettings {
   password: string;
 }
 
+/** Load saved RPC config from localStorage, fall back to env var defaults */
+function loadRpcSettings(): RpcSettings {
+  try {
+    const raw = localStorage.getItem(RPC_CONFIG_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw) as RpcSettings;
+      if (saved.host && saved.port) return saved;
+    }
+  } catch { /* ignore */ }
+  return {
+    host: import.meta.env.VITE_RPC_HOST || 'localhost',
+    port: parseInt(import.meta.env.VITE_RPC_PORT || '28966', 10),
+    user: import.meta.env.VITE_RPC_USER || '',
+    password: import.meta.env.VITE_RPC_PASSWORD || '',
+  };
+}
+
 /**
- * SECURITY: RPC credentials are stored in memory only (React state).
- * They are never persisted to localStorage, sessionStorage, or cookies.
- * On page reload, the user must re-enter credentials or rely on environment defaults.
- * This prevents credential theft via XSS or browser storage inspection.
+ * SECURITY: RPC credentials are stored in memory (React state) and localStorage.
+ * On page reload, settings are loaded from localStorage so the RPC connection
+ * persists. Credentials are never sent to third-party services.
  */
 
 /** Shape of a banned entry from listbanned RPC */
@@ -33,12 +49,8 @@ type SettingsTab = 'connection' | 'currency' | 'notifications' | 'network' | 'ab
 /** Settings page -- RPC configuration, notifications, ban management, and about */
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('connection');
-  const [rpcSettings] = useState<RpcSettings>(() => ({
-    host: import.meta.env.VITE_RPC_HOST || 'localhost',
-    port: parseInt(import.meta.env.VITE_RPC_PORT || '28966', 10),
-    user: import.meta.env.VITE_RPC_USER || '',
-    password: import.meta.env.VITE_RPC_PASSWORD || '',
-  }));
+  const [rpcSettings, setRpcSettings] = useState<RpcSettings>(loadRpcSettings);
+  const [showPassword, setShowPassword] = useState(false);
 
   // SECURITY: Check if running over HTTPS in production
   const isSecureContext = import.meta.env.DEV
@@ -55,73 +67,36 @@ export const Settings: React.FC = () => {
     isNotificationSupported() ? getNotificationPermission() : 'unsupported'
   );
 
-  // Currency / fiat price state
-  const [baseCurrency, setBaseCurrency] = useState<'USD' | 'EUR' | 'GBP'>(
-    () => (localStorage.getItem('phiBaseCurrency') as 'USD' | 'EUR' | 'GBP') || 'USD'
-  );
+  // Currency / price state
   interface CryptoPrice {
-    phiUsd: number;
-    phiEur?: number;
-    phiGbp?: number;
+    lastPriceUsd: number;
+    lastPriceBtc: number;
     lastUpdated: string;
   }
-  const [cryptoPrice, setCryptoPrice] = useState<CryptoPrice | null>(null);
-  const [priceError, setPriceError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchPriceFromCoinGecko = async (): Promise<{
-    phiUsd: number;
-    phiEur?: number;
-    phiGbp?: number;
-  }> => {
-    try {
-      // Try CoinGecko for PHI-like coin (fallback to BTC if not found)
-      const btcRes = await fetch(
-        'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp'
-      );
-      if (btcRes.ok) {
-        const data = (await btcRes.json()) as {
-          bitcoin: { usd: number; eur?: number; gbp?: number };
-        };
-        const btcUsd = data.bitcoin.usd;
-        // PHI price is speculative; show BTC as reference with note
-        return {
-          phiUsd: btcUsd,
-          phiEur: data.bitcoin.eur ?? btcUsd * 0.92,
-          phiGbp: data.bitcoin.gbp ?? btcUsd * 0.79,
-        };
-      }
-    } catch {
-      // Fallback below
-    }
-    return { phiUsd: 0 };
-  };
-
-  const { refetch: fetchPrice } = useQuery({
-    queryKey: ['cryptoPrice', baseCurrency],
+  const { data: cryptoPrice, error: priceErrorObj } = useQuery({
+    queryKey: ['cryptoPrice'],
     queryFn: async () => {
-      try {
-        const { phiUsd, phiEur, phiGbp } = await fetchPriceFromCoinGecko();
-        const price: CryptoPrice = {
-          phiUsd,
-          phiEur: phiEur ?? phiUsd * 0.92,
-          phiGbp: phiGbp ?? phiUsd * 0.79,
-          lastUpdated: new Date().toISOString(),
-        };
-        setCryptoPrice(price);
-        setPriceError(null);
-        return price;
-      } catch (err) {
-        setPriceError(err instanceof Error ? err.message : 'Failed to fetch price');
-        throw err;
-      }
+      const res = await fetch('/proxy-price');
+      if (!res.ok) throw new Error(`Price API returned ${res.status}`);
+      const data = (await res.json()) as { last_price_usd: number; last_price_btc: number };
+      return {
+        lastPriceUsd: data.last_price_usd ?? 0,
+        lastPriceBtc: data.last_price_btc ?? 0,
+        lastUpdated: new Date().toISOString(),
+      } as CryptoPrice;
     },
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
 
-  useEffect(() => {
-    fetchPrice();
-  }, [fetchPrice]);
+  const priceError = priceErrorObj?.message ?? null;
+
+  const handleRefreshPrice = () => {
+    queryClient.invalidateQueries({ queryKey: ['cryptoPrice'] });
+  };
+  const fetchPrice = handleRefreshPrice;
 
   // Ban management state
   const [bannedList, setBannedList] = useState<BannedEntry[]>([]);
@@ -182,8 +157,19 @@ export const Settings: React.FC = () => {
   }, [bannedData]);
 
   const handleSave = () => {
+    // Persist to localStorage
+    localStorage.setItem(RPC_CONFIG_KEY, JSON.stringify(rpcSettings));
+    // Apply to RPC client at runtime
+    rpc.setConfig(rpcSettings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleChange = (field: keyof RpcSettings, value: string) => {
+    setRpcSettings((prev) => ({
+      ...prev,
+      [field]: field === 'port' ? parseInt(value, 10) || 0 : value,
+    }));
   };
 
   const handleRequestNotifPermission = async () => {
@@ -308,8 +294,8 @@ export const Settings: React.FC = () => {
               RPC Connection
             </h2>
             <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-              RPC configuration is set via environment variables (.env). Restart the application to
-              apply changes.
+              Configure your phicoind RPC connection. Changes take effect immediately for the
+              current session and persist across page refreshes.
             </p>
             <div className="mt-4 space-y-4">
               <div>
@@ -323,8 +309,9 @@ export const Settings: React.FC = () => {
                   id="rpc-host"
                   type="text"
                   value={rpcSettings.host}
-                  readOnly
-                  className="mt-1 w-full rounded-md border border-gray-200 dark:border-dark-muted bg-gray-50 dark:bg-dark-elevated px-3 py-2 text-sm text-gray-500 dark:text-dark-mutedText"
+                  onChange={(e) => handleChange('host', e.target.value)}
+                  placeholder="localhost"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 />
               </div>
               <div>
@@ -336,10 +323,11 @@ export const Settings: React.FC = () => {
                 </label>
                 <input
                   id="rpc-port"
-                  type="text"
+                  type="number"
                   value={rpcSettings.port}
-                  readOnly
-                  className="mt-1 w-full rounded-md border border-gray-200 dark:border-dark-muted bg-gray-50 dark:bg-dark-elevated px-3 py-2 text-sm text-gray-500 dark:text-dark-mutedText"
+                  onChange={(e) => handleChange('port', e.target.value)}
+                  placeholder="28966"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 />
               </div>
               <div>
@@ -353,8 +341,9 @@ export const Settings: React.FC = () => {
                   id="rpc-user"
                   type="text"
                   value={rpcSettings.user}
-                  readOnly
-                  className="mt-1 w-full rounded-md border border-gray-200 dark:border-dark-muted bg-gray-50 dark:bg-dark-elevated px-3 py-2 text-sm text-gray-500 dark:text-dark-mutedText"
+                  onChange={(e) => handleChange('user', e.target.value)}
+                  placeholder="phicoinrpc"
+                  className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 />
               </div>
               <div>
@@ -364,13 +353,23 @@ export const Settings: React.FC = () => {
                 >
                   RPC Password
                 </label>
-                <input
-                  id="rpc-pass"
-                  type="password"
-                  value={rpcSettings.password}
-                  readOnly
-                  className="mt-1 w-full rounded-md border border-gray-200 dark:border-dark-muted bg-gray-50 dark:bg-dark-elevated px-3 py-2 text-sm text-gray-500 dark:text-dark-mutedText"
-                />
+                <div className="mt-1 flex gap-2">
+                  <input
+                    id="rpc-pass"
+                    type={showPassword ? 'text' : 'password'}
+                    value={rpcSettings.password}
+                    onChange={(e) => handleChange('password', e.target.value)}
+                    placeholder="••••••••"
+                    className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="shrink-0 rounded-md border border-gray-300 dark:border-dark-muted px-3 py-2 text-xs font-medium text-gray-600 dark:text-dark-mutedText hover:bg-gray-50 dark:hover:bg-dark-elevated"
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -429,14 +428,14 @@ export const Settings: React.FC = () => {
         </div>
       )}
 
-      {/* Currency / Fiat price tab */}
+      {/* Currency / Price tab */}
       {activeTab === 'currency' && (
         <div className="space-y-6">
-          {/* Fiat price display */}
+          {/* Price display */}
           <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-text">
-                Fiat Price
+                Market Price
               </h2>
               <button
                 onClick={() => fetchPrice()}
@@ -446,61 +445,29 @@ export const Settings: React.FC = () => {
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-600 dark:text-dark-mutedText">
-              Displays the current price of PHICOIN in your selected fiat currency.
+              Current PHICOIN price from explorer.phicoin.net
             </p>
 
             {cryptoPrice ? (
               <div className="mt-4 space-y-3">
-                {/* Base currency card */}
-                <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-elevated p-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700 dark:text-dark-secondary">
-                      1 PHI ={' '}
-                      {baseCurrency === 'USD'
-                        ? `$${cryptoPrice.phiUsd.toFixed(4)}`
-                        : baseCurrency === 'EUR'
-                          ? `€${(cryptoPrice.phiEur ?? cryptoPrice.phiUsd).toFixed(4)}`
-                          : `£${(cryptoPrice.phiGbp ?? cryptoPrice.phiUsd).toFixed(4)}`}
-                    </span>
-                    <span className="text-xs text-gray-500 dark:text-dark-mutedText">
-                      Last updated: {new Date(cryptoPrice.lastUpdated).toLocaleTimeString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* All currency rates */}
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div
-                    className={`rounded-lg p-2 border ${baseCurrency === 'USD' ? 'border-phi-primary bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface'}`}
-                  >
-                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">USD</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
-                      ${cryptoPrice.phiUsd.toFixed(4)}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-elevated p-4">
+                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">USD Price</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-dark-text">
+                      ${cryptoPrice.lastPriceUsd.toFixed(8)}
                     </p>
                   </div>
-                  <div
-                    className={`rounded-lg p-2 border ${baseCurrency === 'EUR' ? 'border-phi-primary bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface'}`}
-                  >
-                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">EUR</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
-                      €{(cryptoPrice.phiEur ?? cryptoPrice.phiUsd).toFixed(4)}
-                    </p>
-                  </div>
-                  <div
-                    className={`rounded-lg p-2 border ${baseCurrency === 'GBP' ? 'border-phi-primary bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface'}`}
-                  >
-                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">GBP</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-dark-text">
-                      £{(cryptoPrice.phiGbp ?? cryptoPrice.phiUsd).toFixed(4)}
+                  <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-elevated p-4">
+                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">BTC Price</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-dark-text">
+                      ₿{cryptoPrice.lastPriceBtc.toFixed(8)}
                     </p>
                   </div>
                 </div>
 
-                {/* Balance in fiat */}
-                <div className="mt-3 rounded-lg border border-gray-200 dark:border-dark-border bg-amber-50 dark:bg-amber-900/10 p-3">
-                  <p className="text-xs text-gray-600 dark:text-dark-mutedText">
-                    PHI balance not available (requires unlocked wallet)
-                  </p>
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-dark-mutedText">
+                  <span>Source: explorer.phicoin.net</span>
+                  <span>Updated: {new Date(cryptoPrice.lastUpdated).toLocaleTimeString()}</span>
                 </div>
               </div>
             ) : (
@@ -513,34 +480,6 @@ export const Settings: React.FC = () => {
                 )}
               </div>
             )}
-          </div>
-
-          {/* Base currency selector */}
-          <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-text">
-              Base Currency
-            </h2>
-            <p className="mt-1 text-xs text-gray-600 dark:text-dark-mutedText">
-              Select your preferred base currency for price display.
-            </p>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {(['USD', 'EUR', 'GBP'] as const).map((curr) => (
-                <button
-                  key={curr}
-                  onClick={() => {
-                    setBaseCurrency(curr);
-                    localStorage.setItem('phiBaseCurrency', curr);
-                  }}
-                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                    baseCurrency === curr
-                      ? 'border-phi-primary bg-blue-50 dark:bg-blue-900/20 text-phi-primary'
-                      : 'border-gray-200 dark:border-dark-muted text-gray-700 dark:text-dark-secondary hover:bg-gray-50 dark:hover:bg-dark-elevated'
-                  }`}
-                >
-                  {curr === 'USD' ? '🇺🇸 USD' : curr === 'EUR' ? '🇪🇺 EUR' : '🇬🇧 GBP'}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}

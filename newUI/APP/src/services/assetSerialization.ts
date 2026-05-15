@@ -4,11 +4,33 @@
  * The C++ serialization uses READWRITE macros where strings are variable-length
  * (1-byte length prefix for < 253 bytes), CAmount is 8-byte LE int64, etc.
  *
- * Script format: OP_PHI_ASSET (0xc0) << serializedMessage << OP_DROP (0x61)
+ * The C++ ConstructTransaction method wraps serialized data with 4-byte magic
+ * prefixes, then pushdata-encodes the result:
+ *   script << OP_PHI_ASSET << ToByteVector(magic + serialized) << OP_DROP
+ *
+ * Magic bytes (from src/assets/assets.h):
+ *   PHI_R=114 ('r'), PHI_V=118 ('v'), PHI_N=110 ('n'),
+ *   PHI_Q=113 ('q'), PHI_T=116 ('t'), PHI_O=111 ('o')
+ *
+ * Per-type magic:
+ *   CNewAsset:        "rvnq"  (PHI_R, PHI_V, PHI_N, PHI_Q)
+ *   CAssetTransfer:   "rvnt"  (PHI_R, PHI_V, PHI_N, PHI_T)
+ *   CReissueAsset:    "rvnr"  (PHI_R, PHI_V, PHI_N, PHI_R)
+ *   CNullAssetTxData: (no magic, no OP_PHI_ASSET wrapper - raw data only)
+ *   CNullAssetTxVerifierString: (no magic, wrapped with OP_PHI_ASSET + OP_RESERVED)
+ *
+ * Script format:
+ *   OP_PHI_ASSET (0xc0) << pushdata_len << [magic][serialized] << OP_DROP (0x61)
  */
 
 const OP_PHI_ASSET = 0xc0;
 const OP_DROP = 0x61;
+const OP_RESERVED = 0x50;
+
+// Magic byte prefixes matching src/assets/assets.h
+export const MAGIC_NEW_ASSET = new Uint8Array([114, 118, 110, 113]); // 'r','v','n','q'
+export const MAGIC_ASSET_TRANSFER = new Uint8Array([114, 118, 110, 116]); // 'r','v','n','t'
+export const MAGIC_REISSUE_ASSET = new Uint8Array([114, 118, 110, 114]); // 'r','v','n','r'
 
 /** Asset type values matching AssetType enum in assettypes.h */
 export const AssetType = {
@@ -79,13 +101,26 @@ function toHex(bytes: Uint8Array): string {
 }
 
 /**
- * Wrap serialized bytes in OP_PHI_ASSET << data << OP_DROP script.
+ * Wrap serialized bytes in OP_PHI_ASSET << pushdata(data) << OP_DROP script.
+ *
+ * The C++ CScript operator << does a pushdata encode before the bytes:
+ *   script << OP_PHI_ASSET << ToByteVector(vchMessage) << OP_DROP
+ * So we need: OP_PHI_ASSET, pushdata_len_byte, data..., OP_DROP
+ *
+ * @param data The message payload (magic bytes + serialized data)
+ * @param magic Optional 4-byte magic prefix. If omitted, data is used as-is.
  */
-export function buildAssetScript(data: Uint8Array): string {
-  const script = new Uint8Array(2 + data.length);
+export function buildAssetScript(data: Uint8Array, magic?: Uint8Array): string {
+  // Prepend magic bytes if provided (matching C++ ConstructTransaction)
+  const payload = magic ? concatBytes(magic, data) : data;
+
+  // pushdata length byte (payload < 253 bytes for asset messages)
+  const pushByte = payload.length < 0xfd ? payload.length : 0xfd;
+  const script = new Uint8Array(1 + 1 + payload.length + 1); // OP_PHI_ASSET + pushbyte + payload + OP_DROP
   script[0] = OP_PHI_ASSET;
-  script.set(data, 1);
-  script[data.length + 1] = OP_DROP;
+  script[1] = pushByte;
+  script.set(payload, 2);
+  script[2 + payload.length] = OP_DROP;
   return toHex(script);
 }
 

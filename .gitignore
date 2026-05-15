@@ -141,6 +141,7 @@ release/
 release_test/
 .cache/
 newUI/design/
+.cursor/
 .playwright-mcp/
 newUI/goals
 newUI/goals.md
@@ -151,3 +152,5 @@ newUI/**/DESIGN.md
 newUI/**/*-report.md
 newUI/**/progress.md
 newUI/.test_pages
+newUI/APP/test-results
+newUI/APP/test-results/*

@@ -17,16 +17,16 @@ services:
       - /app/node_modules
     environment:
       - CHOKIDAR_USEPOLLING=true
-      - VITE_RPC_HOST=phicoin-daemon-1
+      - VITE_RPC_HOST=phicoin_project-daemon-1
       - VITE_RPC_PORT=28969
       - VITE_RPC_USER=phi
       - VITE_RPC_PASSWORD=phi
     command: npm run dev -- --host
     networks:
-      phicoin_default:
+      phicoin_project_default:
         aliases:
           - phicoin-wallet
 
 networks:
-  phicoin_default:
+  phicoin_project_default:
     external: true

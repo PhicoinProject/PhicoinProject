@@ -77,29 +77,29 @@ export const Mining: React.FC = () => {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-dark-mutedText">Block Height</p>
           <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-dark-text">
             {blocks.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-dark-mutedText">Network Hash Rate</p>
           <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-dark-text">
             {formatHashRate(networkHash ?? networkDiff)}
           </p>
         </div>
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-dark-mutedText">Difficulty</p>
           <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-dark-text">
             {difficulty.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-dark-mutedText">Connections</p>
           <p className="mt-2 text-2xl font-bold text-gray-900 dark:text-dark-text">{connections}</p>
         </div>
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <p className="text-sm text-gray-500 dark:text-dark-mutedText">Mining Status</p>
           <p className="mt-2 flex items-center gap-2">
             {genProcLimit > 0 ? (
@@ -118,38 +118,38 @@ export const Mining: React.FC = () => {
       </div>
 
       {/* Mining details */}
-      <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+      <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">Mining Details</h2>
         <div className="mt-4 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Blocks</span>
-            <span className="font-medium">{blocks}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{blocks}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Chain</span>
-            <span className="font-medium">{String(info?.chain ?? 'main')}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{String(info?.chain ?? 'main')}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Difficulty</span>
-            <span className="font-medium">{difficulty}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{difficulty}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Network Hash Rate</span>
-            <span className="font-medium">{formatHashRate(networkHash ?? networkDiff)}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{formatHashRate(networkHash ?? networkDiff)}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Pooled Tx</span>
-            <span className="font-medium">{Number(mempool?.size ?? 0)}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{Number(mempool?.size ?? 0)}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Mempool Bytes</span>
-            <span className="font-medium">{Number(mempool?.bytes ?? 0).toLocaleString()}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{Number(mempool?.bytes ?? 0).toLocaleString()}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">GenProcLimit</span>
-            <span className="font-medium">{genProcLimit}</span>
+            <span className="font-medium text-gray-900 dark:text-dark-text">{genProcLimit}</span>
           </div>
-          <div className="flex justify-between border-b pb-2">
+          <div className="flex justify-between border-b border-gray-200 dark:border-dark-border pb-2">
             <span className="text-gray-500 dark:text-dark-mutedText">Errors</span>
             <span>
               {errors && errors !== '' ? (
@@ -163,7 +163,7 @@ export const Mining: React.FC = () => {
       </div>
 
       {/* Raw mining info */}
-      <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+      <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">Raw Mining Info</h2>
         <pre className="mt-4 overflow-x-auto rounded bg-gray-50 dark:bg-dark-elevated p-4 text-xs text-gray-700 dark:text-dark-secondary">
           {JSON.stringify(info, null, 2)}
