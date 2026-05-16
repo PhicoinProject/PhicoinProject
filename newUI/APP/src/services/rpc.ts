@@ -295,7 +295,7 @@ export class RpcClient {
    * Calls: getaddressutxos (address-index)
    */
   async getAddressUTXOs(address: string): Promise<unknown[]> {
-    return this.raw<unknown[]>('getaddressutxos', [address]);
+    return this.raw<unknown[]>('getaddressutxos', [{ addresses: [address] }]) ?? [];
   }
 
   /**
@@ -568,9 +568,10 @@ export class RpcClient {
   /**
    * List asset balances for a specific address.
    * Calls: listassetbalancesbyaddress
+   * Returns: { assetName: balance, "ASSET!": ownerBalance, ... }
    */
-  async getAssetBalances(address: string): Promise<unknown[]> {
-    return this.raw<unknown[]>('listassetbalancesbyaddress', [address, false, 1000, 0]);
+  async getAssetBalances(address: string): Promise<Record<string, number>> {
+    return this.raw<Record<string, number>>('listassetbalancesbyaddress', [address, false, 1000, 0]) || {};
   }
 
   // ---- Network queries ----

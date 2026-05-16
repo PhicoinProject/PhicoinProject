@@ -20,7 +20,7 @@ async function runTest(runNum) {
   let status = 'init';
 
   try {
-    await page.goto('http://localhost:3001/', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:13001/', { waitUntil: 'networkidle', timeout: 10000 });
     await sleep(3000);
     const bodyText = await page.textContent('body') || '';
 
@@ -101,7 +101,7 @@ async function runTest(runNum) {
     const bt5 = await page.textContent('body') || '';
     if (bt5.includes('Balance') || bt5.includes('Dashboard')) {
       status = 'on_dashboard';
-      await page.goto('http://localhost:3001/create-asset', { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto('http://localhost:13001/create-asset', { waitUntil: 'domcontentloaded', timeout: 20000 });
       await sleep(3000);
       status = 'asset_page_open';
       await page.screenshot({ path: `${REPORT_DIR}/monitor-r${runNum}-asset_page.png` });

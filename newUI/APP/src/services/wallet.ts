@@ -327,7 +327,9 @@ export class WalletService {
       return {
         txid: String(obj.txid ?? obj.txHash ?? ''),
         vout: Number(obj.vout ?? obj.outputIndex ?? 0),
-        scriptPubKey: String(obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? ''),
+        scriptPubKey: (typeof obj.scriptPubKey === 'object' && obj.scriptPubKey && 'hex' in obj.scriptPubKey
+          ? String(obj.scriptPubKey.hex)
+          : String(obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? '')),
         amount: Number(obj.satoshis ?? obj.value ?? obj.amount ?? 0) / 1e8,
         confirmations: Number(obj.confirmations ?? obj.confirmationCount ?? 0),
         coinbase: Boolean(obj.coinbase ?? false),

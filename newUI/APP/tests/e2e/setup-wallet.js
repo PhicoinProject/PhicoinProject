@@ -6,7 +6,7 @@
 import { chromium } from 'playwright';
 import fs from 'fs';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'http://localhost:13001';
 const BROWSER_DATA = '/media/runner/FILES/Phicoin_project/newUI/APP/test-results/wallet/browser-data';
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

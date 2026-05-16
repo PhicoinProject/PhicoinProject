@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'http://localhost:13001';
 const PASSWORD = 'MySecurePass1234';
 const CONTEXT_DIR = path.resolve(__dirname, '../test-results/wallet/browser-data');
 const SCREENSHOT_DIR = path.resolve(__dirname, '../test-results/e2e-test/send');
@@ -340,9 +340,9 @@ async function run() {
     addObs('Total failed network requests: ' + totalFetchErr);
     if (totalFetchErr > 0) {
       addBug('high', 'RPC connection failing - all daemon RPC calls returning 500 errors', [
-        '1. Navigate to app on port 3001', '2. Open browser DevTools Network tab',
+        '1. Navigate to app on port 13001', '2. Open browser DevTools Network tab',
         '3. Observe all /api requests failing with 500',
-        'Cause: App on port 3001 appears to be in production mode, connecting directly to daemon without auth headers',
+        'Cause: App on port 13001 appears to be in production mode, connecting directly to daemon without auth headers',
       ]);
     }
 

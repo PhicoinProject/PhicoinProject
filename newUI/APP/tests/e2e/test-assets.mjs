@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'http://localhost:13001';
 const OUTPUT_DIR = '/media/runner/FILES/Phicoin_project/newUI/APP/test-results/e2e-test/assets';
 const PASSWORD = 'MySecurePass1234';
 

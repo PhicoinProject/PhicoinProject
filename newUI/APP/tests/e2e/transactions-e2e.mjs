@@ -1,13 +1,13 @@
 /**
  * E2E Test: Transaction History functionality
- * Runs against http://localhost:3001 using a persistent browser context.
+ * Runs against http://localhost:13001 using a persistent browser context.
  */
 
 import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'http://localhost:13001';
 const CONTEXT_DIR = '/media/runner/FILES/Phicoin_project/newUI/APP/test-results/wallet/browser-data';
 const OUT_DIR = '/media/runner/FILES/Phicoin_project/newUI/APP/test-results/e2e-test/transactions';
 const PASSWORD = 'MySecurePass1234';

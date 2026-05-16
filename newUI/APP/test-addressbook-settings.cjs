@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
-const BASE_URL = 'http://localhost:3001';
+const BASE_URL = 'http://localhost:13001';
 const OUT = '/media/runner/FILES/Phicoin_project/newUI/APP/test-results/e2e-test/addressbook/';
 const PASSPHRASE = 'MySecurePass1234';
 const USER_SEED = 'MySecretSeed123';

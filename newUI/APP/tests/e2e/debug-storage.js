@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 
 const ctx = await chromium.launchPersistentContext('/media/runner/FILES/Phicoin_project/newUI/APP/test-results/wallet/browser-data', { headless: true });
 const page = ctx.pages()[0] || await ctx.newPage();
-await page.goto('http://localhost:3001/', { waitUntil: 'networkidle' });
+await page.goto('http://localhost:13001/', { waitUntil: 'networkidle' });
 await new Promise(r => setTimeout(r, 2000));
 
 const result = await page.evaluate(() => {

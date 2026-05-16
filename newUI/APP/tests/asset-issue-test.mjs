@@ -23,7 +23,7 @@ async function run() {
 
   try {
     // Navigate
-    await page.goto('http://localhost:3001/', { waitUntil: 'networkidle', timeout: 10000 });
+    await page.goto('http://localhost:13001/', { waitUntil: 'networkidle', timeout: 10000 });
 
     // Check if wallet exists
     const hasWallet = await page.evaluate(() => localStorage.getItem('phi:v2wallet'));

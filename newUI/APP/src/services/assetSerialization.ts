@@ -25,7 +25,6 @@
 
 const OP_PHI_ASSET = 0xc0;
 const OP_DROP = 0x61;
-const OP_RESERVED = 0x50;
 
 // Magic byte prefixes matching src/assets/assets.h
 export const MAGIC_NEW_ASSET = new Uint8Array([114, 118, 110, 113]); // 'r','v','n','q'
@@ -302,8 +301,10 @@ export function buildRawTransaction(
   // Inputs
   parts.push(writeVarInt(inputs.length));
   for (const inp of inputs) {
-    const txidBytes = hexToArray(inp.txid.split('').reverse().join(''));
-    parts.push(txidBytes);
+    // Reverse txid byte-by-byte (NOT character-by-character)
+    const txidBytesReversed = new Uint8Array(32);
+    for (let j = 0; j < 32; j++) txidBytesReversed[j] = hexToArray(inp.txid)[31 - j];
+    parts.push(txidBytesReversed);
 
     const vout = new Uint8Array(4);
     new DataView(vout.buffer).setUint32(0, inp.vout, true);

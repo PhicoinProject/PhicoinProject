@@ -1,8 +1,6 @@
 /**
- * CLI Asset Issuance Pipeline
- *
- * Uses the new txSigner.ts signing logic + createrawtransaction RPC
- * to issue an asset from the CLI.
+ * Monitor for mature UTXOs and issue asset automatically.
+ * Uses createrawtransaction's built-in asset issuance format.
  */
 
 import { mnemonicToSeedSync } from '@scure/bip39';
@@ -58,14 +56,11 @@ async function rpcCall(method, params = []) {
     body: JSON.stringify({ jsonrpc: '1.0', method, params, id: 1 }),
   });
   const data = await resp.json();
-  if (data.error) throw new Error(`RPC ${method} error ${data.error.code}: ${data.error.message.substring(0, 200)}`);
+  if (data.error) throw new Error(`RPC ${method} error ${data.error.code}: ${data.error.message.substring(0, 300)}`);
   return data.result;
 }
 
-// ============================================================================
-// Signing functions (matching txSigner.ts)
-// ============================================================================
-
+// Signing
 function parseRawTx(raw) {
   const bytes = hexToArray(raw);
   let off = 0;
@@ -160,7 +155,6 @@ function buildP2PKHScriptSig(signature, sighash, pubkey) {
 function signRawTransaction(rawTxHex, signingInputs) {
   const tx = parseRawTx(rawTxHex);
   if (tx.inputs.length !== signingInputs.length) return null;
-
   const signedInputs = tx.inputs.map((inp, i) => {
     const si = signingInputs[i];
     const sighash = computeSighash(tx, i, si.scriptPubKey);
@@ -169,188 +163,120 @@ function signRawTransaction(rawTxHex, signingInputs) {
     const scriptSig = buildP2PKHScriptSig(hexToArray(sig), 0x01, hexToArray(pubkey));
     return { ...inp, scriptSig };
   });
-
   return buildRawTxHex({ ...tx, inputs: signedInputs });
 }
 
-// ============================================================================
-// Main
-// ============================================================================
+// Derive HD wallet
+const PUB_KEY_HASH = 0x38;
+const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const seed = mnemonicToSeedSync(mnemonic, '');
+const hdKey = HDKey.fromMasterSeed(seed);
+const derived = hdKey.derive("m/0'/0'/0'/0/0");
+const pk = derived.privateKey;
 
-async function main() {
-  // Step 1: Derive HD wallet
-  const PUB_KEY_HASH = 0x38;
-  const mnemonic = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-  const seed = mnemonicToSeedSync(mnemonic, '');
-  const hdKey = HDKey.fromMasterSeed(seed);
-  const derived = hdKey.derive("m/0'/0'/0'/0/0");
-  const pk = derived.privateKey;
-  const pkHex = toHex(pk);
+const compressed = derived.publicKey.length === 33 ? derived.publicKey :
+  new Uint8Array([derived.publicKey[64] & 1 ? 0x03 : 0x02, ...derived.publicKey.slice(1, 33)]);
+const h160 = hash160(compressed);
+const payload = new Uint8Array(21);
+payload[0] = PUB_KEY_HASH; payload.set(h160, 1);
+const checksum = sha256(sha256(payload)).slice(0, 4);
+const address = base58.encode(concatBytes(payload, checksum));
 
-  const compressed = derived.publicKey.length === 33 ? derived.publicKey :
-    new Uint8Array([derived.publicKey[64] & 1 ? 0x03 : 0x02, ...derived.publicKey.slice(1, 33)]);
-  const h160 = hash160(compressed);
+console.log('=== Asset Issue Monitor ===');
+console.log('Address:', address);
+console.log('Checking every 20 seconds...\n');
 
-  const payload = new Uint8Array(21);
-  payload[0] = PUB_KEY_HASH; payload.set(h160, 1);
-  const checksum = sha256(sha256(payload)).slice(0, 4);
-  const address = base58.encode(concatBytes(payload, checksum));
-
-  const scriptPubKey = new Uint8Array(25);
-  scriptPubKey[0] = 0x76; scriptPubKey[1] = 0xa9; scriptPubKey[2] = 0x14;
-  scriptPubKey.set(h160, 3); scriptPubKey[23] = 0x88; scriptPubKey[24] = 0xac;
-  const spkHex = toHex(scriptPubKey);
-
-  console.log('=== HD Wallet ===');
-  console.log('Address:', address);
-  console.log('scriptPubKey:', spkHex);
-
-  // Step 2: Check for mature UTXOs
-  console.log('\n=== Checking mature UTXOs ===');
-  const blockCount = await rpcCall('getblockcount');
-  console.log('Current block:', blockCount);
-
-  const utxos = await rpcCall('getaddressutxos', [{ addresses: [address] }]);
-  console.log('Mature UTXOs:', utxos.length);
-
-  if (utxos.length === 0) {
-    // Check immature
-    const immatureUtxos = await rpcCall('listunspent', [0]);
-    console.log('Daemon immature UTXOs:', immatureUtxos.length);
-    if (immatureUtxos.length > 0) {
-      console.log('UTXOs are still maturing (need 100 confirmations).');
-      const first = immatureUtxos[0];
-      console.log('First UTXO confirmations:', first.confirmations);
-      console.log('Need at least 100 confirmations to spend coinbase.');
-    } else {
-      console.log('No UTXOs at all. Need to mine blocks.');
-    }
-    console.log('\nCannot proceed without mature UTXOs.');
-    return;
-  }
-
-  // Step 3: Build asset script
-  console.log('\n=== Building asset script ===');
-  const assetName = 'CLITEST';
-  const amountSat = 1000 * Math.pow(10, 8); // 1000 units in satoshis
-  const units = 8;
-  const reissuable = 0;
-  const hasIPFS = 0;
-
-  // Serialize CNewAsset: VarInt(nameLen) + name + int64(amount) + int8(units) + int8(reissuable) + int8(hasIPFS)
-  const nameBytes = new TextEncoder().encode(assetName);
-  const serialized = new Uint8Array(1 + nameBytes.length + 8 + 1 + 1 + 1);
-  let off = 0;
-  serialized[off++] = nameBytes.length;
-  serialized.set(nameBytes, off); off += nameBytes.length;
-  const amtBuf = new Uint8Array(8);
-  new DataView(amtBuf.buffer).setBigInt64(0, BigInt(amountSat), true);
-  serialized.set(amtBuf, off); off += 8;
-  serialized[off++] = units;
-  serialized[off++] = reissuable;
-  serialized[off++] = hasIPFS;
-  console.log('Serialized CNewAsset:', toHex(serialized));
-
-  // Build asset script: OP_PHI_ASSET + pushbyte + "rvnq" + serialized + OP_DROP
-  const magic = new Uint8Array([0x72, 0x76, 0x6e, 0x71]); // 'r','v','n','q'
-  const payloadData = concatBytes(magic, serialized);
-  const assetScript = new Uint8Array(1 + 1 + payloadData.length + 1);
-  assetScript[0] = 0xc0; // OP_PHI_ASSET
-  assetScript[1] = payloadData.length;
-  assetScript.set(payloadData, 2);
-  assetScript[2 + payloadData.length] = 0x61; // OP_DROP
-  const assetScriptHex = toHex(assetScript);
-  console.log('Asset script:', assetScriptHex);
-
-  // Step 4: Select UTXO and build transaction
-  console.log('\n=== Building transaction ===');
-  const utxo = utxos[0];
-  console.log('Selected UTXO:');
-  console.log('  txid:', utxo.txid);
-  console.log('  vout:', utxo.outputIndex);
-  console.log('  satoshis:', utxo.satoshis);
-  console.log('  script:', utxo.script);
-  console.log('  confirmations:', utxo.confirmations);
-
-  const inputSat = utxo.satoshis;
-  const feeSat = 10000;
-  const assetOutputValue = 1000;
-  const changeValue = inputSat - feeSat - assetOutputValue;
-
-  if (changeValue <= 546) {
-    console.log('UTXO too small for change, using all for asset output');
-  }
-
-  const rpcInputs = [{ txid: utxo.txid, vout: utxo.outputIndex }];
-  const rpcOutputs = {};
-  rpcOutputs[assetScriptHex] = Number((assetOutputValue / 1e8).toFixed(8));
-
-  if (changeValue > 546) {
-    rpcOutputs[address] = Number((changeValue / 1e8).toFixed(8));
-  }
-
-  console.log('RPC inputs:', JSON.stringify(rpcInputs));
-  console.log('RPC outputs:', JSON.stringify(rpcOutputs));
-
-  const rawHex = await rpcCall('createrawtransaction', [rpcInputs, rpcOutputs]);
-  console.log('Raw tx hex:', rawHex.substring(0, 80) + '...');
-
-  // Verify with decoderawtransaction
-  const decoded = await rpcCall('decoderawtransaction', [rawHex]);
-  console.log('Decoded txid:', decoded.txid);
-  console.log('vout[0] (asset) type:', decoded.vout[0].scriptPubKey.type);
-  if (decoded.vout[1]) {
-    console.log('vout[1] (change) addr:', decoded.vout[1].scriptPubKey.addresses);
-  }
-
-  // Step 5: Sign locally
-  console.log('\n=== Signing locally ===');
-  const signingInputs = [{
-    txid: utxo.txid,
-    vout: utxo.outputIndex,
-    scriptPubKey: hexToArray(utxo.script),
-    privateKey: pk,
-  }];
-
-  const signedHex = signRawTransaction(rawHex, signingInputs);
-  if (!signedHex) {
-    console.log('FAILED: signing returned null');
-    return;
-  }
-
-  console.log('Signed hex:', signedHex.substring(0, 80) + '...');
-
-  // Verify signed tx
-  const decodedSigned = await rpcCall('decoderawtransaction', [signedHex]);
-  const scriptSig = decodedSigned.vin[0].scriptsig?.hex || decodedSigned.vin[0].scriptSig?.hex;
-  console.log('Signed scriptSig:', scriptSig);
-
-  // Step 6: testmempoolaccept
-  console.log('\n=== testmempoolaccept ===');
+async function issueAsset() {
   try {
-    const mempoolResult = await rpcCall('testmempoolaccept', [signedHex, false]);
-    console.log('Mempool result:', JSON.stringify(mempoolResult[0]));
+    const utxos = await rpcCall('getaddressutxos', [{ addresses: [address] }]);
 
-    if (mempoolResult[0].allowed !== true) {
-      const reason = mempoolResult[0]['reject-reason'] ?? mempoolResult[0].reason ?? 'unknown';
-      console.log('Rejected:', reason);
+    if (utxos.length === 0) return;
+
+    console.log(`\n*** Found ${utxos.length} mature UTXOs! Issuing asset... ***\n`);
+
+    const utxo = utxos[0];
+    console.log('Selected UTXO:');
+    console.log('  txid:', utxo.txid);
+    console.log('  vout:', utxo.outputIndex);
+    console.log('  satoshis:', utxo.satoshis);
+    console.log('  confirmations:', utxo.confirmations);
+    console.log('  script:', utxo.script);
+
+    // Build transaction using createrawtransaction's built-in asset format
+    // Format: {"change_address": amount, "issuer_address": {"issue": {...}}}
+    const inputSat = utxo.satoshis;
+    const feeSat = 10000;
+    const assetQuantity = 1000 * Math.pow(10, 8); // 1000 units with 8 decimals
+    const changeValue = inputSat - feeSat; // issue burns 0
+
+    const rpcInputs = [{ txid: utxo.txid, vout: utxo.outputIndex }];
+    const rpcOutputs = {
+      [address]: Number((changeValue / 1e8).toFixed(8)),
+      [`${address}_issuer`]: {
+        issue: {
+          asset_name: 'CLITEST',
+          asset_quantity: assetQuantity,
+          units: 8,
+          reissuable: 0,
+          has_ipfs: 0,
+        }
+      }
+    };
+
+    console.log('\nRPC Outputs:', JSON.stringify(rpcOutputs, null, 2));
+
+    const rawHex = await rpcCall('createrawtransaction', [rpcInputs, rpcOutputs]);
+    console.log('\nRaw tx:', rawHex.substring(0, 120) + '...');
+
+    const decoded = await rpcCall('decoderawtransaction', [rawHex]);
+    console.log('Decoded txid:', decoded.txid);
+    console.log('Outputs:', JSON.stringify(decoded.vout.map(o => ({ value: o.value, scriptPubKey: o.scriptPubKey.hex?.substring(0, 80) })), null, 2));
+
+    // Sign - need to sign all inputs that belong to our wallet
+    const signingInputs = [{
+      txid: utxo.txid,
+      vout: utxo.outputIndex,
+      scriptPubKey: hexToArray(utxo.script),
+      privateKey: pk,
+    }];
+
+    const signedHex = signRawTransaction(rawHex, signingInputs);
+    if (!signedHex) throw new Error('Signing returned null');
+
+    const decodedSigned = await rpcCall('decoderawtransaction', [signedHex]);
+    const scriptSig = decodedSigned.vin[0].scriptsig?.hex || decodedSigned.vin[0].scriptSig?.hex;
+    console.log('ScriptSig:', scriptSig?.substring(0, 80));
+
+    // testmempoolaccept
+    console.log('\ntestmempoolaccept...');
+    try {
+      const mempoolResult = await rpcCall('testmempoolaccept', [signedHex, false]);
+      console.log('Result:', JSON.stringify(mempoolResult[0]));
+      if (mempoolResult[0].allowed !== true) {
+        const reason = mempoolResult[0]['reject-reason'] ?? mempoolResult[0].reason ?? 'unknown';
+        console.log('Rejected:', reason);
+        return;
+      }
+    } catch (e) {
+      console.log('testmempoolaccept error:', e.message.substring(0, 300));
     }
-  } catch (e) {
-    console.log('Error:', e.message.substring(0, 200));
-  }
 
-  // Step 7: Broadcast!
-  console.log('\n=== Broadcasting! ===');
-  try {
+    // Broadcast!
+    console.log('\nBroadcasting...');
     const txid = await rpcCall('sendrawtransaction', [signedHex, true]);
-    console.log('\n*** SUCCESS! ***');
-    console.log('Asset "', assetName, '" issued!');
+    console.log('\n========================================');
+    console.log('*** ASSET ISSUED SUCCESSFULLY! ***');
+    console.log('Asset: CLITEST');
     console.log('txid:', txid);
-    console.log('\nCheck on blockchain explorer:');
-    console.log(`https://phicoin.net/tx/${txid}`);
+    console.log('Check: https://explorer.phicoin.net/tx/' + txid);
+    console.log('========================================\n');
+
+    process.exit(0);
   } catch (e) {
-    console.log('FAILED:', e.message.substring(0, 300));
+    console.error('Error:', e.message.substring(0, 500));
   }
 }
 
-main().catch(e => console.error(e));
+// Check every 20 seconds
+issueAsset();
+setInterval(issueAsset, 20000);
