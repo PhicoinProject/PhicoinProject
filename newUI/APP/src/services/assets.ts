@@ -8,6 +8,7 @@ import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { receivePath, changePath, getCoinType } from './HDWallet';
 import {
   buildAssetScript,
+  encodeAssetPushData,
   serializeCNewAsset,
   serializeCAssetTransfer,
   serializeCReissueAsset,
@@ -132,17 +133,25 @@ function extractAssetScriptInfo(scriptHex: string): AssetScriptInfo | null {
   const script = hexToArray(clean);
   if (script.length < 31 || script[25] !== 0xc0) return null;
 
+  // Bitcoin SCRIPT pushdata decode (matches C++ src/assets/assets.cpp which
+  // checks OP_PUSHDATA1 (0x4c) / OP_PUSHDATA2 (0x4d)), NOT Bitcoin varint:
+  //   < 0x4c        -> direct length byte
+  //   0x4c (PUSHDATA1) -> next 1 byte is the length
+  //   0x4d (PUSHDATA2) -> next 2 bytes little-endian are the length
   let offset = 26;
   let payloadLen = 0;
-  if (script[offset] < 0xfd) {
-    payloadLen = script[offset];
+  const opcode = script[offset];
+  if (opcode < 0x4c) {
+    payloadLen = opcode;
     offset += 1;
-  } else if (script[offset] === 0xfd) {
+  } else if (opcode === 0x4c) {
+    if (offset + 2 > script.length) return null;
+    payloadLen = script[offset + 1];
+    offset += 2;
+  } else if (opcode === 0x4d) {
+    if (offset + 3 > script.length) return null;
     payloadLen = script[offset + 1] | (script[offset + 2] << 8);
     offset += 3;
-  } else if (script[offset] === 0xfe) {
-    payloadLen = script[offset + 1] | (script[offset + 2] << 8) | (script[offset + 3] << 16) | (script[offset + 4] << 24);
-    offset += 5;
   } else {
     return null;
   }
@@ -287,8 +296,8 @@ async function buildAndBroadcastAssetTx(params: {
     const ownerPayload = new Uint8Array(4 + ownerDataBuf.length);
     ownerPayload.set(rvnoMagic, 0);
     ownerPayload.set(ownerDataBuf, 4);
-    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata_len + payload + OP_DROP(0x61)
-    const ownerScriptWithP2PKH = changeScript + 'c0' + ownerPayload.length.toString(16).padStart(2, '0') + toHex(ownerPayload) + '61';
+    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata(payload) + OP_DROP(0x61)
+    const ownerScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(ownerPayload) + '61';
     outputs.push({ scriptPubKey: ownerScriptWithP2PKH, valueSatoshis: 0 });
 
     // 4. Issue Asset output (rvnq magic)
@@ -304,8 +313,8 @@ async function buildAndBroadcastAssetTx(params: {
     const issuePayload = new Uint8Array(4 + assetData.length);
     issuePayload.set(MAGIC_NEW_ASSET, 0);
     issuePayload.set(assetData, 4);
-    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata_len + payload + OP_DROP(0x61)
-    const issueScriptWithP2PKH = changeScript + 'c0' + issuePayload.length.toString(16).padStart(2, '0') + toHex(issuePayload) + '61';
+    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata(payload) + OP_DROP(0x61)
+    const issueScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(issuePayload) + '61';
     outputs.push({ scriptPubKey: issueScriptWithP2PKH, valueSatoshis: 0 });
   } else if (params.assetScriptHex) {
     // Transfer / Reissue / other asset ops
@@ -547,8 +556,11 @@ export class AssetService {
   }): Promise<string> {
     const { label, quantity, decimalPlaces, isRevokeable, isIPFS, ipfsHash } = params;
 
-    if (!label || label.length > 31) {
-      throw new Error('Asset name must be 1-31 characters');
+    // Composite names (SUB "PARENT/CHILD", UNIQUE "PARENT#TAG", qualifiers "#X",
+    // restricted "$X") can exceed the 31-char ROOT limit; the C++ daemon allows up
+    // to 255. Detailed per-type name validation is performed in the form.
+    if (!label || label.length < 1 || label.length > 255) {
+      throw new Error('Asset name must be 1-255 characters');
     }
     if (quantity <= 0) {
       throw new Error('Quantity must be greater than 0');
@@ -617,8 +629,8 @@ export class AssetService {
     payload.set(MAGIC_ASSET_TRANSFER, 0);
     payload.set(serialized, 4);
 
-    // Full script: recipientP2PKH + OP_PHI_ASSET + pushdata_len + payload + OP_DROP
-    const assetScriptHex = recipientP2PKH + 'c0' + payload.length.toString(16).padStart(2, '0') + toHex(payload) + '61';
+    // Full script: recipientP2PKH + OP_PHI_ASSET + pushdata(payload) + OP_DROP
+    const assetScriptHex = recipientP2PKH + 'c0' + encodeAssetPushData(payload) + '61';
 
     // ---- Find asset UTXOs to use as inputs (Qt wallet approach) ----
     // Step 1: Use listassetbalancesbyaddress to confirm balance per address
@@ -688,7 +700,7 @@ export class AssetService {
       const changePayload = new Uint8Array(4 + changeSerialized.length);
       changePayload.set(MAGIC_ASSET_TRANSFER, 0);
       changePayload.set(changeSerialized, 4);
-      const changeAssetScript = changeScript + 'c0' + changePayload.length.toString(16).padStart(2, '0') + toHex(changePayload) + '61';
+      const changeAssetScript = changeScript + 'c0' + encodeAssetPushData(changePayload) + '61';
       extraOutputs.push({ scriptPubKey: changeAssetScript, valueSatoshis: 0 });
     }
 

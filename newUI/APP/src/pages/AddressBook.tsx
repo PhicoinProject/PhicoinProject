@@ -2,21 +2,30 @@ import React, { useState, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { walletService } from '@/services/wallet';
 import { useAddressBookStore } from '@/stores/addressBookStore';
+import { Modal } from '@/components/common/Modal';
+import { Button } from '@/components/common/Button';
 import type { Address } from '@/types';
+
+/** Basic PHICOIN address format check: starts with P (pubkey) or H (script), 34 chars */
+function isValidPhicoinAddress(addr: string): boolean {
+  return /^[PH][1-9A-HJ-NP-Za-km-z]{25,39}$/.test(addr.trim());
+}
 
 /** Address Book page — manage saved addresses with labels (Qt parity: addressbookpage) */
 export const AddressBook: React.FC = () => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'sending' | 'receiving'>('receiving');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newAddress, setNewAddress] = useState('');
-  const [newLabel, setNewLabel] = useState('');
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editLabel, setEditLabel] = useState('');
+
+  // Modal state: null = closed, 'add' = adding new, entry id = editing existing
+  const [modalMode, setModalMode] = useState<null | 'add' | string>(null);
+  const [modalAddress, setModalAddress] = useState('');
+  const [modalLabel, setModalLabel] = useState('');
+  const [modalError, setModalError] = useState<string | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   // Address book store (localStorage backed)
-  const { addEntry, updateLabel, deleteEntry, getEntries } = useAddressBookStore();
+  const { addEntry, updateLabel, deleteEntry, getEntries, findByAddress } = useAddressBookStore();
   const sendingEntries = useMemo(() => getEntries('sending'), [getEntries]);
 
   // Receiving addresses from wallet (RPC backed)
@@ -30,20 +39,50 @@ export const AddressBook: React.FC = () => {
     enabled: addressList.length > 0 && activeTab === 'receiving',
   });
 
-  const handleAddSendingAddress = () => {
-    setError(null);
-    if (!newAddress.trim()) {
-      setError('Address is required');
+  const openAddModal = () => {
+    setModalMode('add');
+    setModalAddress('');
+    setModalLabel('');
+    setModalError(null);
+  };
+
+  const closeModal = () => {
+    setModalMode(null);
+    setModalAddress('');
+    setModalLabel('');
+    setModalError(null);
+  };
+
+  const handleModalSave = () => {
+    setModalError(null);
+    const trimmedAddress = modalAddress.trim();
+    const trimmedLabel = modalLabel.trim();
+
+    if (!trimmedLabel) {
+      setModalError('Label is required');
       return;
     }
-    if (!newLabel.trim()) {
-      setError('Label is required');
+    if (!trimmedAddress) {
+      setModalError('Address is required');
       return;
     }
-    addEntry({ address: newAddress.trim(), label: newLabel.trim(), type: 'sending' });
-    setNewAddress('');
-    setNewLabel('');
-    setShowAddForm(false);
+    if (!isValidPhicoinAddress(trimmedAddress)) {
+      setModalError('Invalid PHICOIN address. Must start with P or H and be 26–40 characters.');
+      return;
+    }
+
+    if (modalMode === 'add') {
+      // Check for duplicate address
+      const existing = findByAddress(trimmedAddress);
+      if (existing) {
+        setModalError('This address is already in the address book.');
+        return;
+      }
+      addEntry({ address: trimmedAddress, label: trimmedLabel, type: 'sending' });
+    } else if (typeof modalMode === 'string') {
+      updateLabel(modalMode, trimmedLabel);
+    }
+    closeModal();
   };
 
   const handleGenerateReceiveAddress = async () => {
@@ -55,23 +94,12 @@ export const AddressBook: React.FC = () => {
     }
   };
 
-  const handleStartEdit = (entry: { id: string; label: string }) => {
-    setEditId(entry.id);
-    setEditLabel(entry.label);
-  };
-
-  const handleSaveEdit = useCallback(() => {
-    if (editId && editLabel.trim()) {
-      updateLabel(editId, editLabel.trim());
-    }
-    setEditId(null);
-    setEditLabel('');
-  }, [editId, editLabel, updateLabel]);
-
-  const handleCancelEdit = () => {
-    setEditId(null);
-    setEditLabel('');
-  };
+  const handleStartEdit = useCallback((entry: { id: string; address: string; label: string }) => {
+    setModalMode(entry.id);
+    setModalAddress(entry.address);
+    setModalLabel(entry.label);
+    setModalError(null);
+  }, []);
 
   const handleDelete = (id: string) => {
     deleteEntry(id);
@@ -121,20 +149,14 @@ export const AddressBook: React.FC = () => {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-dark-text">Address Book</h1>
         <div className="flex gap-2">
           {activeTab === 'sending' && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            >
+            <Button onClick={openAddModal}>
               Add Address
-            </button>
+            </Button>
           )}
           {activeTab === 'receiving' && (
-            <button
-              onClick={handleGenerateReceiveAddress}
-              className="rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-            >
+            <Button onClick={handleGenerateReceiveAddress}>
               New Address
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -143,45 +165,6 @@ export const AddressBook: React.FC = () => {
       {error && (
         <div className="rounded-lg border border-red-200 dark:border-red-600 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-400">
           {error}
-        </div>
-      )}
-
-      {/* Add sending address form */}
-      {showAddForm && activeTab === 'sending' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
-            Add Sending Address
-          </h2>
-          <div className="mt-4 space-y-3">
-            <input
-              type="text"
-              placeholder="Label"
-              value={newLabel}
-              onChange={(e) => setNewLabel(e.target.value)}
-              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
-            />
-            <input
-              type="text"
-              placeholder="PHICOIN address"
-              value={newAddress}
-              onChange={(e) => setNewAddress(e.target.value)}
-              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={handleAddSendingAddress}
-                className="rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
-              >
-                Save
-              </button>
-              <button
-                onClick={() => setShowAddForm(false)}
-                className="rounded-md border border-gray-300 dark:border-dark-muted px-4 py-2 text-sm font-medium text-gray-700 dark:text-dark-secondary hover:bg-gray-50 dark:hover:bg-dark-elevated"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -296,28 +279,8 @@ export const AddressBook: React.FC = () => {
                     key={entry.id}
                     className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                   >
-                    <td className="px-4 py-3">
-                      {editId === entry.id ? (
-                        <input
-                          type="text"
-                          value={editLabel}
-                          onChange={(e) => setEditLabel(e.target.value)}
-                          onBlur={handleSaveEdit}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEdit();
-                            if (e.key === 'Escape') handleCancelEdit();
-                          }}
-                          className="w-32 rounded border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-2 py-1 text-sm"
-                          autoFocus
-                        />
-                      ) : (
-                        <span
-                          className="cursor-pointer text-gray-900 dark:text-dark-text hover:underline"
-                          onClick={() => handleStartEdit(entry)}
-                        >
-                          {entry.label}
-                        </span>
-                      )}
+                    <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
+                      {entry.label}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
                       {entry.address}
@@ -331,6 +294,12 @@ export const AddressBook: React.FC = () => {
                         className="text-xs text-phi-primary hover:underline"
                       >
                         Copy
+                      </button>
+                      <button
+                        onClick={() => handleStartEdit(entry)}
+                        className="text-xs text-phi-primary hover:underline"
+                      >
+                        Edit
                       </button>
                       <button
                         onClick={() => handleDelete(entry.id)}
@@ -360,6 +329,56 @@ export const AddressBook: React.FC = () => {
           Export to CSV
         </button>
       </div>
+
+      {/* Add / Edit sending address modal */}
+      <Modal
+        isOpen={modalMode !== null}
+        onClose={closeModal}
+        title={modalMode === 'add' ? 'Add Sending Address' : 'Edit Sending Address'}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-dark-secondary mb-1">
+              Label <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Alice's wallet"
+              value={modalLabel}
+              onChange={(e) => setModalLabel(e.target.value)}
+              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary dark:text-dark-text"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-dark-secondary mb-1">
+              PHICOIN Address <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="P... or H..."
+              value={modalAddress}
+              onChange={(e) => setModalAddress(e.target.value)}
+              disabled={modalMode !== 'add'} // address cannot change on edit
+              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 font-mono text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary dark:text-dark-text disabled:opacity-60"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+              Must start with P (pubkey hash) or H (script hash)
+            </p>
+          </div>
+          {modalError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{modalError}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={closeModal}>
+              Cancel
+            </Button>
+            <Button onClick={handleModalSave}>
+              {modalMode === 'add' ? 'Add' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

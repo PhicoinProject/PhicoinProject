@@ -25,6 +25,38 @@
 
 const OP_PHI_ASSET = 0xc0;
 const OP_DROP = 0x61;
+const OP_PUSHDATA1 = 0x4c;
+const OP_PUSHDATA2 = 0x4d;
+
+/**
+ * Encode a payload using Bitcoin SCRIPT pushdata semantics (NOT Bitcoin varint).
+ *
+ * This matches C++ `CScript::operator<<(const std::vector<unsigned char>&)`
+ * (src/script/script.h) and the asset-script parser in src/assets/assets.cpp
+ * which reads OP_PUSHDATA1 (0x4c) / OP_PUSHDATA2 (0x4d):
+ *   - len  < 76    -> single direct length byte
+ *   - len 76..255  -> 0x4c then 1 length byte
+ *   - len 256..65535 -> 0x4d then 2 length bytes little-endian
+ *
+ * Returns the pushdata prefix (opcode + length) followed by the payload bytes.
+ */
+function pushData(payload: Uint8Array): Uint8Array {
+  const len = payload.length;
+  let prefix: Uint8Array;
+  if (len < OP_PUSHDATA1) {
+    // Direct push: single length byte (keeps small payloads identical to before)
+    prefix = new Uint8Array([len]);
+  } else if (len <= 0xff) {
+    // OP_PUSHDATA1 + 1-byte length
+    prefix = new Uint8Array([OP_PUSHDATA1, len]);
+  } else if (len <= 0xffff) {
+    // OP_PUSHDATA2 + 2-byte little-endian length
+    prefix = new Uint8Array([OP_PUSHDATA2, len & 0xff, (len >> 8) & 0xff]);
+  } else {
+    throw new Error('Asset script payload too large: max 65535 bytes');
+  }
+  return concatBytes(prefix, payload);
+}
 
 // Magic byte prefixes matching src/assets/assets.h
 export const MAGIC_NEW_ASSET = new Uint8Array([114, 118, 110, 113]); // 'r','v','n','q'
@@ -113,14 +145,26 @@ export function buildAssetScript(data: Uint8Array, magic?: Uint8Array): string {
   // Prepend magic bytes if provided (matching C++ ConstructTransaction)
   const payload = magic ? concatBytes(magic, data) : data;
 
-  // pushdata length byte (payload < 253 bytes for asset messages)
-  const pushByte = payload.length < 0xfd ? payload.length : 0xfd;
-  const script = new Uint8Array(1 + 1 + payload.length + 1); // OP_PHI_ASSET + pushbyte + payload + OP_DROP
+  // Bitcoin SCRIPT pushdata encode the payload (direct / OP_PUSHDATA1 / OP_PUSHDATA2),
+  // matching C++ `script << OP_PHI_ASSET << ToByteVector(vchMessage) << OP_DROP`.
+  const pushed = pushData(payload);
+  const script = new Uint8Array(1 + pushed.length + 1); // OP_PHI_ASSET + pushdata + OP_DROP
   script[0] = OP_PHI_ASSET;
-  script[1] = pushByte;
-  script.set(payload, 2);
-  script[2 + payload.length] = OP_DROP;
+  script.set(pushed, 1);
+  script[1 + pushed.length] = OP_DROP;
   return toHex(script);
+}
+
+/**
+ * Pushdata-encode an asset payload (after OP_PHI_ASSET) as a hex string,
+ * without the surrounding OP_PHI_ASSET / OP_DROP wrapper.
+ *
+ * Use this when manually concatenating a P2PKH prefix + OP_PHI_ASSET (0xc0)
+ * + <pushdata> + OP_DROP (0x61) in services/assets.ts so the pushdata length
+ * encoding stays consistent with buildAssetScript().
+ */
+export function encodeAssetPushData(payload: Uint8Array): string {
+  return toHex(pushData(payload));
 }
 
 // ---- CNewAsset serialization (asset issuance) ----

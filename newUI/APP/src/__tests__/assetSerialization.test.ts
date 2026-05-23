@@ -6,6 +6,7 @@ import {
   serializeCNullAssetTxData,
   serializeCNullAssetTxVerifierString,
   buildAssetScript,
+  encodeAssetPushData,
   toSatoshis,
 } from '@/services/assetSerialization';
 
@@ -35,6 +36,82 @@ describe('Asset Serialization', () => {
       const hex = buildAssetScript(data);
       // OP_PHI_ASSET (0xc0), empty push (0x00), OP_DROP (0x61).
       expect(hex).toBe('c00061');
+    });
+
+    // ---- Bitcoin SCRIPT pushdata encoding (NOT varint) ----
+    // The on-chain asset script after OP_PHI_ASSET uses Bitcoin SCRIPT pushdata:
+    //   len < 76        -> single direct length byte (e.g. 0x4b == 75)
+    //   len 76..255     -> OP_PUSHDATA1 (0x4c) then 1 length byte
+    //   len 256..65535  -> OP_PUSHDATA2 (0x4d) then 2 bytes little-endian
+    // This matches C++ CScript::operator<<(vector) and src/assets/assets.cpp.
+    it('should use a single direct length byte for a 75-byte payload (boundary, no opcode)', () => {
+      const data = new Uint8Array(75).fill(0xab);
+      const hex = buildAssetScript(data);
+      // c0 (OP_PHI_ASSET) + 4b (direct length 75) + payload + 61 (OP_DROP)
+      expect(hex.startsWith('c04b')).toBe(true);
+      expect(hex.slice(0, 2)).toBe('c0');
+      expect(hex.slice(2, 4)).toBe('4b'); // 75 direct, NOT 0x4c pushdata
+      expect(hex.endsWith('61')).toBe(true);
+      // Total hex length: (1 + 1 + 75 + 1) bytes * 2
+      expect(hex.length).toBe((1 + 1 + 75 + 1) * 2);
+    });
+
+    it('should use OP_PUSHDATA1 (0x4c) for a 76-byte payload (boundary)', () => {
+      const data = new Uint8Array(76).fill(0xcd);
+      const hex = buildAssetScript(data);
+      // c0 (OP_PHI_ASSET) + 4c (OP_PUSHDATA1) + 4c (length 76) + payload + 61
+      expect(hex.slice(0, 2)).toBe('c0');
+      expect(hex.slice(2, 4)).toBe('4c'); // OP_PUSHDATA1
+      expect(hex.slice(4, 6)).toBe('4c'); // length 76 == 0x4c
+      expect(hex.endsWith('61')).toBe(true);
+      // Total: (1 + 1 + 1 + 76 + 1) bytes * 2
+      expect(hex.length).toBe((1 + 2 + 76 + 1) * 2);
+    });
+
+    it('should use OP_PUSHDATA1 (0x4c) for a 255-byte payload (upper boundary)', () => {
+      const data = new Uint8Array(255).fill(0x11);
+      const hex = buildAssetScript(data);
+      expect(hex.slice(0, 2)).toBe('c0');
+      expect(hex.slice(2, 4)).toBe('4c'); // OP_PUSHDATA1
+      expect(hex.slice(4, 6)).toBe('ff'); // length 255 == 0xff
+      expect(hex.endsWith('61')).toBe(true);
+    });
+
+    it('should use OP_PUSHDATA2 (0x4d) + LE length for a ~200-byte... 300-byte payload', () => {
+      const data = new Uint8Array(300).fill(0x22);
+      const hex = buildAssetScript(data);
+      // c0 + 4d (OP_PUSHDATA2) + 2c01 (300 little-endian = 0x012c -> bytes 0x2c 0x01) + payload + 61
+      expect(hex.slice(0, 2)).toBe('c0');
+      expect(hex.slice(2, 4)).toBe('4d'); // OP_PUSHDATA2
+      expect(hex.slice(4, 8)).toBe('2c01'); // 300 = 0x012c, little-endian -> 2c 01
+      expect(hex.endsWith('61')).toBe(true);
+      // Total: (1 + 1 + 2 + 300 + 1) bytes * 2
+      expect(hex.length).toBe((1 + 3 + 300 + 1) * 2);
+    });
+
+    it('should keep the documented small-payload output identical (regression)', () => {
+      // 3-byte payload must still produce c00301020361 (no pushdata opcode).
+      expect(buildAssetScript(new Uint8Array([0x01, 0x02, 0x03]))).toBe('c00301020361');
+    });
+  });
+
+  describe('encodeAssetPushData', () => {
+    it('should direct-push a payload shorter than 76 bytes', () => {
+      expect(encodeAssetPushData(new Uint8Array([0xaa, 0xbb]))).toBe('02aabb');
+    });
+
+    it('should prefix OP_PUSHDATA1 for 76..255 byte payloads', () => {
+      const out = encodeAssetPushData(new Uint8Array(80).fill(0x01));
+      expect(out.startsWith('4c50')).toBe(true); // 0x4c then length 80 (0x50)
+    });
+
+    it('should prefix OP_PUSHDATA2 + LE length for 256..65535 byte payloads', () => {
+      const out = encodeAssetPushData(new Uint8Array(256).fill(0x01));
+      expect(out.startsWith('4d0001')).toBe(true); // 0x4d then 256 LE = 00 01
+    });
+
+    it('should throw for payloads larger than 65535 bytes', () => {
+      expect(() => encodeAssetPushData(new Uint8Array(65536))).toThrow();
     });
   });
 

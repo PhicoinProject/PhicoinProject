@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toHex, fromHex } from '@/services/crypto';
 import { hasV2Wallet } from '@/services/encryptedWallet';
+import { ChangePassphrase } from '@/components/wallet/ChangePassphrase';
 
 /**
  * Wallet backup page — exports encrypted wallet data for safekeeping.
@@ -170,6 +171,11 @@ export const BackupWallet: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Change passphrase — fully client-side re-encryption of the wallet seed */}
+      <div className="mt-8">
+        <ChangePassphrase />
+      </div>
 
       <div className="mt-6 text-center">
         <button onClick={() => navigate('/')} className="text-sm text-phi-primary hover:underline">

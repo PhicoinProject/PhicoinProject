@@ -233,7 +233,8 @@ export const Transactions: React.FC = () => {
                   {filtered.map((tx, i) => (
                     <tr
                       key={tx.txid}
-                      className={`border-b border-gray-100 dark:border-dark-border ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'} hover:bg-blue-50 dark:hover:bg-blue-900/20`}
+                      onClick={() => openDetail(tx.txid)}
+                      className={`border-b border-gray-100 dark:border-dark-border ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'} hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer`}
                     >
                       <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
                         {explorerUrl(tx.txid) ? (
@@ -241,17 +242,15 @@ export const Transactions: React.FC = () => {
                             href={explorerUrl(tx.txid)}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="font-mono text-xs text-phi-primary hover:underline"
                           >
                             {truncate(tx.txid)}
                           </a>
                         ) : (
-                          <button
-                            onClick={() => openDetail(tx.txid)}
-                            className="font-mono text-xs text-phi-primary hover:underline cursor-pointer"
-                          >
+                          <span className="font-mono text-xs text-phi-primary">
                             {truncate(tx.txid)}
-                          </button>
+                          </span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-dark-mutedText">
@@ -303,7 +302,8 @@ export const Transactions: React.FC = () => {
               {filtered.map((tx) => (
                 <div
                   key={tx.txid}
-                  className="rounded-lg border border-gray-200 dark:border-dark-border p-3"
+                  onClick={() => openDetail(tx.txid)}
+                  className="rounded-lg border border-gray-200 dark:border-dark-border p-3 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <span className={`text-sm font-semibold ${directionColor(tx.direction)}`}>
@@ -316,12 +316,9 @@ export const Transactions: React.FC = () => {
                       {directionLabel(tx.direction)}
                     </span>
                   </div>
-                  <button
-                    onClick={() => openDetail(tx.txid)}
-                    className="mt-1 block font-mono text-xs text-phi-primary hover:underline cursor-pointer"
-                  >
+                  <span className="mt-1 block font-mono text-xs text-phi-primary">
                     {truncate(tx.txid)}
-                  </button>
+                  </span>
                   <div className="mt-1 flex items-center justify-between">
                     <span className="text-xs text-gray-500 dark:text-dark-mutedText">
                       {formatDate(tx.timestamp)}

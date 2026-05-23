@@ -33,77 +33,87 @@ export interface AddressRestriction {
 
 /** Fetch restricted assets held by the wallet */
 async function fetchRestrictedAssets(): Promise<RestrictedAsset[]> {
-  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
-  if (!addresses.length) return [];
+  try {
+    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    if (!addresses.length) return [];
 
-  const assets: RestrictedAsset[] = [];
-  const seen = new Set<string>();
+    const assets: RestrictedAsset[] = [];
+    const seen = new Set<string>();
 
-  for (const addr of addresses) {
-    try {
-      const balances = await rpc.getAssetBalances(addr);
-      // getAssetBalances returns a map { assetName: balance }. Some deployments
-      // may return an array of entry objects; tolerate both shapes.
-      const entries: Record<string, unknown>[] = Array.isArray(balances)
-        ? (balances as unknown as Record<string, unknown>[])
-        : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
-      for (const entry of entries) {
-        const assetId = String(entry.asset ?? entry.assetId ?? '');
-        if (!assetId || seen.has(assetId)) continue;
-        seen.add(assetId);
+    for (const addr of addresses) {
+      try {
+        const balances = await rpc.getAssetBalances(addr);
+        // getAssetBalances returns a map { assetName: balance }. Some deployments
+        // may return an array of entry objects; tolerate both shapes.
+        const entries: Record<string, unknown>[] = Array.isArray(balances)
+          ? (balances as unknown as Record<string, unknown>[])
+          : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
+        for (const entry of entries) {
+          const assetId = String(entry.asset ?? entry.assetId ?? '');
+          if (!assetId || seen.has(assetId)) continue;
+          seen.add(assetId);
 
-        const restrictionType = String(entry.restrictionType ?? 'none');
-        if (restrictionType === 'none') continue;
+          const restrictionType = String(entry.restrictionType ?? 'none');
+          if (restrictionType === 'none') continue;
 
-        assets.push({
-          assetId,
-          assetLabel: assetId,
-          restrictionType,
-          verifier: String(entry.verifier ?? ''),
-          balance: Number(entry.balance ?? entry.amount ?? 0),
-        });
+          assets.push({
+            assetId,
+            assetLabel: assetId,
+            restrictionType,
+            verifier: String(entry.verifier ?? ''),
+            balance: Number(entry.balance ?? entry.amount ?? 0),
+          });
+        }
+      } catch {
+        // Skip individual address errors — missing asset index is normal
       }
-    } catch {
-      // Skip
     }
+    return assets;
+  } catch {
+    // Top-level safety net: always resolve to empty rather than leaving the
+    // query in a perpetual pending/loading state.
+    return [];
   }
-  return assets;
 }
 
 /** Fetch qualifiers owned by the wallet */
 async function fetchQualifiers(): Promise<Qualifier[]> {
-  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
-  if (!addresses.length) return [];
+  try {
+    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    if (!addresses.length) return [];
 
-  const qualifiers: Qualifier[] = [];
-  const seen = new Set<string>();
+    const qualifiers: Qualifier[] = [];
+    const seen = new Set<string>();
 
-  for (const addr of addresses) {
-    try {
-      const balances = await rpc.getAssetBalances(addr);
-      const entries: Record<string, unknown>[] = Array.isArray(balances)
-        ? (balances as unknown as Record<string, unknown>[])
-        : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
-      for (const entry of entries) {
-        const assetId = String(entry.asset ?? entry.assetId ?? '');
-        if (!assetId || seen.has(assetId)) continue;
-        seen.add(assetId);
+    for (const addr of addresses) {
+      try {
+        const balances = await rpc.getAssetBalances(addr);
+        const entries: Record<string, unknown>[] = Array.isArray(balances)
+          ? (balances as unknown as Record<string, unknown>[])
+          : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
+        for (const entry of entries) {
+          const assetId = String(entry.asset ?? entry.assetId ?? '');
+          if (!assetId || seen.has(assetId)) continue;
+          seen.add(assetId);
 
-        const restrictionType = String(entry.restrictionType ?? 'none');
-        if (!restrictionType.toUpperCase().includes('QUALIFIER')) continue;
+          const restrictionType = String(entry.restrictionType ?? 'none');
+          if (!restrictionType.toUpperCase().includes('QUALIFIER')) continue;
 
-        if (!qualifiers.find((q) => q.qualifier === assetId)) {
-          qualifiers.push({
-            qualifier: assetId,
-            txid: String(entry.assetTx ?? entry.blockhash ?? ''),
-          });
+          if (!qualifiers.find((q) => q.qualifier === assetId)) {
+            qualifiers.push({
+              qualifier: assetId,
+              txid: String(entry.assetTx ?? entry.blockhash ?? ''),
+            });
+          }
         }
+      } catch {
+        // Skip individual address errors
       }
-    } catch {
-      // Skip
     }
+    return qualifiers;
+  } catch {
+    return [];
   }
-  return qualifiers;
 }
 
 /** Fetch address tags */
@@ -125,7 +135,11 @@ export function useRestrictedAssets() {
     queryKey: ['restrictedAssets', addresses.join(',')],
     queryFn: fetchRestrictedAssets,
     staleTime: 30_000,
+    // When no addresses are derived yet, skip the fetch but immediately
+    // resolve to an empty array so the UI shows the empty state rather than
+    // a perpetual loading spinner.
     enabled: addresses.length > 0,
+    placeholderData: [] as RestrictedAsset[],
   });
 }
 
@@ -137,6 +151,7 @@ export function useQualifiers() {
     queryFn: fetchQualifiers,
     staleTime: 60_000,
     enabled: addresses.length > 0,
+    placeholderData: [] as Qualifier[],
   });
 }
 
@@ -146,6 +161,7 @@ export function useAddressTags() {
     queryKey: ['addressTags'],
     queryFn: fetchAddressTags,
     staleTime: 30_000,
+    placeholderData: [] as AddressTag[],
   });
 }
 
@@ -155,5 +171,6 @@ export function useAddressRestrictions() {
     queryKey: ['addressRestrictions'],
     queryFn: fetchAddressRestrictions,
     staleTime: 30_000,
+    placeholderData: [] as AddressRestriction[],
   });
 }

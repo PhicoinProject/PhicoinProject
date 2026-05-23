@@ -1,4 +1,4 @@
-import { deriveKey, encryptData, generateSalt, toHex, sha256 } from './crypto';
+import { deriveKey, encryptData, generateSalt, secureZero, toHex, sha256 } from './crypto';
 import {
   storeEncryptedSeed,
   retrieveEncryptedSeed,
@@ -283,6 +283,62 @@ export async function createWalletV2(
   // The master seed is derived from mnemonic+userSeed via HMAC-SHA512.
   // Storing the encrypted master seed is sufficient; the mnemonic is
   // only needed for user backup/restore, not for app operation.
+}
+
+/**
+ * Change the wallet passphrase entirely client-side (no RPC).
+ *
+ * Flow:
+ *   1. Verify the old password by decrypting the stored encrypted master seed.
+ *      `retrieveEncryptedSeed` throws if the password is wrong (AES-GCM auth tag
+ *      mismatch), which we surface as a clear error.
+ *   2. Re-encrypt the same master seed under the new password. `storeEncryptedSeed`
+ *      generates a fresh random salt and IV and overwrites the v2 localStorage keys.
+ *   3. Refresh the in-memory HD key and the auto-unlock session key so the active
+ *      session keeps working without a relock.
+ *
+ * Only supports v2 (encrypted-seed) wallets — v1 sentinel wallets store no seed
+ * to re-encrypt.
+ *
+ * @throws if no v2 wallet exists, the old password is wrong, or the new password
+ *         fails basic validation.
+ */
+export async function changeWalletPassword(
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  if (!hasV2Wallet()) {
+    throw new Error('Changing the passphrase requires a v2 (encrypted-seed) wallet.');
+  }
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters.');
+  }
+  if (oldPassword === newPassword) {
+    throw new Error('New password must be different from the current password.');
+  }
+
+  // 1. Verify old password by decrypting the stored seed.
+  let masterSeed: Uint8Array;
+  try {
+    masterSeed = await retrieveEncryptedSeed(oldPassword);
+  } catch {
+    throw new Error('Current password is incorrect.');
+  }
+
+  try {
+    // 2. Re-encrypt the seed under the new password (fresh salt + IV).
+    await storeEncryptedSeed(masterSeed, newPassword);
+
+    // 3. Keep the live session consistent: refresh in-memory key + session key.
+    const hdKey = seedToHDKey(masterSeed);
+    useWalletHDKeyStore.getState().setHDKey(hdKey);
+    if (sessionStorage.getItem('phi:unlocked') === 'true') {
+      await storeSessionKey(masterSeed);
+    }
+  } finally {
+    // Always zeroize the seed from memory.
+    secureZero(masterSeed);
+  }
 }
 
 /**
