@@ -4,6 +4,7 @@ import {
   deriveChangeAddress,
   isValidPHICoinAddress,
 } from './addressDerivation';
+import { receivePath as canonicalReceivePath, getCoinType } from './HDWallet';
 import { rpc } from './rpc';
 import type { DerivedAddress } from '@/types';
 
@@ -210,7 +211,8 @@ export class AddressTracker {
   }
 
   private receivePath(index: number): string {
-    return `m/0'/0'/0'/0/${index}`;
+    // Canonical PHICOIN receive path m/0'/coinType'/0'/0/index (coinType=0 mainnet).
+    return canonicalReceivePath(getCoinType(this.getNetwork()), index);
   }
 
   private getNetwork(): 'mainnet' | 'testnet' {
@@ -219,8 +221,8 @@ export class AddressTracker {
 
   private getUnusedReceiveCount(): number {
     let count = 0;
-    for (const [path] of this.records) {
-      if (path.startsWith('m/0') && !path.includes('/1/')) {
+    for (const [, record] of this.records) {
+      if (!record.isChange && !record.used) {
         count++;
       }
     }

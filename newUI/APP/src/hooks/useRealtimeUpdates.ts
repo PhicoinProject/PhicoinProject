@@ -90,12 +90,39 @@ export function useRealtimeUpdates(addresses?: string[]) {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- explicitAddresses is derived from stable `addresses` param; adding it causes re-subscriptions
   }, []);
 
+  // Expand the address pool asynchronously once ready: discovers used-address
+  // count via RPC so balances on addresses beyond the default window (and on
+  // change addresses) are included. Falls back silently to the sync pool.
+  useEffect(() => {
+    if (explicitAddresses || !ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fullAddrs = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
+        if (!cancelled && fullAddrs.length > addrListRef.current.length) {
+          setAddrList(fullAddrs);
+        }
+      } catch {
+        // Keep the sync pool; next unlock/refresh will retry.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- addrListRef avoids re-running on every addrList change
+  }, [ready, explicitAddresses]);
+
   // Refs to avoid re-creating intervals on every render when queryClient
   // or showToast change identity.
   const queryClientRef = useRef(queryClient);
   const showToastRef = useRef(showToast);
   queryClientRef.current = queryClient;
   showToastRef.current = showToast;
+
+  // Latest address list, read inside the async pool-expansion effect without
+  // making addrList a dependency (which would re-trigger the effect).
+  const addrListRef = useRef(addrList);
+  addrListRef.current = addrList;
 
   // ---- Mempool polling ----
   useEffect(() => {

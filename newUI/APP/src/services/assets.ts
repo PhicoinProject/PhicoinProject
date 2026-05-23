@@ -23,6 +23,7 @@ import {
 } from './assetSerialization';
 import { signRawTransaction } from './txSigner';
 import { ripemd160 } from '@noble/hashes/ripemd160';
+import { NETWORK } from '@/utils/constants';
 import type { Asset, UTXO } from '@/types';
 
 // Initialize noble/secp256k1 for deterministic signing
@@ -114,6 +115,69 @@ function buildP2PKHScriptPubKeyBytes(h160: Uint8Array): Uint8Array {
   return s;
 }
 
+// ---- Asset script parsing helpers ----
+
+interface AssetScriptInfo {
+  assetName: string;
+  amount: bigint;
+}
+
+/**
+ * Extract asset name and amount from an asset scriptPubKey hex.
+ * Parses the OP_PHI_ASSET (0xc0) payload after the P2PKH prefix (bytes 0-24).
+ * Matches C++ IsAssetScript() which checks byte[25] == OP_PHI_ASSET.
+ */
+function extractAssetScriptInfo(scriptHex: string): AssetScriptInfo | null {
+  const clean = scriptHex.startsWith('0x') ? scriptHex.slice(2) : scriptHex;
+  const script = hexToArray(clean);
+  if (script.length < 31 || script[25] !== 0xc0) return null;
+
+  let offset = 26;
+  let payloadLen = 0;
+  if (script[offset] < 0xfd) {
+    payloadLen = script[offset];
+    offset += 1;
+  } else if (script[offset] === 0xfd) {
+    payloadLen = script[offset + 1] | (script[offset + 2] << 8);
+    offset += 3;
+  } else if (script[offset] === 0xfe) {
+    payloadLen = script[offset + 1] | (script[offset + 2] << 8) | (script[offset + 3] << 16) | (script[offset + 4] << 24);
+    offset += 5;
+  } else {
+    return null;
+  }
+
+  if (offset + 4 > script.length) return null;
+  // The declared pushdata payload must fit within the remaining script bytes.
+  if (payloadLen > 0 && offset + payloadLen > script.length) return null;
+
+  // Check rvn[otpqr] magic (0x72 0x76 0x6e + one of t/q/p/o/r)
+  if (!(script[offset] === 0x72 && script[offset + 1] === 0x76 && script[offset + 2] === 0x6e)) return null;
+  if (![0x74, 0x71, 0x70, 0x6f, 0x72].includes(script[offset + 3])) return null;
+
+  const dataOffset = offset + 4;
+  if (dataOffset + 1 > script.length) return null;
+
+  const nameLen = script[dataOffset];
+  if (dataOffset + 1 + nameLen > script.length) return null;
+  const assetName = new TextDecoder().decode(script.slice(dataOffset + 1, dataOffset + 1 + nameLen));
+
+  const amountOffset = dataOffset + 1 + nameLen;
+  if (amountOffset + 8 > script.length) return null;
+  const amount = new DataView(script.buffer, script.byteOffset + amountOffset, 8).getBigInt64(0, true);
+
+  return { assetName, amount };
+}
+
+/**
+ * Get scriptPubKey hex from a raw UTXO object (handles both string and object formats).
+ */
+function extractScriptPubKeyHex(obj: Record<string, unknown>): string {
+  const spk = obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? '';
+  if (typeof spk === 'object' && spk && 'hex' in spk) return String(spk.hex);
+  return String(spk);
+}
+
 /**
  * Build and broadcast an asset transaction.
  * For ROOT asset issuance, this constructs a proper 4-output transaction:
@@ -123,6 +187,8 @@ function buildP2PKHScriptPubKeyBytes(h160: Uint8Array): Uint8Array {
  *   4. Issue Asset (rvnq magic for ASSETNAME)
  *
  * For other asset operations (transfer, reissue, etc.), simpler tx structures are used.
+ *
+ * For transfers, assetUtxos must be passed as inputs along with the transfer output.
  */
 async function buildAndBroadcastAssetTx(params: {
   assetScriptHex?: string;  // Pre-built asset script for non-issuance ops
@@ -142,6 +208,16 @@ async function buildAndBroadcastAssetTx(params: {
   // Transfer/reissue params
   phiOutput?: { address: string; valueSatoshis: number };
   transferOutput?: boolean; // If true, output value is 0 instead of 1000
+
+  // Asset transfer: UTXOs that are asset inputs (for transfers, reissues, etc.)
+  assetInputs?: Array<{
+    txid: string;
+    vout: number;
+    scriptPubKey: string;
+  }>;
+
+  // Extra outputs to append (e.g., asset change)
+  extraOutputs?: Array<{ scriptPubKey: string; valueSatoshis: number }>;
 }): Promise<string> {
   // Use daemon's listunspent (reliable, unlike getaddressutxos)
   const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
@@ -160,7 +236,7 @@ async function buildAndBroadcastAssetTx(params: {
   const changeScript = buildP2PKHScriptPubKeyHex(params.senderAddress);
   const coinType = getCoinType('mainnet');
 
-  // Select UTXOs (pick largest first)
+  // Select PHI UTXOs for fees (pick largest first)
   const sortedUtxos = [...utxos].sort((a, b) => b.amount - a.amount);
   let totalInputSat = 0;
   const selectedUtxos: UTXO[] = [];
@@ -192,7 +268,7 @@ async function buildAndBroadcastAssetTx(params: {
 
     // 2. Burn output (0.1 PHI)
     outputs.push({
-      scriptPubKey: '76a9148684a6449c157dd0a2f393fc5147e47cd4fd9f2588ac',
+      scriptPubKey: NETWORK.assetBurnScriptPubKey,
       valueSatoshis: burnAmount,
     });
 
@@ -239,9 +315,20 @@ async function buildAndBroadcastAssetTx(params: {
     }
   }
 
-  // Build raw transaction (txid byte reversal is handled in buildRawTransaction)
-  const rpcInputs = selectedUtxos.map((u) => ({ txid: u.txid, vout: u.vout }));
-  const rawTxHex = await buildRawTransaction(rpcInputs, outputs);
+  // Append extra outputs (asset change, etc.)
+  if (params.extraOutputs) {
+    outputs.push(...params.extraOutputs);
+  }
+
+  // Build all inputs: PHI fee inputs first, then asset inputs
+  const allInputs: Array<{ txid: string; vout: number; scriptPubKey: string }> = [];
+  allInputs.push(...selectedUtxos.map((u) => ({ txid: u.txid, vout: u.vout, scriptPubKey: String(u.scriptPubKey ?? '') })));
+  if (params.assetInputs) {
+    allInputs.push(...params.assetInputs);
+  }
+
+  // Build raw transaction
+  const rawTxHex = await buildRawTransaction(allInputs, outputs);
 
   // Verify
   const decoded = await rpc.raw<unknown>('decoderawtransaction', [rawTxHex]);
@@ -249,7 +336,8 @@ async function buildAndBroadcastAssetTx(params: {
     throw new Error('Transaction hex is malformed (decoder returned no txid)');
   }
 
-  // Sign locally with @noble/secp256k1 — private keys never leave the browser
+  // Sign all inputs locally with @noble/secp256k1 — private keys never leave the browser
+  // Both PHI and asset inputs use P2PKH sighash (extract hash160 from scriptPubKey)
   const signingInputs: Array<{
     txid: string;
     vout: number;
@@ -257,9 +345,11 @@ async function buildAndBroadcastAssetTx(params: {
     privateKey: Uint8Array;
   }> = [];
 
-  for (const u of selectedUtxos) {
-    const scriptPubKeyHex = String(u.scriptPubKey ?? '');
+  for (const inp of allInputs) {
+    const scriptPubKeyHex = inp.scriptPubKey.startsWith('0x') ? inp.scriptPubKey.slice(2) : inp.scriptPubKey;
     const scriptBytes = hexToArray(scriptPubKeyHex);
+
+    // Asset scripts: P2PKH prefix is bytes 0-24 (hash160 at bytes 3-22)
     const targetH160 = scriptBytes.slice(3, 23);
 
     let foundPk: Uint8Array | null = null;
@@ -286,12 +376,12 @@ async function buildAndBroadcastAssetTx(params: {
     }
 
     if (!foundPk) {
-      throw new Error('Signing failed: UTXO does not belong to this wallet');
+      throw new Error(`Signing failed: UTXO ${inp.txid}:${inp.vout} does not belong to this wallet`);
     }
 
     signingInputs.push({
-      txid: u.txid,
-      vout: u.vout,
+      txid: inp.txid,
+      vout: inp.vout,
       scriptPubKey: scriptBytes,
       privateKey: foundPk,
     });
@@ -364,21 +454,21 @@ export class AssetService {
         // listassetbalancesbyaddress returns { assetName: balance, "ASSET!": ownerBalance, ... }
         const balances = result as Record<string, number>;
         for (const [assetId, balance] of Object.entries(balances)) {
-          // Skip owner tokens (end with "!")
-          if (assetId.endsWith('!')) continue;
+          const isOwner = assetId.endsWith('!');
           if (seen.has(assetId)) continue;
           seen.add(assetId);
 
           assets.push({
             assetId,
-            assetLabel: assetId,
+            assetLabel: isOwner ? assetId.slice(0, -1) : assetId,
             status: 'ISSUED',
             assetTx: '',
             nonce: 0,
-            precision: 8, // Will be overridden by getAsset below if called
+            precision: isOwner ? 0 : 8, // Owner assets always have 0 precision
             previousAmount: Number(balance ?? 0),
             previousTransactions: 0,
             ipfsHash: undefined,
+            isOwner,
           });
         }
       } catch {
@@ -499,11 +589,17 @@ export class AssetService {
     assetId: string,
     qty: number,
     toAddress: string,
-    message?: string
+    message?: string,
+    options?: { precision?: number; balance?: number }
   ): Promise<string> {
     if (!assetId) throw new Error('Asset ID is required');
     if (qty <= 0) throw new Error('Quantity must be greater than 0');
     if (!toAddress) throw new Error('Recipient address is required');
+
+    if (options?.balance !== undefined && qty > options.balance) {
+      const precision = options.precision ?? 8;
+      throw new Error(`Insufficient balance. You have ${options.balance.toFixed(precision)} ${assetId}`);
+    }
 
     const amountSat = toSatoshis(qty);
 
@@ -524,16 +620,87 @@ export class AssetService {
     // Full script: recipientP2PKH + OP_PHI_ASSET + pushdata_len + payload + OP_DROP
     const assetScriptHex = recipientP2PKH + 'c0' + payload.length.toString(16).padStart(2, '0') + toHex(payload) + '61';
 
-    // Get first wallet address as sender
+    // ---- Find asset UTXOs to use as inputs (Qt wallet approach) ----
+    // Step 1: Use listassetbalancesbyaddress to confirm balance per address
+    // Step 2: Use getaddressutxos with assetName to get UTXOs
+
     const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available. Create or import a wallet first.');
     }
 
+    const assetInputs: Array<{
+      txid: string;
+      vout: number;
+      scriptPubKey: string;
+    }> = [];
+    let totalAssetBalance = 0n;
+    let senderAddress = addresses[0];
+
+    for (const addr of addresses) {
+      try {
+        // Get address UTXOs for this specific asset — must specify assetName
+        const rawUtxos = await rpc.raw<unknown[]>('getaddressutxos', [{ addresses: [addr], assetName: assetId }]);
+        if (!rawUtxos || !Array.isArray(rawUtxos)) continue;
+
+        for (const u of rawUtxos) {
+          const obj = u as Record<string, unknown>;
+          const spkHex = extractScriptPubKeyHex(obj);
+          const info = extractAssetScriptInfo(spkHex);
+
+          // If script parsing fails, still include the UTXO (daemon already filtered by assetName)
+          if (info && info.assetName === assetId) {
+            totalAssetBalance += info.amount;
+          } else if (info && assetId.endsWith(info.assetName)) {
+            totalAssetBalance += info.amount;
+          } else {
+            // Daemon filtered by assetName, trust it even if our parser couldn't extract
+            totalAssetBalance += BigInt(Number(obj.satoshis ?? 0));
+          }
+
+          senderAddress = addr;
+          assetInputs.push({
+            txid: String(obj.txid ?? obj.txHash ?? ''),
+            vout: Number(obj.vout ?? obj.outputIndex ?? 0),
+            scriptPubKey: spkHex,
+          });
+          if (totalAssetBalance >= BigInt(amountSat)) break;
+        }
+      } catch { /* skip */ }
+      if (totalAssetBalance >= BigInt(amountSat)) break;
+    }
+
+    if (totalAssetBalance < BigInt(amountSat)) {
+      throw new Error(`Insufficient asset UTXOs for ${assetId}. Need ${amountSat}, have ${totalAssetBalance.toString()}`);
+    }
+
+    // ---- Build asset change output if needed ----
+    const assetChange = totalAssetBalance - BigInt(amountSat);
+    const extraOutputs: Array<{ scriptPubKey: string; valueSatoshis: number }> = [];
+    if (assetChange > 0n) {
+      const changeScript = buildP2PKHScriptPubKeyHex(senderAddress);
+      // Reuse the sender's address P2PKH + OP_PHI_ASSET to create asset change
+      const changeSerialized = serializeCAssetTransfer({
+        name: assetId,
+        amount: Number(assetChange),
+        message: '',
+      });
+      const changePayload = new Uint8Array(4 + changeSerialized.length);
+      changePayload.set(MAGIC_ASSET_TRANSFER, 0);
+      changePayload.set(changeSerialized, 4);
+      const changeAssetScript = changeScript + 'c0' + changePayload.length.toString(16).padStart(2, '0') + toHex(changePayload) + '61';
+      extraOutputs.push({ scriptPubKey: changeAssetScript, valueSatoshis: 0 });
+    }
+
+    // Use all found asset UTXOs as inputs (Qt selects them all, accumulates change)
+    const inputsToUse = assetInputs.slice();
+
     return buildAndBroadcastAssetTx({
       assetScriptHex,
-      senderAddress: addresses[0],
-      transferOutput: true, // valueSatoshis: 0 instead of 1000
+      senderAddress,
+      transferOutput: true,
+      assetInputs: inputsToUse,
+      extraOutputs,
     });
   }
 

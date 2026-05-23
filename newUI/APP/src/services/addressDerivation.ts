@@ -3,14 +3,14 @@ import { base58, bech32 } from '@scure/base';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { getCoinType, receivePath, changePath } from './HDWallet';
+import { NETWORK } from '@/utils/constants';
 import type { DerivedAddress } from '@/types';
 
-// PHICOIN network address prefixes (Base58Check)
-const PUB_KEY_HASH = 0x38; // 'P' prefix for P2PKH (PHICOIN mainnet chainparams: 56 = 0x38)
-const SCRIPT_HASH = 0x10; // 'H' prefix for P2SH (PHICOIN mainnet chainparams: 16 = 0x10)
-
-// PHICOIN Bech32 prefix for SegWit addresses
-const BECH32_PREFIX = 'PHC';
+// PHICOIN network address parameters, sourced from the centralized network
+// config so a future network switch is a single-file change.
+const PUB_KEY_HASH = NETWORK.pubKeyHashVersion; // 'P' prefix for P2PKH
+const SCRIPT_HASH = NETWORK.scriptHashVersion; // 'H' prefix for P2SH
+const BECH32_PREFIX = NETWORK.bech32Prefix; // Bech32 HRP for SegWit addresses
 
 /** Address type enum */
 export type AddressType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh';

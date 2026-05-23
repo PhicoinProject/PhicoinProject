@@ -47,6 +47,12 @@ const ConfirmDialog: React.FC<{
   onConfirm: () => void;
   onCancel: () => void;
 }> = ({ recipients, feeRate, totalFeeEstimate, countDown, onConfirm, onCancel }) => {
+  const recipientTotal = recipients.reduce((sum, r) => {
+    const n = parseFloat(r.amount);
+    return sum + (isNaN(n) ? 0 : n);
+  }, 0);
+  const feePhi = totalFeeEstimate / 1e8;
+  const grandTotal = recipientTotal + feePhi;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-lg rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-xl">
@@ -70,6 +76,12 @@ const ConfirmDialog: React.FC<{
           ))}
 
           <div className="flex items-center justify-between border-t border-gray-200 dark:border-dark-border pt-3">
+            <span className="text-gray-600 dark:text-dark-mutedText">Amount</span>
+            <span className="font-medium text-gray-800 dark:text-dark-secondary">
+              {recipientTotal.toFixed(8)} PHI
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
             <span className="text-gray-600 dark:text-dark-mutedText">Fee rate</span>
             <span className="font-medium text-gray-800 dark:text-dark-secondary">
               {feeRate.toFixed(2)} sat/B
@@ -78,7 +90,13 @@ const ConfirmDialog: React.FC<{
           <div className="flex items-center justify-between">
             <span className="text-gray-600 dark:text-dark-mutedText">Estimated fee</span>
             <span className="font-medium text-gray-800 dark:text-dark-secondary">
-              {(totalFeeEstimate / 1e8).toFixed(8)} PHI
+              {feePhi.toFixed(8)} PHI
+            </span>
+          </div>
+          <div className="flex items-center justify-between border-t border-gray-200 dark:border-dark-border pt-3">
+            <span className="font-semibold text-gray-700 dark:text-dark-secondary">Total (amount + fee)</span>
+            <span className="font-bold text-phi-primary">
+              {grandTotal.toFixed(8)} PHI
             </span>
           </div>
         </div>

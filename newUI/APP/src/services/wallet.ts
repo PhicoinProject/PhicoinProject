@@ -56,16 +56,40 @@ export class WalletService {
   }
 
   /**
-   * Get derived address pool from HDKey.
-   * Returns pre-generated addresses for scanning.
+   * Get derived address pool from HDKey (synchronous).
+   *
+   * Returns a pool covering BOTH the receive chain and the change chain so
+   * balance/UTXO queries don't miss funds sitting on change addresses.
+   * This is a best-effort pool starting at index 0; it does not perform RPC.
+   * For a window aligned to actually-used indices, use
+   * {@link getDerivedAddressPoolAsync}.
    */
   getDerivedAddressPool(): DerivedAddress[] {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return [];
 
     const network: 'mainnet' | 'testnet' = 'mainnet';
-    const usedCount = this.getUsedAddressCountSync(network);
-    return this.deriveAddressPool(hdKey, network, usedCount, ADDRESS_POOL_SIZE);
+    return this.deriveCombinedPool(hdKey, network, 0, ADDRESS_POOL_SIZE);
+  }
+
+  /**
+   * Async variant of {@link getDerivedAddressPool} that discovers how many
+   * addresses have actually been used (via RPC) and returns a pool that spans
+   * from index 0 up to usedCount + ADDRESS_POOL_SIZE on the receive chain,
+   * plus the corresponding change-chain addresses.
+   *
+   * Use this in polling/refresh paths so balances are populated even when a
+   * wallet has used addresses beyond the default pool window. Never call from
+   * a synchronous render path.
+   */
+  async getDerivedAddressPoolAsync(): Promise<DerivedAddress[]> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return [];
+
+    const network: 'mainnet' | 'testnet' = 'mainnet';
+    const usedCount = await this.getUsedAddressCount(network);
+    const count = Math.max(ADDRESS_POOL_SIZE, usedCount + ADDRESS_POOL_SIZE);
+    return this.deriveCombinedPool(hdKey, network, 0, count);
   }
 
   /**
@@ -243,7 +267,7 @@ export class WalletService {
       if (!hdKey) throw new Error('Wallet not unlocked');
 
       const network: 'mainnet' | 'testnet' = 'mainnet';
-      // Use change chain (m/44'/4343'/0'/1/{n}) for change outputs — BIP44 compliance.
+      // Use change chain (m/0'/coinType'/0'/1/{n}) for change outputs.
       // Reuse current change address until fully spent (Electrum model).
       const changeIndex = this.getCurrentChangeIndex(network);
       const changeAddr = deriveChangeAddress(hdKey, network, changeIndex);
@@ -507,13 +531,13 @@ export class WalletService {
     return usedCount;
   }
 
-  private getUsedAddressCountSync(_network: 'mainnet' | 'testnet'): number {
-    // Synchronous placeholder - returns 0 since we can't do async RPC here.
-    // Callers of getDerivedAddressPool should use async methods when possible.
-    return 0;
-  }
-
-  private deriveAddressPool(
+  /**
+   * Derive a pool spanning both the receive and change chains.
+   * Returns receive addresses [start, start+count) followed by change
+   * addresses [start, start+count). Including the change chain ensures balance
+   * and UTXO queries capture funds held on change outputs.
+   */
+  private deriveCombinedPool(
     hdKey: HDKey,
     network: 'mainnet' | 'testnet',
     start: number,
@@ -522,6 +546,9 @@ export class WalletService {
     const addresses: DerivedAddress[] = [];
     for (let i = start; i < start + count; i++) {
       addresses.push(deriveReceiveAddress(hdKey, network, i));
+    }
+    for (let i = start; i < start + count; i++) {
+      addresses.push(deriveChangeAddress(hdKey, network, i));
     }
     return addresses;
   }

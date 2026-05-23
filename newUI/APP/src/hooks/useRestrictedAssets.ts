@@ -42,7 +42,12 @@ async function fetchRestrictedAssets(): Promise<RestrictedAsset[]> {
   for (const addr of addresses) {
     try {
       const balances = await rpc.getAssetBalances(addr);
-      for (const entry of (balances || []) as Record<string, unknown>[]) {
+      // getAssetBalances returns a map { assetName: balance }. Some deployments
+      // may return an array of entry objects; tolerate both shapes.
+      const entries: Record<string, unknown>[] = Array.isArray(balances)
+        ? (balances as unknown as Record<string, unknown>[])
+        : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
+      for (const entry of entries) {
         const assetId = String(entry.asset ?? entry.assetId ?? '');
         if (!assetId || seen.has(assetId)) continue;
         seen.add(assetId);
@@ -76,7 +81,10 @@ async function fetchQualifiers(): Promise<Qualifier[]> {
   for (const addr of addresses) {
     try {
       const balances = await rpc.getAssetBalances(addr);
-      for (const entry of (balances || []) as Record<string, unknown>[]) {
+      const entries: Record<string, unknown>[] = Array.isArray(balances)
+        ? (balances as unknown as Record<string, unknown>[])
+        : Object.entries(balances || {}).map(([asset, balance]) => ({ asset, balance }));
+      for (const entry of entries) {
         const assetId = String(entry.asset ?? entry.assetId ?? '');
         if (!assetId || seen.has(assetId)) continue;
         seen.add(assetId);

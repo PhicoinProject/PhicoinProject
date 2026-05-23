@@ -48,9 +48,14 @@ export const AssetTable: React.FC<AssetTableProps> = ({ assets, balances = {}, o
               >
                 <td className="whitespace-nowrap px-4 py-3 font-medium text-gray-800 dark:text-dark-secondary">
                   {asset.assetLabel}
+                  {asset.isOwner && (
+                    <span className="ml-1 inline-flex items-center rounded bg-blue-100 dark:bg-blue-500 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-white">
+                      OWNER
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
-                  {asset.assetId.slice(0, 10)}...{asset.assetId.slice(-8)}
+                  {asset.assetId}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3">
                   <span
@@ -63,9 +68,13 @@ export const AssetTable: React.FC<AssetTableProps> = ({ assets, balances = {}, o
                   {asset.precision}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 font-medium text-phi-primary">
-                  {balances[asset.assetId] !== undefined
-                    ? (balances[asset.assetId] / 10 ** asset.precision).toFixed(asset.precision)
-                    : '—'}
+                  {(() => {
+                    const raw = balances[asset.assetId];
+                    if (raw !== undefined) return (raw / 10 ** asset.precision).toFixed(asset.precision);
+                    const amt = asset.previousAmount;
+                    if (amt != null && amt > 0) return amt.toFixed(asset.precision);
+                    return '—';
+                  })()}
                 </td>
               </tr>
             );

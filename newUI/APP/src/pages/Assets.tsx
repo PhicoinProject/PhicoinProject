@@ -84,6 +84,12 @@ export const Assets: React.FC = () => {
       setSendError('Amount must be greater than 0');
       return;
     }
+    const currentRaw = sendAsset.previousAmount ?? 0;
+    if (qty > currentRaw) {
+      const precision = sendAsset.precision ?? 8;
+      setSendError(`Insufficient balance. You have ${currentRaw.toFixed(precision)} ${sendAsset.assetLabel}`);
+      return;
+    }
     setSending(true);
     setSendError(null);
     try {
@@ -144,7 +150,9 @@ export const Assets: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleSendClick(selectedAsset)}
-                className="rounded-md bg-phi-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700"
+                disabled={selectedAsset.isOwner}
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-white bg-phi-primary hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={selectedAsset.isOwner ? 'Owner tokens cannot be transferred' : ''}
               >
                 Send
               </button>
@@ -263,6 +271,13 @@ export const Assets: React.FC = () => {
               value={sendForm.amount}
               onChange={(e) => setSendForm({ ...sendForm, amount: e.target.value })}
             />
+            <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
+              Available: {(() => {
+                const precision = sendAsset?.precision ?? 8;
+                const amt = sendAsset?.previousAmount ?? 0;
+                return `${amt.toFixed(precision)} ${sendAsset?.assetLabel}`;
+              })()}
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-dark-secondary">

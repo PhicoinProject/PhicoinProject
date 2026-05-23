@@ -81,6 +81,7 @@ export interface Asset {
   previousAmount: number;
   previousTransactions: number;
   ipfsHash?: string;
+  isOwner?: boolean;  // true for ROOT/owner assets (name ends with "!")
 }
 
 /** Asset amount with optional lot data (for NFTs) */

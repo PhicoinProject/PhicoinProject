@@ -35,7 +35,10 @@ export async function deriveWalletKey(
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: salt.buffer as ArrayBuffer,
+      // Copy into a fresh ArrayBuffer-backed view: a raw `.buffer` may be a
+      // SharedArrayBuffer or a slice of a larger buffer (non-zero byteOffset),
+      // which Web Crypto rejects or reads incorrectly.
+      salt: toCryptoBuffer(salt),
       iterations,
       hash: 'SHA-256',
     },
@@ -124,7 +127,7 @@ export async function sha256(data: string): Promise<Uint8Array> {
 
 export async function sha256d(data: string): Promise<Uint8Array> {
   const first = await sha256(data);
-  const second = await crypto.subtle.digest('SHA-256', toCryptoBuffer(first).buffer);
+  const second = await crypto.subtle.digest('SHA-256', toCryptoBuffer(first));
   return new Uint8Array(second);
 }
 

@@ -53,6 +53,8 @@ export interface AssetAmountSummary {
 /** Filter options for the transaction history query */
 export interface TxHistoryFilters {
   count?: number;
+  /** Pagination offset into the (deduped, ordered) txid list. Defaults to 0. */
+  from?: number;
   direction?: TxDirection | 'all';
   startDate?: Date;
   endDate?: Date;
@@ -75,11 +77,18 @@ export async function getTransactionHistory(
   if (!addresses.length) return [];
 
   const count = filters.count ?? 50;
+  const from = Math.max(0, filters.from ?? 0);
   const walletSet = new Set(addresses);
 
   try {
+    // Dedupe the combined txid list (one txid can touch several wallet
+    // addresses) and slice the requested page window BEFORE fetching any raw
+    // transactions, so large wallets don't pull every transaction's full data
+    // just to render a single page. Final ordering is applied by the sort below
+    // once block heights are known.
     const allTxIds = await rpc.getAddressTxIdsBatch(addresses);
-    const recentTxIds = allTxIds.slice(0, count);
+    const uniqueTxIds = Array.from(new Set(allTxIds));
+    const recentTxIds = uniqueTxIds.slice(from, from + count);
 
     const currentHeight = await rpc.getBlockCount();
     const txs: TxEntry[] = [];

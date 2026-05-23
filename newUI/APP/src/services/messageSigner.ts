@@ -4,6 +4,8 @@ import { ripemd160 } from '@noble/hashes/ripemd160';
 import { hmac } from '@noble/hashes/hmac';
 import { base58 } from '@scure/base';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import { receivePath, getCoinType } from './HDWallet';
+import { NETWORK } from '@/utils/constants';
 
 // Initialize noble/secp256k1 for deterministic signing
 const hmacSha256 = (key: Uint8Array, ...msgs: Uint8Array[]) => {
@@ -14,8 +16,9 @@ const hmacSha256 = (key: Uint8Array, ...msgs: Uint8Array[]) => {
 };
 nobleSecp.utils.hmacSha256Sync = hmacSha256;
 
-// PHICOIN address prefix (pubkey hash) — matches addressDerivation.ts
-const PUB_KEY_HASH = 0x38;
+// PHICOIN address prefix (pubkey hash) — sourced from the centralized network
+// config so it always matches addressDerivation.ts.
+const PUB_KEY_HASH = NETWORK.pubKeyHashVersion;
 
 function hash160(data: Uint8Array): Uint8Array {
   return ripemd160(sha256(data));
@@ -100,7 +103,10 @@ export async function signMessageWithWallet(
   const hdKey = useWalletHDKeyStore.getState().hdKey;
   if (!hdKey) throw new Error('Wallet not unlocked');
 
-  const path = derivationPath ?? "m/44'/486'/0'/0/0";
+  // Canonical PHICOIN path: m/0'/coinType'/0'/0/0 (coinType=0 for mainnet).
+  // Must match receive-address derivation so the signing address is a real
+  // wallet receive address (avoids "address mismatch" on verify).
+  const path = derivationPath ?? receivePath(getCoinType('mainnet'), 0);
   const derivedKey = hdKey.derive(path);
   const privateKey = derivedKey.privateKey;
   if (!privateKey) throw new Error('No private key at derivation path');

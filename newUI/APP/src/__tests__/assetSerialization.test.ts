@@ -23,14 +23,18 @@ describe('Asset Serialization', () => {
     it('should wrap data with OP_PHI_ASSET and OP_DROP', () => {
       const data = new Uint8Array([0x01, 0x02, 0x03]);
       const hex = buildAssetScript(data);
-      // OP_PHI_ASSET = 0xc0, OP_DROP = 0x61
-      expect(hex).toBe('c001020361');
+      // OP_PHI_ASSET = 0xc0, pushdata len = 0x03, data 010203, OP_DROP = 0x61.
+      // CScript << ToByteVector(data) prepends the pushdata length byte (Bitcoin
+      // script semantics, matched by the C++ asset-script parser), so the length
+      // byte IS part of the correct on-chain output.
+      expect(hex).toBe('c00301020361');
     });
 
     it('should handle empty data', () => {
       const data = new Uint8Array([]);
       const hex = buildAssetScript(data);
-      expect(hex).toBe('c061');
+      // OP_PHI_ASSET (0xc0), empty push (0x00), OP_DROP (0x61).
+      expect(hex).toBe('c00061');
     });
   });
 
