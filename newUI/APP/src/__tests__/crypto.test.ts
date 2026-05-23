@@ -64,28 +64,29 @@ describe('Crypto Service', () => {
       expect(encrypted.length).toBeGreaterThan(plaintext.length);
     });
 
-    it('should decrypt legacy 16-byte IV data', async () => {
+    // P6: decryptData now only supports the 12-byte AES-GCM IV that this app
+    // always writes (generateIV / encryptData). The previously-tested 16-byte
+    // "legacy" fallback was dead code (nothing in the app ever produced it) and
+    // has been removed, so the corresponding test was dropped.
+    it('should reject data encrypted with a non-12-byte IV', async () => {
       const salt = generateSalt();
       const key = await deriveWalletKey('test-password', salt, 100000);
 
-      // Create data with 16-byte IV (legacy format)
+      // Encrypt manually with a 16-byte IV (not produced anywhere in the app).
       const legacyIv = new Uint8Array(16);
       crypto.getRandomValues(legacyIv);
-
-      // Encrypt manually with 16-byte IV
       const encoded = new TextEncoder().encode('legacy test');
       const ciphertext = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv: legacyIv.buffer },
         key,
         encoded
       );
-
       const legacyData = new Uint8Array(legacyIv.length + ciphertext.byteLength);
       legacyData.set(legacyIv, 0);
       legacyData.set(new Uint8Array(ciphertext), legacyIv.length);
 
-      const decrypted = await decryptData(legacyData, key);
-      expect(decrypted).toBe('legacy test');
+      // With only a 12-byte-IV code path, the AES-GCM auth tag check fails.
+      await expect(decryptData(legacyData, key)).rejects.toBeDefined();
     });
   });
 

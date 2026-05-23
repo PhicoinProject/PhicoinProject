@@ -274,6 +274,14 @@ export class WalletService {
       outputs.push({ address: changeAddr.address, value: changeSat / 1e8, isChange: true });
     }
 
+    // SECURITY (P5): the input values + scripts above come from the daemon's
+    // address index (getaddressutxos) and are trusted for fee math and the
+    // sighash. Before signing, independently verify each input against the
+    // funding transaction on-chain so a tampered/buggy index cannot trick us
+    // into signing with a wrong amount (which would silently overpay fees or
+    // produce an invalid signature).
+    await this.verifyInputsAgainstChain(psbtInputs);
+
     // Build and sign (no broadcast yet)
     const { rawTx } = await buildAndSignOnly({ inputs: psbtInputs, outputs, feeRate });
 
@@ -501,6 +509,90 @@ export class WalletService {
       }
     } catch {
       // RPC error — ignore, change index remains unchanged
+    }
+  }
+
+  /**
+   * SECURITY (P5): verify that each input's value and scriptPubKey match the
+   * funding transaction as reported by the node's own raw-transaction data.
+   *
+   * We fetch `getrawtransaction(txid, true)` for every distinct funding txid
+   * (cached per-txid to avoid duplicate round trips) and compare:
+   *   - vout[n].value      (converted to satoshis) === input.value
+   *   - vout[n].scriptPubKey.hex (case-insensitive) === input.scriptPubKey
+   *
+   * Any mismatch throws and aborts the send, since signing with an incorrect
+   * input amount yields either an over-fee or an unspendable/invalid tx.
+   */
+  private async verifyInputsAgainstChain(inputs: PSBTInput[]): Promise<void> {
+    const txCache = new Map<string, Record<string, unknown>>();
+
+    for (const input of inputs) {
+      if (!input.txid) {
+        throw new Error('UTXO verification failed: input is missing a txid.');
+      }
+
+      let tx = txCache.get(input.txid);
+      if (!tx) {
+        let raw: unknown;
+        try {
+          // verbose=1 returns decoded JSON with vout[].value and
+          // vout[].scriptPubKey.hex (equivalent to getrawtransaction txid true).
+          raw = await rpc.getRawTransaction(input.txid, 1);
+        } catch (err) {
+          throw new Error(
+            `UTXO verification failed: could not fetch funding tx ${input.txid}` +
+              (err instanceof Error ? ` (${err.message})` : '')
+          );
+        }
+        if (!raw || typeof raw !== 'object') {
+          throw new Error(`UTXO verification failed: invalid response for tx ${input.txid}.`);
+        }
+        tx = raw as Record<string, unknown>;
+        txCache.set(input.txid, tx);
+      }
+
+      const vouts = tx.vout;
+      if (!Array.isArray(vouts) || input.vout < 0 || input.vout >= vouts.length) {
+        throw new Error(
+          `UTXO verification failed: tx ${input.txid} has no output at index ${input.vout}.`
+        );
+      }
+
+      const out = vouts[input.vout] as Record<string, unknown>;
+
+      // Compare value. getrawtransaction reports PHI as a float; convert to
+      // satoshis and use the same Math.round the builder uses for the amount.
+      const chainValueSat = Math.round(Number(out.value ?? NaN) * 1e8);
+      const inputValueSat = Math.round(input.value * 1e8);
+      if (!Number.isFinite(chainValueSat) || chainValueSat !== inputValueSat) {
+        throw new Error(
+          `UTXO verification failed for ${input.txid}:${input.vout}: ` +
+            `daemon UTXO value (${inputValueSat} sat) does not match the funding ` +
+            `transaction (${Number.isFinite(chainValueSat) ? chainValueSat : 'unknown'} sat). ` +
+            `Aborting to avoid signing with an unverified amount.`
+        );
+      }
+
+      // Compare scriptPubKey hex (case-insensitive). The funding tx is the
+      // authoritative source for which script actually locks the coins.
+      const spk = out.scriptPubKey;
+      const chainScriptHex =
+        spk && typeof spk === 'object' && 'hex' in spk
+          ? String((spk as Record<string, unknown>).hex ?? '')
+          : '';
+      const inputScriptHex = (input.scriptPubKey ?? '').replace(/[^a-fA-F0-9]/g, '');
+      if (
+        chainScriptHex &&
+        inputScriptHex &&
+        chainScriptHex.toLowerCase() !== inputScriptHex.toLowerCase()
+      ) {
+        throw new Error(
+          `UTXO verification failed for ${input.txid}:${input.vout}: ` +
+            `scriptPubKey does not match the funding transaction. ` +
+            `Aborting to avoid signing for the wrong output.`
+        );
+      }
     }
   }
 

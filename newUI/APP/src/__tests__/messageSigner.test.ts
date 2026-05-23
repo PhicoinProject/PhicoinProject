@@ -36,39 +36,55 @@ function publicKeyToAddress(pubKey: Uint8Array): string {
   return base58.encode(withChecksum);
 }
 
-function signMessage(message: string, privateKey: Uint8Array): string {
+// Mirrors src/services/messageSigner.ts: canonical 65-byte compact recoverable
+// signature [27 + recId + 4][r(32)][s(32)] using the REAL recovery id.
+const COMPRESSED_SIG_OFFSET = 4;
+
+function messageHash(message: string): Uint8Array {
   const prefix = '\x18PHICOIN Signed Message:\n';
   const payload = new TextEncoder().encode(prefix + message.length + message);
-  const hash = sha256(sha256(payload));
+  return sha256(sha256(payload));
+}
 
-  const derSig = nobleSecp.signSync(hash, privateKey.slice(0, 32), { der: true });
+function signMessage(message: string, privateKey: Uint8Array): string {
+  const hash = messageHash(message);
 
-  const sigWithRecovery = new Uint8Array(derSig.length + 1);
-  sigWithRecovery.set(derSig);
-  sigWithRecovery[derSig.length] = 27;
+  const [derSig, recId] = nobleSecp.signSync(hash, privateKey.slice(0, 32), {
+    der: true,
+    recovered: true,
+  });
 
-  return Buffer.from(sigWithRecovery).toString('base64');
+  const compact = nobleSecp.Signature.fromDER(derSig).toCompactRawBytes();
+  const out = new Uint8Array(65);
+  out[0] = 27 + recId + COMPRESSED_SIG_OFFSET;
+  out.set(compact, 1);
+  return Buffer.from(out).toString('base64');
 }
 
 function verifyMessage(message: string, signature: string, address: string): boolean {
   try {
     const sigBytes = Uint8Array.from(Buffer.from(signature, 'base64'));
-    if (sigBytes.length < 2) return false;
+    if (sigBytes.length !== 65) return false;
 
-    const derSig = sigBytes.slice(0, -1);
+    const header = sigBytes[0];
+    const compact = sigBytes.slice(1);
+    const sig = nobleSecp.Signature.fromCompact(compact);
+    const hash = messageHash(message);
 
-    const prefix = '\x18PHICOIN Signed Message:\n';
-    const payload = new TextEncoder().encode(prefix + message.length + message);
-    const hash = sha256(sha256(payload));
+    const headerRecId = header >= 27 && header <= 34 ? (header - 27) & 0x03 : -1;
 
-    // Try all recovery IDs since signSync does not return the recovery ID
-    for (let recId = 0; recId <= 3; recId++) {
+    const tryRecId = (recId: number): boolean => {
       try {
-        const sig = nobleSecp.Signature.fromDER(derSig);
         const pubKey = nobleSecp.recoverPublicKey(hash, sig, recId, true);
-        const derivedAddress = publicKeyToAddress(pubKey);
-        if (derivedAddress === address) return true;
-      } catch { /* try next recovery ID */ }
+        return publicKeyToAddress(pubKey) === address;
+      } catch {
+        return false;
+      }
+    };
+
+    if (headerRecId >= 0) return tryRecId(headerRecId);
+    for (let recId = 0; recId <= 3; recId++) {
+      if (tryRecId(recId)) return true;
     }
     return false;
   } catch {
@@ -78,15 +94,18 @@ function verifyMessage(message: string, signature: string, address: string): boo
 
 describe('Message Signer', () => {
   describe('signMessage', () => {
-    it('should produce a valid DER signature with recovery ID', () => {
+    it('should produce a 65-byte compact recoverable signature with a real recid', () => {
       const privateKey = new Uint8Array(32);
       for (let i = 0; i < 32; i++) privateKey[i] = i + 1;
 
       const signature = signMessage('Hello, PHICOIN!', privateKey);
       const sigBytes = Uint8Array.from(Buffer.from(signature, 'base64'));
 
-      expect(sigBytes.length).toBeGreaterThan(10);
-      expect(sigBytes[sigBytes.length - 1]).toBe(27);
+      // Canonical compact format: header byte + 64-byte (r||s).
+      expect(sigBytes.length).toBe(65);
+      // Header is the FIRST byte and encodes 27 + recId + 4 (compressed).
+      expect(sigBytes[0]).toBeGreaterThanOrEqual(31);
+      expect(sigBytes[0]).toBeLessThanOrEqual(34);
     });
 
     it('should produce different signatures for different messages', () => {
@@ -104,7 +123,7 @@ describe('Message Signer', () => {
       privateKey[0] = 1;
 
       const signature = signMessage('', privateKey);
-      expect(signature.length).toBeGreaterThan(10);
+      expect(Uint8Array.from(Buffer.from(signature, 'base64')).length).toBe(65);
     });
 
     it('should handle long messages', () => {
@@ -113,7 +132,7 @@ describe('Message Signer', () => {
       const longMessage = 'a'.repeat(10000);
 
       const signature = signMessage(longMessage, privateKey);
-      expect(signature.length).toBeGreaterThan(10);
+      expect(Uint8Array.from(Buffer.from(signature, 'base64')).length).toBe(65);
     });
   });
 

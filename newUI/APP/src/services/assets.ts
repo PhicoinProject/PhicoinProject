@@ -14,10 +14,14 @@ import {
   serializeCReissueAsset,
   serializeCNullAssetTxData,
   serializeCNullAssetTxVerifierString,
+  buildOwnerOutputScript,
+  buildVerifierOutputScript,
   toSatoshis,
   buildRawTransaction,
   RestrictedType,
   QualifierType,
+  AssetType,
+  OWNER_ASSET_AMOUNT,
   MAGIC_NEW_ASSET,
   MAGIC_ASSET_TRANSFER,
   MAGIC_REISSUE_ASSET,
@@ -188,12 +192,98 @@ function extractScriptPubKeyHex(obj: Record<string, unknown>): string {
 }
 
 /**
+ * Find UTXOs for a specific asset across the wallet's addresses, accumulating
+ * until the requested amount (in satoshis) is met. Returns the selected asset
+ * inputs and the total amount they hold.
+ *
+ * Used both for asset transfers and for sourcing the parent owner-token
+ * (e.g. "PARENT!") that SUB/UNIQUE/RESTRICTED issuance must spend and re-output.
+ */
+async function findAssetInputs(
+  assetId: string,
+  needSat: bigint,
+  addresses: string[]
+): Promise<{
+  inputs: Array<{ txid: string; vout: number; scriptPubKey: string }>;
+  total: bigint;
+  sourceAddress: string;
+}> {
+  const inputs: Array<{ txid: string; vout: number; scriptPubKey: string }> = [];
+  let total = 0n;
+  let sourceAddress = addresses[0] ?? '';
+
+  for (const addr of addresses) {
+    try {
+      const rawUtxos = await rpc.raw<unknown[]>('getaddressutxos', [{ addresses: [addr], assetName: assetId }]);
+      if (!rawUtxos || !Array.isArray(rawUtxos)) continue;
+
+      for (const u of rawUtxos) {
+        const obj = u as Record<string, unknown>;
+        const spkHex = extractScriptPubKeyHex(obj);
+        const info = extractAssetScriptInfo(spkHex);
+
+        if (info && info.assetName === assetId) {
+          total += info.amount;
+        } else if (info && assetId.endsWith(info.assetName)) {
+          total += info.amount;
+        } else {
+          // Daemon already filtered by assetName; trust its satoshis field.
+          total += BigInt(Number(obj.satoshis ?? 0));
+        }
+
+        sourceAddress = addr;
+        inputs.push({
+          txid: String(obj.txid ?? obj.txHash ?? ''),
+          vout: Number(obj.vout ?? obj.outputIndex ?? 0),
+          scriptPubKey: spkHex,
+        });
+        if (total >= needSat) break;
+      }
+    } catch { /* skip addresses with no balance for this asset */ }
+    if (total >= needSat) break;
+  }
+
+  return { inputs, total, sourceAddress };
+}
+
+/**
+ * Per-type asset issuance descriptor.
+ *
+ * Burn amounts/addresses, owner-token rules, magic bytes and output ordering
+ * are derived from the C++ reference:
+ *   - GetBurnAmount/GetBurnAddress: src/assets/assets.cpp:3701-3764 (all types
+ *     are 0.1 COIN to the single mainnet burn address PkC3..., chainparams.cpp:269-291)
+ *   - vecSend assembly (burn, owner re-transfer, verifier): CreateAssetTransaction
+ *     src/assets/assets.cpp:3954-4055
+ *   - appended owner (rvno) + issue (rvnq) outputs: CreateTransactionWithAssets
+ *     src/wallet/wallet.cpp:3603-3631 (issue rvnq output is ALWAYS the last vout)
+ */
+interface IssueDescriptor {
+  assetType: number;             // AssetType enum value
+  assetName: string;             // Full on-chain name (e.g. PARENT/SUB, PARENT#TAG, #QUAL, $REST)
+  quantity: number;              // Amount in satoshis
+  decimalPlaces: number;         // units
+  reissuable: number;            // 0/1
+  hasIPFS: number;               // 0/1
+  ipfsHash?: string;
+  // Owner-token of the parent asset (e.g. "PARENT!") that must be supplied as
+  // an input and re-output to the change address. Required for SUB / UNIQUE /
+  // RESTRICTED. Undefined for ROOT / QUALIFIER.
+  parentOwnerAsset?: string;
+  // Whether this issuance creates its own owner token (rvno) output. True for
+  // ROOT and SUB; false for UNIQUE / QUALIFIER / RESTRICTED.
+  createsOwnerToken: boolean;
+  // Verifier string for RESTRICTED assets (emits a CNullAssetTxVerifierString output).
+  verifierString?: string;
+}
+
+/**
  * Build and broadcast an asset transaction.
- * For ROOT asset issuance, this constructs a proper 4-output transaction:
- *   1. Change (back to sender)
- *   2. Burn (0.1 PHI to burn address)
- *   3. Owner Token (rvno magic for ASSETNAME!)
- *   4. Issue Asset (rvnq magic for ASSETNAME)
+ *
+ * Asset issuance (when `issue` is provided) builds the full on-chain structure
+ * per asset type. The issue (rvnq) output is always the LAST vout; for SUB the
+ * own owner token (rvno) precedes it. Parent owner-token inputs are appended to
+ * the input set and their value re-output to the sender for SUB/UNIQUE/RESTRICTED.
  *
  * For other asset operations (transfer, reissue, etc.), simpler tx structures are used.
  *
@@ -204,15 +294,8 @@ async function buildAndBroadcastAssetTx(params: {
   senderAddress: string;
   feeRate?: number;
 
-  // ROOT issuance params (overrides assetScriptHex)
-  issueParams?: {
-    assetName: string;
-    quantity: number;
-    decimalPlaces: number;
-    reissuable: number;
-    hasIPFS: number;
-    ipfsHash?: string;
-  };
+  // Generalized issuance descriptor (overrides assetScriptHex)
+  issue?: IssueDescriptor;
 
   // Transfer/reissue params
   phiOutput?: { address: string; valueSatoshis: number };
@@ -252,7 +335,10 @@ async function buildAndBroadcastAssetTx(params: {
 
   // Relay fee is 0.01 PHI/KB, asset tx is ~300 bytes -> need at least ~300000 sat
   const minFee = 500000; // 0.005 PHI
-  const burnAmount = params.issueParams ? Math.floor(0.1 * 1e8) : 0;
+  // All asset-issuance types burn 0.1 COIN to the single mainnet burn address.
+  // GetBurnAmount() returns 0.1 * COIN for every issuance type
+  // (src/assets/assets.cpp:3701-3729, chainparams.cpp:269-291).
+  const burnAmount = params.issue ? Math.floor(0.1 * 1e8) : 0;
 
   for (const utxo of sortedUtxos) {
     selectedUtxos.push(utxo);
@@ -266,41 +352,66 @@ async function buildAndBroadcastAssetTx(params: {
   // Build outputs based on transaction type
   const outputs: Array<{ scriptPubKey: string; valueSatoshis: number }> = [];
 
-  if (params.issueParams) {
-    // ROOT asset issuance: 4 outputs
-    const { assetName, quantity, decimalPlaces, reissuable, hasIPFS, ipfsHash } = params.issueParams;
+  if (params.issue) {
+    // ---- Generalized asset issuance ----
+    // Output ordering mirrors the C++ vecSend assembly (burn, parent-owner
+    // re-transfer, verifier) followed by the wallet-appended (owner rvno, issue
+    // rvnq) outputs, with the rvnq issue output ALWAYS last. Change is placed
+    // up front (the C++ change index is randomized; position is not consensus-
+    // critical). See CreateAssetTransaction (assets.cpp:3954-4055) and
+    // CreateTransactionWithAssets (wallet.cpp:3603-3631).
+    const { assetName, quantity, decimalPlaces, reissuable, hasIPFS, ipfsHash } = params.issue;
 
-    // 1. Change output
-    if (changeValue > 546) {
-      outputs.push({ scriptPubKey: changeScript, valueSatoshis: changeValue });
-    }
-
-    // 2. Burn output (0.1 PHI)
+    // 1. Burn output (0.1 COIN -> mainnet burn address). vecSend[0] in C++.
     outputs.push({
       scriptPubKey: NETWORK.assetBurnScriptPubKey,
       valueSatoshis: burnAmount,
     });
 
-    // 3. Owner Token output (rvno magic)
-    // Owner data: only name + amount (no message field), matching CLI broadcast.mjs
-    const ownerNameBytes = new TextEncoder().encode(assetName + '!');
-    const ownerDataBuf = new Uint8Array(1 + ownerNameBytes.length + 8);
-    let o = 0;
-    ownerDataBuf[o++] = ownerNameBytes.length;
-    ownerDataBuf.set(ownerNameBytes, o); o += ownerNameBytes.length;
-    const ownerAmtBuf = new Uint8Array(8);
-    new DataView(ownerAmtBuf.buffer).setBigInt64(0, BigInt(quantity), true);
-    ownerDataBuf.set(ownerAmtBuf, o);
-    // rvno magic + owner data
-    const rvnoMagic = new Uint8Array([0x72, 0x76, 0x6e, 0x6f]);
-    const ownerPayload = new Uint8Array(4 + ownerDataBuf.length);
-    ownerPayload.set(rvnoMagic, 0);
-    ownerPayload.set(ownerDataBuf, 4);
-    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata(payload) + OP_DROP(0x61)
-    const ownerScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(ownerPayload) + '61';
-    outputs.push({ scriptPubKey: ownerScriptWithP2PKH, valueSatoshis: 0 });
+    // 2. Parent owner-token re-transfer back to the issuer (SUB/UNIQUE/RESTRICTED).
+    //    C++ pushes a CAssetTransfer(parentOwner!, OWNER_ASSET_AMOUNT) to the
+    //    change address (assets.cpp:3983-3991 for SUB/UNIQUE, 4024-4040 for
+    //    RESTRICTED). The matching parent owner-token UTXO is added as an input
+    //    by the caller via params.assetInputs.
+    if (params.issue.parentOwnerAsset) {
+      const ownerTransfer = serializeCAssetTransfer({
+        name: params.issue.parentOwnerAsset,
+        amount: OWNER_ASSET_AMOUNT,
+        message: '',
+      });
+      const ownerTransferPayload = new Uint8Array(4 + ownerTransfer.length);
+      ownerTransferPayload.set(MAGIC_ASSET_TRANSFER, 0);
+      ownerTransferPayload.set(ownerTransfer, 4);
+      const ownerTransferScript = changeScript + 'c0' + encodeAssetPushData(ownerTransferPayload) + '61';
+      outputs.push({ scriptPubKey: ownerTransferScript, valueSatoshis: 0 });
+    }
 
-    // 4. Issue Asset output (rvnq magic)
+    // 3. Verifier output for RESTRICTED assets (CNullAssetTxVerifierString).
+    //    C++ appends this after the owner re-transfer (assets.cpp:4048-4054).
+    if (params.issue.assetType === AssetType.RESTRICTED) {
+      const verifierScript = buildVerifierOutputScript(params.issue.verifierString ?? '');
+      outputs.push({ scriptPubKey: verifierScript, valueSatoshis: 0 });
+    }
+
+    // 4. Change output. (Position not consensus-critical; see note above.)
+    if (changeValue > 546) {
+      outputs.push({ scriptPubKey: changeScript, valueSatoshis: changeValue });
+    }
+
+    // 5. Own owner-token output (rvno) — ROOT and SUB only. Not created for
+    //    UNIQUE / QUALIFIER / RESTRICTED (wallet.cpp:3608 excludes those types).
+    //    NOTE: the owner payload is exactly { 'rvno' + varString(name + "!") }
+    //    per CNewAsset::ConstructOwnerTransaction (assets.cpp:564-577) — it does
+    //    NOT contain an 8-byte amount. (The previous ROOT-only inline code wrote
+    //    a trailing 8-byte amount that the daemon tolerated but never emits; this
+    //    now matches the daemon's serialization byte-for-byte.)
+    if (params.issue.createsOwnerToken) {
+      const ownerScriptWithP2PKH = buildOwnerOutputScript(changeScript, assetName);
+      outputs.push({ scriptPubKey: ownerScriptWithP2PKH, valueSatoshis: 0 });
+    }
+
+    // 6. Issue Asset output (rvnq) — ALWAYS the last vout (assets.cpp:586 reads
+    //    tx.vout[vout.size()-1] when parsing the new asset).
     const assetData = serializeCNewAsset({
       name: assetName,
       amount: quantity,
@@ -309,11 +420,9 @@ async function buildAndBroadcastAssetTx(params: {
       hasIPFS,
       ipfsHash,
     });
-    // rvnq magic + asset data
     const issuePayload = new Uint8Array(4 + assetData.length);
     issuePayload.set(MAGIC_NEW_ASSET, 0);
     issuePayload.set(assetData, 4);
-    // P2PKH + OP_PHI_ASSET(0xc0) + pushdata(payload) + OP_DROP(0x61)
     const issueScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(issuePayload) + '61';
     outputs.push({ scriptPubKey: issueScriptWithP2PKH, valueSatoshis: 0 });
   } else if (params.assetScriptHex) {
@@ -539,15 +648,28 @@ export class AssetService {
   }
 
   /**
-   * Issue a new ROOT asset.
+   * Issue a new asset (ROOT / SUB / UNIQUE / QUALIFIER / RESTRICTED).
    *
-   * Constructs a raw transaction with CNewAsset serialization:
-   * OP_PHI_ASSET << strName << nAmount << units << nReissuable << nHasIPFS << OP_DROP
+   * Detects the asset type from the full name and builds the correct on-chain
+   * transaction structure per the C++ reference:
+   *   - ROOT/SUB:    burn + own owner token (rvno) + issue (rvnq)
+   *   - SUB/UNIQUE:  also spend & re-output the PARENT! owner token
+   *   - UNIQUE:      fixed amount=1 COIN, units=0, reissuable=0 (assets.h:37-39),
+   *                  no own owner token
+   *   - QUALIFIER:   units=0, reissuable=0, no owner token, no parent input
+   *                  (rpc/assets.cpp:2434-2435)
+   *   - RESTRICTED:  spend & re-output the ROOT! owner token + a verifier output
+   *                  (assets.cpp:4024-4054)
+   *
+   * The asset type is passed explicitly from the form; `label` is the fully
+   * composed on-chain name (PARENT/SUB, PARENT#TAG, #QUAL, $REST, or ROOT).
    */
   async issueAsset(params: {
     label: string;
     quantity: number;
     decimalPlaces: number;
+    assetType?: number;        // AssetType enum value; defaults to ROOT
+    verifierString?: string;   // RESTRICTED only
     isSideChain?: boolean;
     isRevokeable?: boolean;
     isNoAssetGroup?: boolean;
@@ -555,6 +677,7 @@ export class AssetService {
     ipfsHash?: string;
   }): Promise<string> {
     const { label, quantity, decimalPlaces, isRevokeable, isIPFS, ipfsHash } = params;
+    const assetType = params.assetType ?? AssetType.ROOT;
 
     // Composite names (SUB "PARENT/CHILD", UNIQUE "PARENT#TAG", qualifiers "#X",
     // restricted "$X") can exceed the 31-char ROOT limit; the C++ daemon allows up
@@ -566,26 +689,92 @@ export class AssetService {
       throw new Error('Quantity must be greater than 0');
     }
 
-    const amountSat = toSatoshis(quantity);
-    const units = Math.max(0, Math.min(8, decimalPlaces ?? 8));
-    const reissuable = isRevokeable ? 1 : 0;
+    // Per-type CNewAsset field overrides (mirroring the RPC handlers).
+    let amountSat: number;
+    let units: number;
+    let reissuable: number;
+    if (assetType === AssetType.UNIQUE) {
+      // UNIQUE_ASSET_AMOUNT=1*COIN, UNIQUE_ASSET_UNITS=0, UNIQUE_ASSETS_REISSUABLE=0
+      amountSat = OWNER_ASSET_AMOUNT;
+      units = 0;
+      reissuable = 0;
+    } else if (assetType === AssetType.QUALIFIER) {
+      // issuequalifierasset forces units=0, reissuable=false (rpc/assets.cpp:2434-2435)
+      amountSat = toSatoshis(quantity);
+      units = 0;
+      reissuable = 0;
+    } else {
+      amountSat = toSatoshis(quantity);
+      units = Math.max(0, Math.min(8, decimalPlaces ?? 8));
+      reissuable = isRevokeable ? 1 : 0;
+    }
     const hasIPFS = isIPFS ? 1 : 0;
 
-    // Get first wallet address as sender
     const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available. Create or import a wallet first.');
     }
 
+    // Determine parent owner-token requirement and own-owner-token creation.
+    let parentOwnerAsset: string | undefined;
+    let createsOwnerToken = false;
+
+    if (assetType === AssetType.ROOT) {
+      createsOwnerToken = true;
+    } else if (assetType === AssetType.SUB) {
+      // Parent is the substring before the last "/" — owner token is "PARENT!".
+      const parent = label.substring(0, label.lastIndexOf('/'));
+      parentOwnerAsset = parent + '!';
+      createsOwnerToken = true; // SUB creates its own owner token (wallet.cpp:3608)
+    } else if (assetType === AssetType.UNIQUE) {
+      // Parent is the substring before the last "#" — owner token is "PARENT!".
+      const parent = label.substring(0, label.lastIndexOf('#'));
+      parentOwnerAsset = parent + '!';
+      createsOwnerToken = false; // UNIQUE creates NO owner token (wallet.cpp:3608)
+    } else if (assetType === AssetType.QUALIFIER) {
+      createsOwnerToken = false; // no parent input, no owner token
+    } else if (assetType === AssetType.RESTRICTED) {
+      // "$TOKEN" requires the "TOKEN!" owner token (assets.cpp:4028-4032).
+      const stripped = label.startsWith('$') ? label.substring(1) : label;
+      parentOwnerAsset = stripped + '!';
+      createsOwnerToken = false; // RESTRICTED creates NO owner token (wallet.cpp:3608)
+      if (!params.verifierString) {
+        throw new Error('A verifier string is required to issue a restricted asset');
+      }
+    } else {
+      throw new Error(`Unsupported asset type for issuance: ${assetType}`);
+    }
+
+    // Source the parent owner-token UTXO (1 * COIN) to spend & re-output.
+    let assetInputs: Array<{ txid: string; vout: number; scriptPubKey: string }> | undefined;
+    let senderAddress = addresses[0];
+    if (parentOwnerAsset) {
+      const found = await findAssetInputs(parentOwnerAsset, BigInt(OWNER_ASSET_AMOUNT), addresses);
+      if (found.total < BigInt(OWNER_ASSET_AMOUNT)) {
+        throw new Error(
+          `Owner token ${parentOwnerAsset} not found in this wallet. ` +
+          `You must hold it to issue this asset.`
+        );
+      }
+      assetInputs = found.inputs;
+      // Re-output the parent owner token to the address that held it.
+      senderAddress = found.sourceAddress || addresses[0];
+    }
+
     return buildAndBroadcastAssetTx({
-      senderAddress: addresses[0],
-      issueParams: {
+      senderAddress,
+      assetInputs,
+      issue: {
+        assetType,
         assetName: label,
         quantity: amountSat,
         decimalPlaces: units,
         reissuable,
         hasIPFS,
         ipfsHash: hasIPFS ? ipfsHash : undefined,
+        parentOwnerAsset,
+        createsOwnerToken,
+        verifierString: params.verifierString,
       },
     });
   }
@@ -641,46 +830,8 @@ export class AssetService {
       throw new Error('No wallet addresses available. Create or import a wallet first.');
     }
 
-    const assetInputs: Array<{
-      txid: string;
-      vout: number;
-      scriptPubKey: string;
-    }> = [];
-    let totalAssetBalance = 0n;
-    let senderAddress = addresses[0];
-
-    for (const addr of addresses) {
-      try {
-        // Get address UTXOs for this specific asset — must specify assetName
-        const rawUtxos = await rpc.raw<unknown[]>('getaddressutxos', [{ addresses: [addr], assetName: assetId }]);
-        if (!rawUtxos || !Array.isArray(rawUtxos)) continue;
-
-        for (const u of rawUtxos) {
-          const obj = u as Record<string, unknown>;
-          const spkHex = extractScriptPubKeyHex(obj);
-          const info = extractAssetScriptInfo(spkHex);
-
-          // If script parsing fails, still include the UTXO (daemon already filtered by assetName)
-          if (info && info.assetName === assetId) {
-            totalAssetBalance += info.amount;
-          } else if (info && assetId.endsWith(info.assetName)) {
-            totalAssetBalance += info.amount;
-          } else {
-            // Daemon filtered by assetName, trust it even if our parser couldn't extract
-            totalAssetBalance += BigInt(Number(obj.satoshis ?? 0));
-          }
-
-          senderAddress = addr;
-          assetInputs.push({
-            txid: String(obj.txid ?? obj.txHash ?? ''),
-            vout: Number(obj.vout ?? obj.outputIndex ?? 0),
-            scriptPubKey: spkHex,
-          });
-          if (totalAssetBalance >= BigInt(amountSat)) break;
-        }
-      } catch { /* skip */ }
-      if (totalAssetBalance >= BigInt(amountSat)) break;
-    }
+    const { inputs: assetInputs, total: totalAssetBalance, sourceAddress: senderAddress } =
+      await findAssetInputs(assetId, BigInt(amountSat), addresses);
 
     if (totalAssetBalance < BigInt(amountSat)) {
       throw new Error(`Insufficient asset UTXOs for ${assetId}. Need ${amountSat}, have ${totalAssetBalance.toString()}`);

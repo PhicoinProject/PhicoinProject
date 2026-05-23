@@ -134,6 +134,11 @@ function validateForm(form: IssueForm): string | null {
       if (!RESTRICTED_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name)) {
         return 'Restricted name: at least 3 characters of A-Z, 0-9, single hyphens';
       }
+      // Every restricted asset issuance must carry a verifier string
+      // (src/assets/assets.cpp:4043-4046).
+      if (!form.verifierString.trim()) {
+        return 'Restricted assets require a verifier string (e.g. KYC or true)';
+      }
       break;
     }
   }
@@ -212,6 +217,12 @@ export const CreateAsset: React.FC = () => {
         label: fullName,
         quantity,
         decimalPlaces,
+        // Map the form's type key to the AssetType enum so the service can
+        // build the correct per-type transaction (SUB/UNIQUE owner-token input,
+        // QUALIFIER/RESTRICTED structure, etc.).
+        assetType: AssetType[form.assetType],
+        verifierString:
+          form.assetType === 'RESTRICTED' ? form.verifierString.trim() : undefined,
         isRevokeable: form.isReissuable,
         isIPFS: form.isIPFS,
         ipfsHash: form.isIPFS && form.ipfsHash ? form.ipfsHash.trim() : undefined,

@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+interface BackupVerifyLocationState {
+  mnemonic?: string;
+}
+
 export const BackupVerify: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const mnemonic = location.state?.mnemonic || sessionStorage.getItem('phi:createMnemonic') || '';
+  // SECURITY (P2): the phrase is passed via in-memory React Router state only.
+  // We intentionally do NOT fall back to a persisted `phi:createMnemonic`
+  // value, since persisting the plaintext mnemonic to web storage exposes it
+  // to any script/XSS without the password. If no phrase is present (e.g. a
+  // direct hard-navigation to this route), we redirect home.
+  const mnemonic = (location.state as BackupVerifyLocationState | null)?.mnemonic || '';
   const [quizIndices, setQuizIndices] = useState<number[]>([]);
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
   const [error, setError] = useState('');
@@ -30,7 +39,6 @@ export const BackupVerify: React.FC = () => {
         return;
       }
     }
-    sessionStorage.removeItem('phi:createMnemonic');
     navigate('/');
   };
 

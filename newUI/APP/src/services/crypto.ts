@@ -80,25 +80,18 @@ export async function encryptData(
 }
 
 export async function decryptData(data: Uint8Array, key: CryptoKey): Promise<string> {
-  try {
-    const iv = data.slice(0, 12);
-    const ciphertext = data.slice(12);
-    const decoded = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: toCryptoBuffer(iv) },
-      key,
-      toCryptoBuffer(ciphertext)
-    );
-    return new TextDecoder().decode(decoded);
-  } catch {
-    const iv = data.slice(0, 16);
-    const ciphertext = data.slice(16);
-    const decoded = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: toCryptoBuffer(iv) },
-      key,
-      toCryptoBuffer(ciphertext)
-    );
-    return new TextDecoder().decode(decoded);
-  }
+  // All ciphertext in this app is written with a 12-byte AES-GCM IV
+  // (see generateIV / encryptData / encryptBinary). The previous 16-byte IV
+  // fallback (P6) was dead code — AES-GCM's standard nonce is 96 bits (12 bytes),
+  // and decrypting with the wrong IV length would only ever fail the auth tag.
+  const iv = data.slice(0, 12);
+  const ciphertext = data.slice(12);
+  const decoded = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: toCryptoBuffer(iv) },
+    key,
+    toCryptoBuffer(ciphertext)
+  );
+  return new TextDecoder().decode(decoded);
 }
 
 export function secureZero(array: Uint8Array): void {

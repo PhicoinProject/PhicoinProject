@@ -1,12 +1,22 @@
 import axios, { AxiosInstance } from 'axios';
 import type { RpcConfig, RpcRequest, RpcResponse } from '@/types';
 
-/** RPC methods that are blocked in the web UI for security reasons. */
-const BLOCKED_METHODS = new Set([
+/**
+ * RPC methods that are blocked in the web UI for security reasons.
+ *
+ * SECURITY (P4): this is the single source of truth for the blocklist. The RPC
+ * Console imports the same Set so it cannot drift from the transport-layer
+ * guard. All entries MUST be lower-case — the guard lower-cases the incoming
+ * method before checking membership so case variants (e.g. "DumpPrivKey")
+ * cannot bypass it.
+ */
+export const BLOCKED_METHODS = new Set([
   // Private key extraction
   'dumpprivkey',
   'dumpwallet',
   'signrawtransactionwithwallet',
+  'signrawtransactionwithkey',
+  'signrawtransactionwithprivkey',
   'signmessage',
   'signmessagewithprivkey',
   // Wallet encryption / passphrase management
@@ -209,7 +219,9 @@ export class RpcClient {
    * via phicoin-cli on the host machine, never in the browser.
    */
   private assertAllowedMethod(method: string): void {
-    if (BLOCKED_METHODS.has(method)) {
+    // SECURITY (P4): normalize case so variants like "DumpPrivKey" or
+    // "DUMPWALLET" cannot slip past the lower-case blocklist entries.
+    if (BLOCKED_METHODS.has(method.trim().toLowerCase())) {
       throw new Error(
         `SECURITY: RPC method "${method}" is blocked in the web UI. ` +
           `Use phicoin-cli for sensitive operations.`
@@ -420,7 +432,10 @@ export class RpcClient {
   }
 
   /**
-   * Sign inputs of a raw transaction using provided private keys.
+   * @deprecated SECURITY (P4): `signrawtransactionwithkey` is now in
+   * BLOCKED_METHODS, so this will throw. Private keys must never be sent to the
+   * daemon from the browser — sign locally via `txSigner.signRawTransaction`
+   * (pure @noble) instead. Kept only to document the blocked surface.
    * Calls: signrawtransactionwithkey
    */
   async signRawTransactionWithPrivkeys(

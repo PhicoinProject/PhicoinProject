@@ -2,6 +2,44 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Content-Security-Policy (P3): strict baseline for this non-custodial,
+      pure-frontend wallet. Rationale per directive:
+        - default-src 'self'          : deny everything not explicitly allowed.
+        - script-src 'self'           : only first-party JS; blocks inline/3rd-party
+                                        script injection (XSS hardening). Vite emits
+                                        external module scripts, so no 'unsafe-inline'
+                                        is needed for app code.
+        - object-src 'none'           : no <object>/<embed>/<applet> plugins.
+        - base-uri 'self'             : prevent <base> tag hijacking of relative URLs.
+        - frame-ancestors 'none'      : disallow embedding (clickjacking defense).
+        - connect-src 'self' + local  : XHR/fetch only to same-origin (the Vite
+                                        '/api' proxy uses same-origin, so this is
+                                        covered) and to the local daemon on
+                                        localhost/127.0.0.1 (any port) for prod
+                                        builds that talk to the loopback RPC directly.
+        - img-src 'self' data:        : 'data:' is required for generated QR-code
+                                        <img> data URIs (Receive page).
+        - style-src 'self' 'unsafe-inline' : Tailwind/Vite inject styles inline at
+                                        runtime; 'unsafe-inline' is needed for CSS
+                                        only (not scripts) and is low-risk here.
+
+      NOTE: A <meta> CSP cannot express frame-ancestors reliably in all browsers
+      and cannot set other security headers. For PRODUCTION, the static host /
+      reverse proxy MUST also send these as real HTTP response headers:
+        Content-Security-Policy: <same policy as below>
+        X-Frame-Options: DENY
+        X-Content-Type-Options: nosniff
+        Referrer-Policy: no-referrer
+        Strict-Transport-Security: max-age=63072000; includeSubDomains   (HTTPS only)
+      The dev server (Vite) proxies RPC under same-origin '/api', so 'connect-src
+      self' keeps HMR and proxy calls working; the explicit localhost entries
+      only matter for direct-to-daemon production configs.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; connect-src 'self' http://localhost:* http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="PHICOIN — Next-generation crypto wallet" />
     <meta name="theme-color" content="#4F46E5" />

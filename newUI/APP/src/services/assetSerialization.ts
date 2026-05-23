@@ -62,6 +62,16 @@ function pushData(payload: Uint8Array): Uint8Array {
 export const MAGIC_NEW_ASSET = new Uint8Array([114, 118, 110, 113]); // 'r','v','n','q'
 export const MAGIC_ASSET_TRANSFER = new Uint8Array([114, 118, 110, 116]); // 'r','v','n','t'
 export const MAGIC_REISSUE_ASSET = new Uint8Array([114, 118, 110, 114]); // 'r','v','n','r'
+export const MAGIC_OWNER_ASSET = new Uint8Array([114, 118, 110, 111]); // 'r','v','n','o'
+
+// OWNER_TAG and standard amounts (src/assets/assets.h):
+//   #define OWNER_TAG "!"            (assets.h:33)
+//   #define OWNER_ASSET_AMOUNT 1 * COIN (assets.h:36)  -> 100000000 sat
+//   #define UNIQUE_ASSET_AMOUNT 1 * COIN (assets.h:37)
+//   #define UNIQUE_ASSET_UNITS 0        (assets.h:38)
+//   #define UNIQUE_ASSETS_REISSUABLE 0  (assets.h:39)
+export const OWNER_TAG = '!';
+export const OWNER_ASSET_AMOUNT = 100000000; // 1 * COIN in satoshis
 
 /** Asset type values matching AssetType enum in assettypes.h */
 export const AssetType = {
@@ -302,6 +312,80 @@ export function serializeCNullAssetTxData(params: {
  */
 export function serializeCNullAssetTxVerifierString(verifierString: string): Uint8Array {
   return writeVarString(verifierString);
+}
+
+// ---- Owner-token output (rvno) serialization ----
+
+/**
+ * Serialize the owner-token payload that CNewAsset::ConstructOwnerTransaction
+ * writes (src/assets/assets.cpp:564-577):
+ *
+ *   CDataStream ssOwner; ssOwner << std::string(strName + OWNER_TAG);
+ *   vchMessage = { 'r','v','n','o' } + ssOwner
+ *   script << OP_PHI_ASSET << ToByteVector(vchMessage) << OP_DROP
+ *
+ * `CDataStream << std::string` writes a CompactSize length prefix followed by
+ * the raw bytes — identical to writeVarString() for names < 253 bytes.
+ *
+ * `assetName` is the BASE asset name WITHOUT the trailing "!"; this helper
+ * appends OWNER_TAG, matching the C++ which does `strName + OWNER_TAG`.
+ *
+ * Returns the payload AFTER the magic bytes are prepended (i.e. magic + body),
+ * ready to be pushdata-encoded between OP_PHI_ASSET and OP_DROP.
+ */
+export function serializeOwnerPayload(assetName: string): Uint8Array {
+  const body = writeVarString(assetName + OWNER_TAG);
+  return concatBytes(MAGIC_OWNER_ASSET, body);
+}
+
+/**
+ * Build the full owner-token output scriptPubKey for an asset issuance.
+ * Layout: <P2PKH(recipient)> OP_PHI_ASSET(0xc0) <pushdata(rvno + name!)> OP_DROP(0x61)
+ *
+ * The C++ owner output is created in CWallet::CreateTransactionWithAssets
+ * (src/wallet/wallet.cpp:3609-3612) via GetScriptForDestination(destination)
+ * extended by ConstructOwnerTransaction, with value 0.
+ *
+ * @param p2pkhHex P2PKH scriptPubKey hex of the recipient (issuer destination)
+ * @param assetName BASE asset name without the trailing "!"
+ */
+export function buildOwnerOutputScript(p2pkhHex: string, assetName: string): string {
+  const payload = serializeOwnerPayload(assetName);
+  return p2pkhHex + 'c0' + encodeAssetPushData(payload) + '61';
+}
+
+// ---- Verifier-string output (restricted assets) ----
+
+/**
+ * Strip a restricted-asset verifier string the same way the daemon does in
+ * GetStrippedVerifierString (src/assets/assets.cpp:4907-4916):
+ *   - remove all whitespace
+ *   - remove all '#' (QUALIFIER_CHAR) characters
+ * The stripped form is what gets serialized on-chain.
+ */
+export function stripVerifierString(verifier: string): string {
+  return verifier.replace(/\s/g, '').replace(/#/g, '');
+}
+
+/**
+ * Build the restricted-asset verifier output scriptPubKey.
+ *
+ * Per CNullAssetTxVerifierString::ConstructTransaction (src/assets/assets.cpp:4603-4611):
+ *   script << OP_PHI_ASSET << OP_RESERVED << ToByteVector(vchMessage)
+ * where vchMessage is the raw serialized verifier string (no magic prefix).
+ *
+ * OP_RESERVED is 0x50. There is NO P2PKH prefix and NO OP_DROP — this is a
+ * data-only "null asset" output with value 0.
+ *
+ * The verifier string is stripped (whitespace + '#') to match the daemon, which
+ * serializes GetStrippedVerifierString(verifier) (assets.cpp:2555, 4042-4051).
+ *
+ * @param verifierString the verifier string (will be stripped before encoding)
+ */
+export function buildVerifierOutputScript(verifierString: string): string {
+  const body = serializeCNullAssetTxVerifierString(stripVerifierString(verifierString));
+  // OP_PHI_ASSET (0xc0) + OP_RESERVED (0x50) + pushdata(body)
+  return 'c0' + '50' + encodeAssetPushData(body);
 }
 
 // ---- Raw transaction builder for asset transactions ----

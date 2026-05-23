@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createWalletV2 } from '@/services/auth';
 import { generateMnemonicWords, isValidMnemonic } from '@/services/HDWallet';
@@ -35,6 +35,15 @@ export const CreateWallet: React.FC = () => {
   const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
 
   const strength = useMemo(() => calculateStrength(password), [password]);
+
+  // SECURITY (P2): on unmount, drop the in-memory phrase and defensively remove
+  // any legacy plaintext mnemonic that an older build may have persisted.
+  useEffect(() => {
+    return () => {
+      setMnemonic('');
+      sessionStorage.removeItem('phi:createMnemonic');
+    };
+  }, []);
 
   const generateNewMnemonic = () => {
     const words = generateMnemonicWords();
@@ -87,7 +96,10 @@ export const CreateWallet: React.FC = () => {
     try {
       await createWalletV2(mnemonic, userSeed, password);
       localStorage.setItem('phi:walletVersion', '2');
-      sessionStorage.setItem('phi:createMnemonic', mnemonic);
+      // SECURITY (P2): the recovery phrase is kept ONLY in this component's
+      // in-memory React state for the backup quiz below. We must never persist
+      // the plaintext mnemonic to web storage, where any script (or XSS) could
+      // read it without the password.
       setStep('verifying');
       generateQuiz();
     } catch (err) {
@@ -104,7 +116,8 @@ export const CreateWallet: React.FC = () => {
         return;
       }
     }
-    sessionStorage.removeItem('phi:createMnemonic');
+    // Drop the in-memory phrase before leaving the create flow.
+    setMnemonic('');
     navigate('/');
   };
 

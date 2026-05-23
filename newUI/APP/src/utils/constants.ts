@@ -39,6 +39,11 @@ export const SCRYPT_PARAMS = { n: 16384, r: 8, p: 1 };
 // V2 wallet encryption
 export const WALLET_KDF_ITERATIONS = 1_000_000;
 
+// Idle auto-lock (P6): after this many ms of no user interaction while
+// unlocked, the in-memory HD key and session unlock flag are cleared so the
+// user must re-enter their password. Configurable here in one place.
+export const IDLE_AUTOLOCK_MS = 10 * 60_000; // 10 minutes
+
 // HD wallet coin types (from chainparams.cpp)
 export const MAINNET_COIN_TYPE = 0;
 export const TESTNET_COIN_TYPE = 1;

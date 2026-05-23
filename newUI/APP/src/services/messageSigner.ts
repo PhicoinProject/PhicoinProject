@@ -45,47 +45,91 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 /**
- * Sign a PHICOIN message.
- * Format: "\x18PHICOIN Signed Message:\n{len}{message}" -> SHA256d -> secp256k1 sign
- * Returns Base64-encoded DER signature with recovery ID appended.
+ * Compute the SHA256d digest of a PHICOIN signed message.
+ * Format: "\x18PHICOIN Signed Message:\n{len}{message}".
  */
-export function signMessage(message: string, privateKey: Uint8Array): string {
+function messageHash(message: string): Uint8Array {
   const prefix = '\x18PHICOIN Signed Message:\n';
   const payload = new TextEncoder().encode(prefix + message.length + message);
-  const hash = sha256(sha256(payload));
+  return sha256(sha256(payload));
+}
 
-  const derSig = nobleSecp.signSync(hash, privateKey.slice(0, 32), { der: true });
+/**
+ * Header byte for a compact recoverable signature.
+ * Bitcoin/PHICOIN convention: 27 + recId, plus 4 when the signing key is
+ * compressed. This wallet always derives addresses from compressed pubkeys, so
+ * the compressed flag is set.
+ */
+const COMPRESSED_SIG_OFFSET = 4;
 
-  // Append recovery ID (27 + hashtype)
-  const sigWithRecovery = new Uint8Array(derSig.length + 1);
-  sigWithRecovery.set(derSig);
-  sigWithRecovery[derSig.length] = 27; // recovery ID 0 with hashtype
+/**
+ * Sign a PHICOIN message.
+ *
+ * P6: emit the canonical 65-byte compact recoverable signature
+ * `[27 + recId + 4][r(32)][s(32)]` (Base64-encoded), using the REAL recovery id
+ * returned by noble's `signSync(..., { recovered: true })`. This matches
+ * Bitcoin/PHICOIN `signmessage` output and lets verifiers recover the exact key
+ * directly, instead of the old approach that appended a fixed recId=0 and forced
+ * the verifier to brute-force all four candidates.
+ */
+export function signMessage(message: string, privateKey: Uint8Array): string {
+  const hash = messageHash(message);
 
-  return toBase64(sigWithRecovery);
+  // recovered: true → [DER signature, recovery id]. der:true keeps a parseable
+  // form we convert to compact (r||s). signSync also low-S normalizes, so the
+  // recovery id matches the emitted r,s.
+  const [derSig, recId] = nobleSecp.signSync(hash, privateKey.slice(0, 32), {
+    der: true,
+    recovered: true,
+  });
+
+  // Convert DER -> compact 64-byte (r||s).
+  const compact = nobleSecp.Signature.fromDER(derSig).toCompactRawBytes();
+
+  const out = new Uint8Array(65);
+  out[0] = 27 + recId + COMPRESSED_SIG_OFFSET;
+  out.set(compact, 1);
+  return toBase64(out);
 }
 
 /**
  * Verify a PHICOIN signed message.
- * Recovers public key from signature, derives address, compares with provided address.
+ *
+ * P6: parse the 65-byte compact recoverable signature, derive the recovery id
+ * from the header byte, recover exactly one public key, and compare its address
+ * to the expected one. Falls back to scanning recovery ids only for legacy /
+ * non-conforming header bytes, so older signatures still verify.
  */
 export function verifyMessage(message: string, signature: string, address: string): boolean {
   try {
     const sigBytes = fromBase64(signature);
-    if (sigBytes.length < 2) return false;
+    if (sigBytes.length !== 65) return false;
 
-    const derSig = sigBytes.slice(0, -1);
-    const prefix = '\x18PHICOIN Signed Message:\n';
-    const payload = new TextEncoder().encode(prefix + message.length + message);
-    const hash = sha256(sha256(payload));
+    const header = sigBytes[0];
+    const compact = sigBytes.slice(1); // 64 bytes: r||s
+    const sig = nobleSecp.Signature.fromCompact(compact);
+    const hash = messageHash(message);
 
-    // Try all recovery IDs since signSync does not return the correct recovery ID
-    for (let recId = 0; recId <= 3; recId++) {
+    // Derive recId from the header byte when it is in the canonical range
+    // (27..34 covers both uncompressed and compressed variants).
+    const headerRecId = header >= 27 && header <= 34 ? (header - 27) & 0x03 : -1;
+
+    const tryRecId = (recId: number): boolean => {
       try {
-        const sig = nobleSecp.Signature.fromDER(derSig);
         const pubKey = nobleSecp.recoverPublicKey(hash, sig, recId, true);
-        const derivedAddress = publicKeyToAddress(pubKey);
-        if (derivedAddress === address) return true;
-      } catch { /* try next recovery ID */ }
+        return publicKeyToAddress(pubKey) === address;
+      } catch {
+        return false;
+      }
+    };
+
+    if (headerRecId >= 0) {
+      return tryRecId(headerRecId);
+    }
+
+    // Legacy fallback: header byte not informative — try all recovery ids.
+    for (let recId = 0; recId <= 3; recId++) {
+      if (tryRecId(recId)) return true;
     }
     return false;
   } catch {

@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { importEncryptedWallet } from '@/services/encryptedWallet';
 import { retrieveEncryptedSeed } from '@/services/encryptedWallet';
-import { createWalletV2 } from '@/services/auth';
+import { createWalletV2, finalizeUnlockedSession } from '@/services/auth';
 import { isValidMnemonic, deriveMasterSeed, seedToHDKey } from '@/services/HDWallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
-import { resetRateLimit } from '@/services/auth';
 
 export const ImportWallet: React.FC = () => {
   const navigate = useNavigate();
@@ -47,32 +46,12 @@ export const ImportWallet: React.FC = () => {
           const hdKey = seedToHDKey(masterSeed);
           useWalletHDKeyStore.getState().setHDKey(hdKey);
 
-          // Unlock
-          sessionStorage.setItem('phi:unlocked', 'true');
-          resetRateLimit();
-
-          // Session key for auto-unlock on refresh
-          const sessionKey = crypto.getRandomValues(new Uint8Array(32));
-          const iv = crypto.getRandomValues(new Uint8Array(12));
-          const toBuf = (arr: Uint8Array): ArrayBuffer => {
-            const ab = new ArrayBuffer(arr.length);
-            new Uint8Array(ab).set(arr);
-            return ab;
-          };
-          const aesKey = await crypto.subtle.importKey(
-            'raw', toBuf(sessionKey), { name: 'AES-GCM', length: 256 }, false, ['encrypt']
-          );
-          const encrypted = await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv: toBuf(iv) }, aesKey, toBuf(masterSeed)
-          );
-          const toHexArr = (b: Uint8Array) =>
-            Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
-          sessionStorage.setItem('phi:sessionKey', toHexArr(sessionKey));
-          sessionStorage.setItem(
-            'phi:sessionEncryptedSeed',
-            toHexArr(new Uint8Array([...iv, ...new Uint8Array(encrypted)]))
-          );
-          sessionKey.fill(0);
+          // SECURITY (P1): unlock for the live session using the in-memory HD
+          // key only. We do NOT persist a session AES key + seed ciphertext
+          // (the old auto-unlock vector); a full refresh requires re-entering
+          // the password via the Unlock page.
+          finalizeUnlockedSession();
+          // Zeroize the seed copy now that the HD key is loaded.
           masterSeed.fill(0);
 
           navigate('/');
@@ -136,37 +115,15 @@ export const ImportWallet: React.FC = () => {
     try {
       await createWalletV2(mnemonic, userSeed, password);
 
-      // Auto-unlock: derive HDKey from mnemonic + seed and set it
+      // Auto-unlock: derive HDKey from mnemonic + seed and set it in memory.
       const masterSeed = await deriveMasterSeed(mnemonic, userSeed);
       const hdKey = seedToHDKey(masterSeed);
       useWalletHDKeyStore.getState().setHDKey(hdKey);
 
-      // Set session unlock flags
-      sessionStorage.setItem('phi:unlocked', 'true');
-      resetRateLimit();
-
-      // Store session key for auto-unlock on refresh
-      const sessionKey = crypto.getRandomValues(new Uint8Array(32));
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const toBuf = (arr: Uint8Array): ArrayBuffer => {
-        const ab = new ArrayBuffer(arr.length);
-        new Uint8Array(ab).set(arr);
-        return ab;
-      };
-      const aesKey = await crypto.subtle.importKey(
-        'raw', toBuf(sessionKey), { name: 'AES-GCM', length: 256 }, false, ['encrypt']
-      );
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: toBuf(iv) }, aesKey, toBuf(masterSeed)
-      );
-      const toHexArr = (b: Uint8Array) =>
-        Array.from(b).map((x) => x.toString(16).padStart(2, '0')).join('');
-      sessionStorage.setItem('phi:sessionKey', toHexArr(sessionKey));
-      sessionStorage.setItem(
-        'phi:sessionEncryptedSeed',
-        toHexArr(new Uint8Array([...iv, ...new Uint8Array(encrypted)]))
-      );
-      sessionKey.fill(0);
+      // SECURITY (P1): mark the session unlocked using the in-memory HD key
+      // only — no persisted session decryption key. Refresh requires the
+      // password via the Unlock page.
+      finalizeUnlockedSession();
       masterSeed.fill(0);
 
       navigate('/');

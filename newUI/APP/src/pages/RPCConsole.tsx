@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { rpc, RpcError } from '@/services/rpc';
+import { rpc, RpcError, BLOCKED_METHODS } from '@/services/rpc';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Spinner } from '@/components/common/Spinner';
@@ -28,100 +28,9 @@ export const RPCConsole: React.FC = () => {
     }
   }, [output]);
 
-  // SECURITY: Block sensitive RPC commands in the console.
-  // Mirrors the rpc.ts BLOCKED_METHODS set for defense in depth.
-  const BLOCKED_METHODS = [
-    // Key extraction
-    'dumpprivkey',
-    'dumpwallet',
-    // Daemon-side signing
-    'signrawtransactionwithwallet',
-    'signmessage',
-    'signmessagewithprivkey',
-    // Wallet encryption
-    'walletpassphrase',
-    'walletpassphrasechange',
-    'encryptwallet',
-    'keypoolrefill',
-    // Import
-    'importprivkey',
-    'importwallet',
-    'importmulti',
-    'importaddress',
-    'importpubkey',
-    // Wallet sends
-    'sendfrom',
-    'sendmany',
-    'sendfromaddress',
-    'move',
-    'sendtoaddress',
-    // Wallet queries
-    'getbalance',
-    'getwalletinfo',
-    'listtransactions',
-    'listreceivedbyaddress',
-    'getreceivedbyaddress',
-    'listaccounts',
-    'listsinceblock',
-    'gettransaction',
-    'getnewaddress',
-    'listunspent',
-    // Wallet management
-    'getrawchangeaddress',
-    'setlabel',
-    'validateaddress',
-    'lockunspent',
-    // Transaction ops
-    'bumpfee',
-    'fundrawtransaction',
-    'rescanblockchain',
-    'abandontransaction',
-    // Multisig
-    'addmultisigaddress',
-    'listmyassets',
-    // Asset writes (wallet-bound)
-    'issue',
-    'issueunique',
-    'reissue',
-    'transfer',
-    'transferfromaddress',
-    'transferfromaddresses',
-    'transferqualifier',
-    'issuerestrictedasset',
-    'issuequalifierasset',
-    'reissuerestrictedasset',
-    'addtagtoaddress',
-    'removetagfromaddress',
-    'freezeaddress',
-    'unfreezeaddress',
-    'freezerestrictedasset',
-    'unfreezerestrictedasset',
-    // Rewards/snapshots
-    'distributereward',
-    'requestsnapshot',
-    'purgesnapshot',
-    // Message channels
-    'subscribetochannel',
-    'unsubscribefromchannel',
-    'transferwithmessage',
-    'viewallmessages',
-    'viewallmessagechannels',
-    // Dangerous ops
-    'invalidateblock',
-    'preciousblock',
-    'reconsiderblock',
-    'pruneblockchain',
-    'clearmempool',
-    'savemempool',
-    'prioritisetransaction',
-    'setmocktime',
-    'submitblock',
-    'generate',
-    'generatetoaddress',
-    'setgenerate',
-    'getgenerate',
-    'stop',
-  ];
+  // SECURITY (P4): the console reuses the single BLOCKED_METHODS set exported
+  // from rpc.ts (defense in depth, no drift). Membership is checked
+  // case-insensitively below, mirroring the transport-layer guard.
 
   /**
    * Parse an RPC command line into method + params.
@@ -173,9 +82,9 @@ export const RPCConsole: React.FC = () => {
     const trimmed = cmd.trim();
     if (!trimmed) return;
 
-    // Check if the command is a blocked method
+    // Check if the command is a blocked method (case-insensitive, matches rpc.ts)
     const firstWord = trimmed.split(/\s+/)[0];
-    if (BLOCKED_METHODS.includes(firstWord)) {
+    if (BLOCKED_METHODS.has(firstWord.toLowerCase())) {
       setOutput((prev) => [
         ...prev,
         `$ ${trimmed}`,

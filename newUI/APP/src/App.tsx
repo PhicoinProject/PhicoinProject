@@ -17,8 +17,9 @@ import { CreateAsset } from '@/pages/CreateAsset';
 import { Unlock } from '@/pages/Unlock';
 import { CreateWallet } from '@/pages/CreateWallet';
 import { BackupVerify } from '@/pages/BackupVerify';
-import { hasWallet, isUnlocked, tryAutoUnlock } from '@/services/auth';
+import { hasWallet, isUnlocked, tryAutoUnlock, lockWallet } from '@/services/auth';
 import { useWalletHDKeyStore } from '@/stores';
+import { IDLE_AUTOLOCK_MS } from '@/utils/constants';
 
 // Lazy-load heavy pages to reduce initial bundle
 const RPCConsole = lazy(() => import('@/pages/RPCConsole'));
@@ -213,6 +214,39 @@ function MainApp() {
     const dark = localStorage.getItem('darkMode') === 'true';
     if (dark) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
+  }, []);
+
+  // SECURITY (P6): idle auto-lock. After IDLE_AUTOLOCK_MS with no user
+  // interaction, drop the in-memory HD key + session flag (lockWallet). The
+  // AuthGate polls isUnlocked() and will route to the Unlock screen, requiring
+  // the password again. This bounds the window an unlocked key sits in memory
+  // on an unattended tab. We only arm the timer while actually unlocked.
+  useEffect(() => {
+    if (!useWalletHDKeyStore.getState().hdKey) return;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => lockWallet(), IDLE_AUTOLOCK_MS);
+    };
+
+    const windowEvents: Array<keyof WindowEventMap> = [
+      'mousedown',
+      'keydown',
+      'touchstart',
+      'scroll',
+    ];
+    windowEvents.forEach((e) => window.addEventListener(e, reset, { passive: true }));
+    // visibilitychange lives on document, not window; treat returning to the
+    // tab as activity so a focused tab does not lock mid-use.
+    document.addEventListener('visibilitychange', reset);
+    reset(); // arm initially
+
+    return () => {
+      clearTimeout(timer);
+      windowEvents.forEach((e) => window.removeEventListener(e, reset));
+      document.removeEventListener('visibilitychange', reset);
+    };
   }, []);
 
   const handleToggleSidebar = () => setSidebarOpen((prev) => !prev);
