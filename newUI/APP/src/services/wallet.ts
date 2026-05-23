@@ -200,6 +200,10 @@ export class WalletService {
     feeRate = 1,
     options: { skipPreFlight?: boolean } = {}
   ): Promise<string> {
+    // PHICOIN's relay-fee floor is 0.01 PHI/kB (= 1000 sat/byte). A lower fee rate is
+    // rejected by the daemon ("min relay fee not met"), so never go under it.
+    feeRate = Math.max(feeRate, 1000);
+
     if (!recipients || recipients.length === 0) {
       throw new Error('At least one recipient is required');
     }

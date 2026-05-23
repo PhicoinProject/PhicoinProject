@@ -215,7 +215,7 @@ export const Send: React.FC = () => {
     subtractFee: false,
     fromAddress: '',
     showCoinSelect: false,
-    feeRate: 1,
+    feeRate: 1000,
     confTarget: 6,
   });
   const [coins, setCoins] = useState<CoinUtxo[]>([]);
@@ -231,10 +231,11 @@ export const Send: React.FC = () => {
     try {
       const estimated = await walletService.estimateSmartFee(form.confTarget);
       if (estimated != null) {
-        setForm((f) => ({ ...f, feeRate: estimated }));
+        // Never go below the 1000 sat/byte (0.01 PHI/kB) relay-fee floor.
+        setForm((f) => ({ ...f, feeRate: Math.max(1000, estimated) }));
         showToast('Fee rate updated', 'info');
       } else {
-        showToast('Could not estimate fee, using default (1 sat/B)', 'warning');
+        showToast('Could not estimate fee, using default (1000 sat/B)', 'warning');
       }
     } catch {
       showToast('Fee estimation failed, using default', 'warning');
@@ -383,7 +384,7 @@ export const Send: React.FC = () => {
         subtractFee: false,
         fromAddress: '',
         showCoinSelect: false,
-        feeRate: 1,
+        feeRate: 1000,
         confTarget: 6,
       });
       setCoins([]);
