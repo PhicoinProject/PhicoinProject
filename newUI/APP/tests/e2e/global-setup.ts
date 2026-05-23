@@ -22,10 +22,8 @@ import { readFileSync } from 'fs';
 import * as path from 'path';
 import * as fs from 'fs';
 import { env } from 'node:process';
+import { WALLET_PATH, WALLET_PASSWORD } from './fixtures';
 
-const WALLET_PATH =
-  env.TEST_WALLET_PATH || '../design/phicoin-wallet-backup-2026-05-15.json';
-const WALLET_PASSWORD = env.TEST_WALLET_PASSWORD || '';
 const BASE_URL = env.TEST_BASE_URL || 'http://localhost:13001';
 export const STORAGE_STATE_PATH = path.resolve('test-results/storageState.json');
 

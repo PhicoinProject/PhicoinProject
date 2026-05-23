@@ -17,12 +17,30 @@ import { env } from 'node:process';
 
 // ---- Constants ----
 
-// Test wallet path + password come from the environment — never hard-code the
-// password of a wallet that holds real funds. Set TEST_WALLET_PASSWORD (and
-// optionally TEST_WALLET_PATH) before running the suite.
-export const WALLET_PATH =
-  env.TEST_WALLET_PATH || '../design/phicoin-wallet-backup-2026-05-15.json';
-export const WALLET_PASSWORD = env.TEST_WALLET_PASSWORD || '';
+// Test wallet credentials are loaded from the environment, or from a gitignored
+// file under design/ (design/test-wallet.config.json) — NEVER hard-coded, since the
+// wallet holds real funds. design/ is gitignored, so the password is never committed.
+function loadTestCreds(): { walletPath: string; password: string } {
+  const defaultWalletPath = '../design/phicoin-wallet-backup-2026-05-15.json';
+  if (env.TEST_WALLET_PASSWORD) {
+    return {
+      walletPath: env.TEST_WALLET_PATH || defaultWalletPath,
+      password: env.TEST_WALLET_PASSWORD,
+    };
+  }
+  try {
+    const cfg = JSON.parse(
+      readFileSync('../design/test-wallet.config.json', 'utf-8'),
+    ) as { password?: string; walletPath?: string };
+    return { walletPath: cfg.walletPath || defaultWalletPath, password: cfg.password || '' };
+  } catch {
+    return { walletPath: defaultWalletPath, password: '' };
+  }
+}
+
+const _creds = loadTestCreds();
+export const WALLET_PATH = _creds.walletPath;
+export const WALLET_PASSWORD = _creds.password;
 
 /**
  * A valid-format PHICOIN address used ONLY as a generic external send destination.

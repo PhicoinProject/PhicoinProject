@@ -3,8 +3,8 @@
 **Date**: 2026-05-23  
 **App URL**: `http://localhost:13001`  
 **Test framework**: Playwright (Chromium)  
-**Test wallet**: `/media/runner/FILES/Phicoin_project/newUI/design/phicoin-wallet-backup-2026-05-15.json`  
-**Test wallet password**: `Qw11223344??`  
+**Test wallet**: funded backup at `$TEST_WALLET_PATH` (default `newUI/design/phicoin-wallet-backup-2026-05-15.json`)  
+**Test wallet password**: set via the `TEST_WALLET_PASSWORD` env var (never committed)  
 **Funded balance**: ~0.95 PHI, ~11 transactions
 
 ---
