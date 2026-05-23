@@ -21,10 +21,10 @@ import fs from 'fs';
   await page.locator('text=Import existing wallet').click();
   await page.waitForTimeout(2000);
 
-  const walletJson = fs.readFileSync('/media/runner/FILES/Phicoin_project/newUI/design/phicoin-wallet-backup-2026-05-15.json', 'utf8');
+  const walletJson = fs.readFileSync(process.env.TEST_WALLET_PATH, 'utf8');
   await page.locator('textarea').fill(walletJson);
   await page.waitForTimeout(1000);
-  await page.locator('input#importPassword').fill('Qw11223344??');
+  await page.locator('input#importPassword').fill(process.env.TEST_WALLET_PASSWORD);
   await page.waitForTimeout(500);
   await page.locator('button:has-text("Import Wallet")').click();
   await page.waitForTimeout(3000);
