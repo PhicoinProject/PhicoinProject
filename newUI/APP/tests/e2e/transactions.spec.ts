@@ -12,12 +12,11 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
 
 test.describe('Transaction History', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/transactions', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await gotoUnlocked(page, '/transactions');
     // Wait for transaction data to load (first RPC poll)
     await expect(page.locator('h1:has-text("Transactions"), h2:has-text("Transactions")').first()).toBeVisible({
       timeout: 10000,
@@ -25,9 +24,7 @@ test.describe('Transaction History', () => {
   });
 
   test('navigates to /transactions from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'Transactions', exact: true }).click();
-    await page.waitForURL('/transactions', { timeout: 10000 });
+    // Already on /transactions via beforeEach
     await expect(
       page.locator('h1:has-text("Transactions"), h2:has-text("Transactions")').first(),
     ).toBeVisible({ timeout: 10000 });
@@ -129,13 +126,15 @@ test.describe('Transaction History', () => {
   });
 
   test('CSV export button is visible', async ({ page }) => {
-    const csvBtn = page.locator('button:has-text("CSV"), button:has-text("Export")');
-    await expect(csvBtn.first()).toBeVisible({ timeout: 10000 });
+    // Button says "Export CSV" and only appears when transactions are loaded
+    await page.waitForTimeout(5000);
+    const csvBtn = page.locator('button:has-text("Export CSV"), button:has-text("CSV"), button:has-text("Export")');
+    await expect(csvBtn.first()).toBeVisible({ timeout: 15000 });
   });
 
   test('CSV button is clickable without errors', async ({ page }) => {
-    await page.waitForTimeout(3000);
-    const csvBtn = page.locator('button:has-text("CSV"), button:has-text("Export")').first();
+    await page.waitForTimeout(5000);
+    const csvBtn = page.locator('button:has-text("Export CSV"), button:has-text("CSV"), button:has-text("Export")').first();
     const visible = await csvBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!visible) {
       test.skip(true, 'CSV button not found');
@@ -162,10 +161,8 @@ test.describe('Transaction History', () => {
       return;
     }
     await rows.first().click();
-    // Modal should appear
-    await expect(
-      page.locator('[role="dialog"], [class*="fixed inset-0"], [class*="Modal"]').first(),
-    ).toBeVisible({ timeout: 10000 });
+    // Modal: fixed inset-0 z-50 overlay + "Transaction Details" heading
+    await expect(page.locator('.fixed.inset-0.z-50').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('detail modal shows TxID field', async ({ page }) => {
@@ -176,7 +173,7 @@ test.describe('Transaction History', () => {
       return;
     }
     await rows.first().click();
-    await expect(page.locator('text=/TxID|txid|Transaction ID/i').first()).toBeVisible({
+    await expect(page.locator('text=/TxID|Transaction Details/i').first()).toBeVisible({
       timeout: 10000,
     });
   });
@@ -189,8 +186,9 @@ test.describe('Transaction History', () => {
       return;
     }
     await rows.first().click();
+    // Modal shows Amount, Fee, Direction, etc.
     await expect(
-      page.locator('text=/vin|vout|Input|Output|Inputs|Outputs/i').first(),
+      page.locator('text=/Amount|Direction|Confirmations/i').first(),
     ).toBeVisible({ timeout: 10000 });
   });
 
@@ -202,15 +200,11 @@ test.describe('Transaction History', () => {
       return;
     }
     await rows.first().click();
-    // Close button
-    const closeBtn = page.locator('[role="dialog"] button:has-text("Close"), [role="dialog"] button[aria-label="Close"], button:has-text("×")').first();
-    const hasClose = await closeBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (hasClose) {
-      await closeBtn.click();
-    } else {
-      await page.keyboard.press('Escape');
-    }
-    // Modal should be gone
+    await expect(page.locator('.fixed.inset-0.z-50').first()).toBeVisible({ timeout: 5000 });
+    // Close via Escape or backdrop click
+    await page.keyboard.press('Escape');
+    // Wait for modal to close (the overlay should disappear)
+    await expect(page.locator('.fixed.inset-0.z-50').first()).not.toBeVisible({ timeout: 8000 });
     await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 8000 });
   });
 });

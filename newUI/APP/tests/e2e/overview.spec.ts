@@ -10,11 +10,11 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
 
 test.describe('Overview / Dashboard', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
+    await gotoUnlocked(page, '/');
   });
 
   test('shows Dashboard heading', async ({ page }) => {
@@ -55,21 +55,27 @@ test.describe('Overview / Dashboard', () => {
   });
 
   test('Assets count card is visible', async ({ page }) => {
-    await expect(page.locator('text=Assets')).toBeVisible({ timeout: 10000 });
+    // Use exact text match scoped to the stat card paragraph to avoid the sidebar 'Assets' link
+    await expect(page.locator('p.text-sm.text-gray-500:has-text("Assets"), .rounded-lg > p:has-text("Assets")').first()).toBeVisible({ timeout: 10000 });
   });
 
   test('Network card shows block height > 0', async ({ page }) => {
-    // Wait for network info to load
-    await expect(page.locator('text=/Block #[0-9,]+/')).toBeVisible({ timeout: 15000 });
-    const blockText = await page
-      .locator('text=/Block #[0-9,]+/')
-      .first()
-      .textContent();
-    const match = blockText?.match(/Block #([\d,]+)/);
-    if (match) {
-      const blocks = parseInt(match[1].replace(/,/g, ''), 10);
-      expect(blocks).toBeGreaterThan(0);
+    // Block Height appears in the 4-card grid as a number (not "Block #N" format)
+    // Wait for the Block Height card to show a number > 0
+    await expect(page.locator('text=Block Height')).toBeVisible({ timeout: 35000 });
+    // Find the block height number value (sibling to 'Block Height' label)
+    let blockNum = 0;
+    for (let i = 0; i < 15; i++) {
+      const cards = page.locator('.rounded-lg').filter({ has: page.locator('p:has-text("Block Height")') });
+      const cardText = await cards.first().textContent().catch(() => '');
+      const match = cardText?.match(/(\d[\d,]+)/);
+      if (match) {
+        blockNum = parseInt(match[1].replace(/,/g, ''), 10);
+        if (blockNum > 0) break;
+      }
+      await page.waitForTimeout(1000);
     }
+    expect(blockNum).toBeGreaterThan(0);
   });
 
   test('Recent Transactions section exists', async ({ page }) => {
@@ -78,12 +84,12 @@ test.describe('Overview / Dashboard', () => {
 
   test('shows at least one transaction row from funded wallet', async ({ page }) => {
     await expect(page.locator('text=Recent Transactions')).toBeVisible({ timeout: 10000 });
-    // Wait for transactions to load (may take a couple of polling cycles)
-    await page.waitForTimeout(5000);
-    const rows = page.locator('table tbody tr, [class*="rounded-lg border"] p.font-mono');
-    const count = await rows.count();
-    // The funded wallet has ~11 transactions; dashboard shows up to 5
-    expect(count).toBeGreaterThan(0);
+    // Wait for transactions to load or "No transactions" to appear
+    // The Playwright viewport is 1280px wide so the desktop table (hidden md:block) IS visible
+    // but the query is enabled only when addrList has addresses — wait up to 30s
+    await expect(
+      page.locator('table tbody tr').first()
+    ).toBeVisible({ timeout: 35000 });
   });
 
   test('network info grid renders 4 stat cards', async ({ page }) => {

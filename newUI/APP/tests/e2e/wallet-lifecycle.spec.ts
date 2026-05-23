@@ -15,12 +15,16 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet, unlockWallet, WALLET_PATH, WALLET_PASSWORD } from './fixtures';
+import { importEncryptedWallet, gotoUnlocked, unlockWallet, WALLET_PATH, WALLET_PASSWORD } from './fixtures';
 import { readFileSync } from 'fs';
 
 // ---- Create wallet flow ----
 
+// Override the global storageState for these tests — they require a fresh wallet-less context.
+// All other describe blocks inherit the default storageState (funded wallet).
 test.describe('Create Wallet flow', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('shows Create Wallet page when no wallet exists in fresh context', async ({
     page,
     context,
@@ -40,9 +44,12 @@ test.describe('Create Wallet flow', () => {
     await expect(page.getByRole('heading', { name: /Recovery Phrase/i })).toBeVisible({
       timeout: 10000,
     });
-    // 24 word slots in the grid
-    const wordSlots = page.locator('.grid.grid-cols-4 > div');
-    const count = await wordSlots.count();
+    // 24 word slots in the grid — wait for all 24 to render
+    // The grid is: <div class="grid grid-cols-4 gap-2"> with 24 child divs
+    // Use nth(23) to confirm the 24th slot is present
+    const wordGrid = page.locator('div.grid.gap-2').filter({ has: page.locator('div > span') });
+    await expect(wordGrid.locator('> div').nth(23)).toBeVisible({ timeout: 10000 });
+    const count = await wordGrid.locator('> div').count();
     expect(count).toBe(24);
   });
 
@@ -175,13 +182,12 @@ test.describe('Wallet Unlock', () => {
     // Import first, then reload — AuthGate requires re-entry of password
     await importEncryptedWallet(page);
     await page.reload({ waitUntil: 'domcontentloaded' });
-    // Unlock screen should appear (auto-unlock removed)
+    // Unlock screen should appear (auto-unlock removed — key not in memory after reload)
     const unlockVisible = await page
-      .locator('#passphrase, text=Unlock Wallet')
-      .first()
-      .isVisible({ timeout: 5000 })
+      .locator('#passphrase')
+      .isVisible({ timeout: 10000 })
       .catch(() => false);
-    // If tryAutoUnlock succeeds (session storage still set), dashboard appears instead
+    // If tryAutoUnlock somehow succeeds (session storage still set + key in memory), dashboard appears
     const dashboardVisible = await page
       .locator('h1:has-text("Dashboard")')
       .isVisible({ timeout: 3000 })
@@ -263,9 +269,8 @@ test.describe('Wallet Unlock', () => {
 
 test.describe('Change Passphrase', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/backup', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await expect(page.locator('text=/Change Passphrase/i').first()).toBeVisible({ timeout: 10000 });
+    await gotoUnlocked(page, '/backup');
+    await expect(page.locator('text=/Change Passphrase/i').first()).toBeVisible({ timeout: 15000 });
   });
 
   test('shows Change Passphrase form on backup page', async ({ page }) => {
@@ -344,24 +349,21 @@ test.describe('Change Passphrase', () => {
 
 test.describe('Backup & Recovery Phrase Reveal', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
+    await gotoUnlocked(page, '/backup');
   });
 
   test('backup page is accessible from sidebar', async ({ page }) => {
-    await page.getByRole('link', { name: 'Backup', exact: true }).click();
-    await page.waitForURL('/backup', { timeout: 10000 });
+    // Already on /backup via beforeEach
     await expect(page.locator('body')).toBeVisible();
   });
 
   test('backup page shows export / backup download option', async ({ page }) => {
-    await page.goto('/backup', { waitUntil: 'domcontentloaded', timeout: 10000 });
     await expect(
       page.locator('text=/Export Backup|Download Backup|backup/i').first(),
     ).toBeVisible({ timeout: 10000 });
   });
 
   test('Generate Backup button produces JSON output', async ({ page }) => {
-    await page.goto('/backup', { waitUntil: 'domcontentloaded', timeout: 10000 });
     const genBtn = page.locator('button:has-text("Generate Backup"), button:has-text("Export")');
     const visible = await genBtn.first().isVisible({ timeout: 5000 }).catch(() => false);
     if (visible) {

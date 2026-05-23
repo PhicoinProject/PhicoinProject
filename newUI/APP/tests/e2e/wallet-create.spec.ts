@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 
+// These tests require NO existing wallet in localStorage.
+// Override the global storageState with an empty one so the app shows CreateWallet.
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe('Wallet Creation Flow', () => {
   test('should show PHICOIN Wallet title', async ({ page }) => {
     await page.goto('/');

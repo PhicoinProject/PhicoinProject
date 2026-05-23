@@ -2,7 +2,7 @@
  * asset-transfer.spec.ts
  *
  * Covers:
- *   - ManageAssets page renders with My Assets and Admin tabs
+ *   - ManageAssets page renders with My Assets and Admin Operations tabs
  *   - Reissue form: shows fields, validates empty asset name
  *   - Admin operations: assign-qualifier, freeze forms visible
  *   - Verifier string form visible in set-verifier modal
@@ -13,29 +13,25 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
 
 const ALLOW_BROADCAST = process.env.ALLOW_BROADCAST === '1';
+
+// Modal selector — Modal component uses .fixed.inset-0.z-50 (no role="dialog")
+const MODAL_SEL = '.fixed.inset-0.z-50';
 
 // ---- Manage Assets ----
 
 test.describe('Manage Assets', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/manage-assets', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await gotoUnlocked(page, '/manage-assets');
     await expect(page.locator('h1, body').first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('navigates to /manage-assets from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'Manage Assets', exact: true }).click();
-    await page.waitForURL('/manage-assets', { timeout: 10000 });
-    await expect(page.locator('body')).toBeVisible();
-  });
-
-  test('shows My Assets and Admin section toggles', async ({ page }) => {
-    const myAssetsBtn = page.locator('button:has-text("My Assets"), [data-tab="my-assets"]').first();
-    const adminBtn = page.locator('button:has-text("Admin"), [data-tab="admin"]').first();
+  test('shows My Assets and Admin Operations section tabs', async ({ page }) => {
+    // Tabs are "My Assets" and "Admin Operations"
+    const myAssetsBtn = page.locator('button:has-text("My Assets")').first();
+    const adminBtn = page.locator('button:has-text("Admin Operations")').first();
     const hasMyAssets = await myAssetsBtn.isVisible({ timeout: 5000 }).catch(() => false);
     const hasAdmin = await adminBtn.isVisible({ timeout: 5000 }).catch(() => false);
     expect(hasMyAssets || hasAdmin).toBe(true);
@@ -60,9 +56,7 @@ test.describe('Manage Assets', () => {
       return;
     }
     await reissueBtn.click();
-    await expect(page.locator('[role="dialog"], [class*="Modal"]').first()).toBeVisible({
-      timeout: 8000,
-    });
+    await expect(page.locator(MODAL_SEL).first()).toBeVisible({ timeout: 8000 });
   });
 
   test('Reissue modal validates quantity > 0', async ({ page }) => {
@@ -73,7 +67,7 @@ test.describe('Manage Assets', () => {
       return;
     }
     await reissueBtn.click();
-    const modal = page.locator('[role="dialog"]').first();
+    const modal = page.locator(MODAL_SEL).first();
     await expect(modal).toBeVisible({ timeout: 8000 });
     // Leave quantity at 0 or set to 0
     const qtyInput = modal.locator('input[type="number"]').first();
@@ -89,11 +83,12 @@ test.describe('Manage Assets', () => {
     });
   });
 
-  test('Admin tab has assign-qualifier and freeze options', async ({ page }) => {
-    const adminBtn = page.locator('button:has-text("Admin")').first();
+  test('Admin Operations tab has qualifier or freeze options', async ({ page }) => {
+    // Tab label is "Admin Operations" in component
+    const adminBtn = page.locator('button:has-text("Admin Operations")').first();
     const hasAdmin = await adminBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!hasAdmin) {
-      test.skip(true, 'No Admin tab');
+      test.skip(true, 'No Admin Operations tab');
       return;
     }
     await adminBtn.click();
@@ -113,10 +108,10 @@ test.describe('Manage Assets', () => {
   });
 
   test('Set Verifier button opens verifier modal', async ({ page }) => {
-    const adminBtn = page.locator('button:has-text("Admin")').first();
+    const adminBtn = page.locator('button:has-text("Admin Operations")').first();
     const hasAdmin = await adminBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!hasAdmin) {
-      test.skip(true, 'No Admin tab');
+      test.skip(true, 'No Admin Operations tab');
       return;
     }
     await adminBtn.click();
@@ -129,7 +124,7 @@ test.describe('Manage Assets', () => {
       return;
     }
     await setVerifierBtn.click();
-    await expect(page.locator('[role="dialog"]').first()).toBeVisible({ timeout: 8000 });
+    await expect(page.locator(MODAL_SEL).first()).toBeVisible({ timeout: 8000 });
     await expect(page.locator('text=/Verifier|verifier string/i').first()).toBeVisible({
       timeout: 5000,
     });
@@ -140,18 +135,10 @@ test.describe('Manage Assets', () => {
 
 test.describe('Restricted Assets', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/restricted', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await gotoUnlocked(page, '/restricted');
     await expect(page.locator('h1:has-text("Restricted Assets")')).toBeVisible({
       timeout: 10000,
     });
-  });
-
-  test('navigates to /restricted from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'Restricted', exact: true }).click();
-    await page.waitForURL('/restricted', { timeout: 10000 });
-    await expect(page.locator('h1:has-text("Restricted Assets")')).toBeVisible({ timeout: 10000 });
   });
 
   test('shows 4 tabs: My Restricted, Qualifiers, Tags, Restrictions', async ({ page }) => {

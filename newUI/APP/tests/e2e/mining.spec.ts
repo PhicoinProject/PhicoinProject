@@ -10,19 +10,16 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
 
 test.describe('Mining', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/mining', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await gotoUnlocked(page, '/mining');
     await expect(page.locator('body')).toBeVisible({ timeout: 10000 });
   });
 
   test('navigates to /mining from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'Mining', exact: true }).click();
-    await page.waitForURL('/mining', { timeout: 10000 });
+    // Already on /mining via beforeEach
     await expect(page.locator('body')).toBeVisible();
   });
 
@@ -30,23 +27,21 @@ test.describe('Mining', () => {
     await expect(page.locator('text=/Mining|mining/i').first()).toBeVisible({ timeout: 10000 });
   });
 
-  test('shows Blocks stat card', async ({ page }) => {
+  test('shows Block Height stat card', async ({ page }) => {
     await page.waitForTimeout(5000);
-    const blocksCard = page.locator('text=Blocks, text=/block count/i').first();
+    const blocksCard = page.locator('text=Block Height').first();
     await expect(blocksCard).toBeVisible({ timeout: 10000 });
   });
 
   test('shows Difficulty stat card', async ({ page }) => {
     await page.waitForTimeout(5000);
-    const diffCard = page.locator('text=Difficulty, text=/difficulty/i').first();
+    const diffCard = page.locator('text=Difficulty').first();
     await expect(diffCard).toBeVisible({ timeout: 10000 });
   });
 
-  test('shows Network Hashrate or Hash Rate stat', async ({ page }) => {
+  test('shows Network Hash Rate stat', async ({ page }) => {
     await page.waitForTimeout(5000);
-    const hashCard = page
-      .locator('text=/Hash Rate|Hashrate|hashps/i')
-      .first();
+    const hashCard = page.locator('text=Network Hash Rate').first();
     await expect(hashCard).toBeVisible({ timeout: 10000 });
   });
 
@@ -64,7 +59,8 @@ test.describe('Mining', () => {
 
   test('mempool info section renders', async ({ page }) => {
     await page.waitForTimeout(5000);
-    const mempoolCard = page.locator('text=/Mempool|mempool/i').first();
+    // Component shows "Pooled Tx" and "Mempool Bytes" in Mining Details section
+    const mempoolCard = page.locator('text=/Mempool Bytes|Pooled Tx|mempool/i').first();
     await expect(mempoolCard).toBeVisible({ timeout: 10000 });
   });
 

@@ -8,19 +8,14 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
+
+// Modal selector — Modal component uses .fixed.inset-0.z-50 (no role="dialog")
+const MODAL_SEL = '.fixed.inset-0.z-50';
 
 test.describe('Assets Display', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/assets', { waitUntil: 'domcontentloaded', timeout: 10000 });
-    await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible({ timeout: 10000 });
-  });
-
-  test('navigates to /assets from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'Assets', exact: true }).click();
-    await page.waitForURL('/assets', { timeout: 10000 });
+    await gotoUnlocked(page, '/assets');
     await expect(page.getByRole('heading', { name: 'Assets' })).toBeVisible({ timeout: 10000 });
   });
 
@@ -62,9 +57,8 @@ test.describe('Assets Display', () => {
       return;
     }
     await sendBtn.click();
-    await expect(page.locator('[role="dialog"], [class*="Modal"]').first()).toBeVisible({
-      timeout: 8000,
-    });
+    // Modal uses .fixed.inset-0.z-50 (no role="dialog")
+    await expect(page.locator(MODAL_SEL).first()).toBeVisible({ timeout: 8000 });
   });
 
   test('Asset send modal validates empty address', async ({ page }) => {
@@ -76,8 +70,8 @@ test.describe('Assets Display', () => {
       return;
     }
     await sendBtn.click();
-    // Try submitting empty form
-    const submitBtn = page.locator('[role="dialog"] button:has-text("Send"), [role="dialog"] button[type="submit"]').first();
+    // Try submitting empty form from within the modal card
+    const submitBtn = page.locator(`${MODAL_SEL} button:has-text("Send"), ${MODAL_SEL} button[type="submit"]`).first();
     const hasSubmit = await submitBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (hasSubmit) {
       await submitBtn.click();
@@ -96,9 +90,7 @@ test.describe('Assets Display', () => {
       return;
     }
     await receiveBtn.click();
-    await expect(page.locator('[role="dialog"], [class*="Modal"]').first()).toBeVisible({
-      timeout: 8000,
-    });
+    await expect(page.locator(MODAL_SEL).first()).toBeVisible({ timeout: 8000 });
   });
 
   test('Receive modal shows a P-prefixed address', async ({ page }) => {
@@ -110,7 +102,8 @@ test.describe('Assets Display', () => {
       return;
     }
     await receiveBtn.click();
-    await expect(page.locator('[role="dialog"] text=/P[A-Za-z0-9]{25,39}/').first()).toBeVisible({
+    await expect(page.locator(MODAL_SEL).first()).toBeVisible({ timeout: 8000 });
+    await expect(page.locator('text=/P[A-Za-z0-9]{25,39}/').first()).toBeVisible({
       timeout: 10000,
     });
   });

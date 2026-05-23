@@ -171,18 +171,25 @@ export async function unlockWallet(
  * Navigate to a route AND ensure the wallet is unlocked at that route.
  *
  * IMPORTANT: auto-unlock was removed for security, so a full page load (goto/reload)
- * wipes the in-memory HD key and the AuthGate shows the Unlock screen. We therefore
- * navigate to the target route FIRST, then unlock — unlocking re-renders the
- * originally-requested route in place (the URL is preserved), so callers land on the
- * intended page already unlocked. Use this instead of `importEncryptedWallet()` +
- * `page.goto(path)` (which would unlock on "/" and then re-lock on the next goto).
+ * wipes the in-memory HD key and the AuthGate shows the Unlock screen. The Unlock page
+ * component always calls navigate('/') after a successful unlock. Strategy:
+ *   1. Go to '/' (root) to trigger the Unlock screen.
+ *   2. Fill in the passphrase and submit.
+ *   3. Wait for Dashboard (confirms unlock + navigate('/') done).
+ *   4. If target != '/', use in-SPA navigation (click sidebar link or History API push +
+ *      popstate) so the HD key stays in memory — no full page reload.
+ *
+ * Use this instead of `importEncryptedWallet()` + `page.goto(path)`.
  */
 export async function gotoUnlocked(
   page: Page,
   path: string,
   password: string = WALLET_PASSWORD,
 ): Promise<void> {
-  await page.goto(path, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  // Step 1: Go to root — triggers Unlock screen (if not already unlocked)
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15000 });
+
+  // Step 2: Unlock if needed
   const needsUnlock = await page
     .locator('#passphrase')
     .isVisible({ timeout: 5000 })
@@ -190,8 +197,34 @@ export async function gotoUnlocked(
   if (needsUnlock) {
     await page.fill('#passphrase', password);
     await page.click('button[type="submit"]');
-    // Unlock re-renders the requested route in place; wait for the Unlock form to go away.
-    await expect(page.locator('#passphrase')).toBeHidden({ timeout: 30000 });
+    // Wait for Dashboard heading (Unlock.tsx calls navigate('/') after unlock)
+    await expect(page.locator('h1:has-text("Dashboard")')).toBeVisible({ timeout: 30000 });
+  }
+
+  // Step 3: In-SPA navigation to the target path (keeps HD key in memory)
+  if (path !== '/') {
+    // Try clicking the sidebar link for this path if one exists
+    const sidebarLink = page.locator(`a[href="${path}"]`).first();
+    const hasLink = await sidebarLink.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasLink) {
+      await sidebarLink.click();
+      // Wait for URL to update
+      await page.waitForURL(path, { timeout: 10000 });
+    } else {
+      // No sidebar link — use React Router's history API to navigate in-page
+      await page.evaluate((targetPath: string) => {
+        window.history.pushState({}, '', targetPath);
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      }, path);
+      await page.waitForTimeout(500);
+    }
+    // Wait for Suspense spinner to clear (lazy-loaded routes need bundle fetch time)
+    await page
+      .locator('.animate-spin')
+      .waitFor({ state: 'hidden', timeout: 10000 })
+      .catch(() => {});
+    // Small settle time for React renders
+    await page.waitForTimeout(300);
   }
 }
 

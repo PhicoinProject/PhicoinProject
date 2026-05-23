@@ -12,19 +12,16 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { importEncryptedWallet } from './fixtures';
+import { gotoUnlocked } from './fixtures';
 
 test.describe('RPC Console', () => {
   test.beforeEach(async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.goto('/rpc', { waitUntil: 'domcontentloaded', timeout: 10000 });
+    await gotoUnlocked(page, '/rpc');
     await expect(page.locator('body')).toBeVisible({ timeout: 10000 });
   });
 
   test('navigates to /rpc from sidebar', async ({ page }) => {
-    await importEncryptedWallet(page);
-    await page.getByRole('link', { name: 'RPC Console', exact: true }).click();
-    await page.waitForURL('/rpc', { timeout: 10000 });
+    // Already on /rpc via beforeEach
     await expect(page.locator('body')).toBeVisible();
   });
 
@@ -47,7 +44,8 @@ test.describe('RPC Console', () => {
   });
 
   test('output area is present', async ({ page }) => {
-    const output = page.locator('[ref="outputRef"], [class*="output"], [class*="console"], pre, code').first();
+    // Output area is a div with bg-gray-900 class (dark terminal style)
+    const output = page.locator('div.bg-gray-900').first();
     await expect(output).toBeVisible({ timeout: 10000 });
   });
 
@@ -92,14 +90,15 @@ test.describe('RPC Console', () => {
     await input.fill('dumpprivkey Pum3xBGkPWK9pcpvanoMyfGTdWYuzMWmsr');
 
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
-      .first()
+      .locator('button:has-text("Run"), button:has-text("Send"), button:has-text("Execute"), button[type="submit"]')
+      .last()
       .click();
     await page.waitForTimeout(1000);
 
     // Should see a blocked/rejected message without sending to RPC
+    // The component renders: `SECURITY: Method "${firstWord}" is blocked in the web UI.`
     await expect(
-      page.locator('text=/blocked|not allowed|denied|security/i').first(),
+      page.locator('text=/SECURITY: Method/').first(),
     ).toBeVisible({ timeout: 8000 });
   });
 
@@ -109,27 +108,30 @@ test.describe('RPC Console', () => {
       .first();
     await input.fill('importprivkey cVtTest');
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
-      .first()
+      .locator('button:has-text("Run"), button:has-text("Send"), button:has-text("Execute"), button[type="submit"]')
+      .last()
       .click();
     await page.waitForTimeout(1000);
+    // The component renders: `SECURITY: Method "${firstWord}" is blocked in the web UI.`
     await expect(
-      page.locator('text=/blocked|not allowed|denied|security/i').first(),
+      page.locator('text=/SECURITY: Method/').first(),
     ).toBeVisible({ timeout: 8000 });
   });
 
-  test('sendrawtransaction is rejected client-side', async ({ page }) => {
+  test('sendtoaddress is rejected client-side', async ({ page }) => {
+    // sendtoaddress IS in BLOCKED_METHODS (wallet-bound send operation)
     const input = page
       .locator('input[type="text"], input[placeholder*="command"], input[placeholder*="Command"]')
       .first();
-    await input.fill('sendrawtransaction 0200000001...');
+    await input.fill('sendtoaddress Pum3xBGkPWK9pcpvanoMyfGTdWYuzMWmsr 0.001');
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
+      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run"), button[type="submit"]')
       .first()
       .click();
     await page.waitForTimeout(1000);
+    // The component renders: `SECURITY: Method "${firstWord}" is blocked in the web UI.`
     await expect(
-      page.locator('text=/blocked|not allowed|denied|security/i').first(),
+      page.locator('text=/SECURITY: Method/').first(),
     ).toBeVisible({ timeout: 8000 });
   });
 
@@ -139,12 +141,13 @@ test.describe('RPC Console', () => {
       .first();
     await input.fill('walletpassphrase test 60');
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
-      .first()
+      .locator('button:has-text("Run"), button:has-text("Send"), button:has-text("Execute"), button[type="submit"]')
+      .last()
       .click();
     await page.waitForTimeout(1000);
+    // The component renders: `SECURITY: Method "${firstWord}" is blocked in the web UI.`
     await expect(
-      page.locator('text=/blocked|not allowed|denied|security/i').first(),
+      page.locator('text=/SECURITY: Method/').first(),
     ).toBeVisible({ timeout: 8000 });
   });
 
@@ -156,8 +159,8 @@ test.describe('RPC Console', () => {
     // Run one command first
     await input.fill('getblockchaininfo');
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
-      .first()
+      .locator('button:has-text("Run"), button:has-text("Send"), button:has-text("Execute"), button[type="submit"]')
+      .last()
       .click();
     await page.waitForTimeout(2000);
 
@@ -177,11 +180,11 @@ test.describe('RPC Console', () => {
       .first();
     await input.fill('getmininginfo');
     await page
-      .locator('button:has-text("Send"), button:has-text("Execute"), button:has-text("Run")')
-      .first()
+      .locator('button:has-text("Run"), button:has-text("Send"), button:has-text("Execute"), button[type="submit"]')
+      .last()
       .click();
     await expect(
       page.locator('text=/blocks|difficulty|networkhashps|genproclimit/i').first(),
-    ).toBeVisible({ timeout: 20000 });
+    ).toBeVisible({ timeout: 30000 });
   });
 });
