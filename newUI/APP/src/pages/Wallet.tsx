@@ -151,7 +151,7 @@ export const Wallet: React.FC = () => {
             <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
               No addresses with activity yet
             </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+            <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
               Go to "Receive" to generate your first address
             </p>
           </div>
@@ -223,7 +223,7 @@ export const Wallet: React.FC = () => {
                     {addr.address}
                   </p>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className="text-xs text-gray-400 dark:text-dark-mutedText">
+                    <span className="text-xs text-gray-500 dark:text-dark-mutedText">
                       {addr.txids.length} transactions
                     </span>
                     <button

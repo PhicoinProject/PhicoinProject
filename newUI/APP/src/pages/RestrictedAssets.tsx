@@ -137,7 +137,7 @@ export const RestrictedAssets: React.FC = () => {
                   <span className="font-mono text-sm text-gray-800 dark:text-dark-secondary">
                     {q.qualifier}
                   </span>
-                  <span className="font-mono text-xs text-gray-400 dark:text-dark-mutedText">
+                  <span className="font-mono text-xs text-gray-500 dark:text-dark-mutedText">
                     {q.txid?.slice(0, 10)}...{q.txid?.slice(-6)}
                   </span>
                 </div>
@@ -217,7 +217,7 @@ export const RestrictedAssets: React.FC = () => {
                 <tbody>
                   {!restrictions || restrictions.length === 0 ? (
                     <tr>
-                      <td className="px-4 py-3 text-gray-400 dark:text-dark-mutedText" colSpan={4}>
+                      <td className="px-4 py-3 text-gray-500 dark:text-dark-mutedText" colSpan={4}>
                         No restrictions found.
                       </td>
                     </tr>
@@ -245,7 +245,7 @@ export const RestrictedAssets: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
-                          <span className="text-xs text-gray-400 dark:text-dark-mutedText">
+                          <span className="text-xs text-gray-500 dark:text-dark-mutedText">
                             {r.status || 'active'}
                           </span>
                         </td>

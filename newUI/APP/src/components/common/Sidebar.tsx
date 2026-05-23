@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const renderFooter = () => (
     <div className="border-t border-gray-200 dark:border-dark-border p-4">
-      <p className="text-xs text-gray-400 dark:text-dark-mutedText">PHICOIN Wallet {APP_VERSION}</p>
+      <p className="text-xs text-gray-500 dark:text-dark-mutedText">PHICOIN Wallet {APP_VERSION}</p>
     </div>
   );
 

@@ -253,12 +253,12 @@ export const ImportWallet: React.FC = () => {
                     <p className="mt-2 text-sm text-gray-600 dark:text-dark-mutedText">
                       <span className="font-medium text-phi-primary">Click to choose</span> or drag and drop
                     </p>
-                    <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">.json backup file</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">.json backup file</p>
                   </>
                 )}
               </label>
             </div>
-            <p className="text-center text-sm text-gray-400 dark:text-dark-mutedText">— or —</p>
+            <p className="text-center text-sm text-gray-500 dark:text-dark-mutedText">— or —</p>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-dark-secondary">
                 Paste Backup JSON
@@ -266,7 +266,7 @@ export const ImportWallet: React.FC = () => {
               <textarea
                 value={jsonInput}
                 onChange={(e) => setJsonInput(e.target.value)}
-                className="w-full h-32 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm font-mono focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-full h-32 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm font-mono text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder='{"version": 2, "format": "phicoin-encrypted-wallet", ...}'
               />
             </div>
@@ -290,7 +290,7 @@ export const ImportWallet: React.FC = () => {
                   type="password"
                   value={importPassword}
                   onChange={(e) => setImportPassword(e.target.value)}
-                  className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                  className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                   placeholder="Enter wallet password to verify"
                   autoComplete="off"
                 />
@@ -317,7 +317,7 @@ export const ImportWallet: React.FC = () => {
               <textarea
                 value={mnemonic}
                 onChange={(e) => setMnemonic(e.target.value)}
-                className="w-full h-24 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-full h-24 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder="Enter 24 words separated by spaces..."
               />
             </div>
@@ -329,7 +329,7 @@ export const ImportWallet: React.FC = () => {
                 type="password"
                 value={userSeed}
                 onChange={(e) => setUserSeed(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder="Your custom seed passphrase"
                 autoComplete="off"
               />
@@ -342,7 +342,7 @@ export const ImportWallet: React.FC = () => {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder="Min 12 characters"
                 autoComplete="off"
               />
@@ -355,7 +355,7 @@ export const ImportWallet: React.FC = () => {
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder="Re-enter password"
                 autoComplete="off"
               />

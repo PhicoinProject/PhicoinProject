@@ -546,12 +546,12 @@ export const Settings: React.FC = () => {
                   placeholder="Address or subnet (e.g. 10.0.0.1)"
                   value={newBanAddress}
                   onChange={(e) => setNewBanAddress(e.target.value)}
-                  className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                  className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 />
                 <select
                   value={newBanTime}
                   onChange={(e) => setNewBanTime(Number(e.target.value))}
-                  className="rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                  className="rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 >
                   <option value={3600}>1 hour</option>
                   <option value={86400}>24 hours</option>
@@ -608,7 +608,7 @@ export const Settings: React.FC = () => {
                 Loading ban list...
               </p>
             ) : bannedList.length === 0 ? (
-              <p className="mt-3 text-sm text-gray-400 dark:text-dark-mutedText">
+              <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
                 No addresses are currently banned.
               </p>
             ) : (

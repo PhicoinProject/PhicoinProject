@@ -79,11 +79,11 @@ export const Overview: React.FC = () => {
           ) : (
             <>
               <p className="mt-2 text-lg font-semibold text-green-600">{networkName}</p>
-              <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+              <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
                 Block #{blockCount.toLocaleString()}
               </p>
               {subVer && (
-                <p className="mt-0.5 text-xs text-gray-400 dark:text-dark-mutedText">{subVer}</p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-dark-mutedText">{subVer}</p>
               )}
             </>
           )}
@@ -174,7 +174,7 @@ export const Overview: React.FC = () => {
             <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
               No transactions yet
             </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+            <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
               Your transaction history will appear here
             </p>
           </div>
@@ -266,7 +266,7 @@ export const Overview: React.FC = () => {
                     <p className="mt-1 font-mono text-xs text-gray-500 dark:text-dark-mutedText">
                       {truncate(txid)}
                     </p>
-                    <p className="text-xs text-gray-400 dark:text-dark-mutedText">
+                    <p className="text-xs text-gray-500 dark:text-dark-mutedText">
                       {formatRelativeTime(time)}
                     </p>
                   </div>

@@ -452,7 +452,7 @@ export const Send: React.FC = () => {
               id="fromAddress"
               value={form.fromAddress}
               onChange={(e) => handleAddressChange(e.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+              className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
             >
               <option value="">All addresses (auto-select)</option>
               {availableAddresses.map((a) => (
@@ -494,7 +494,7 @@ export const Send: React.FC = () => {
                     placeholder="Recipient address (P...)"
                     value={r.address}
                     onChange={(e) => updateRecipient(i, 'address', e.target.value)}
-                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${
+                    className={`w-full rounded-md border bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:outline-none focus:ring-1 ${
                       err
                         ? 'border-red-300 dark:border-red-600 focus:border-red-500 focus:ring-red-500'
                         : 'border-gray-300 dark:border-dark-muted focus:border-phi-primary focus:ring-phi-primary'
@@ -512,7 +512,7 @@ export const Send: React.FC = () => {
                     placeholder="Amount PHI"
                     value={r.amount}
                     onChange={(e) => updateRecipient(i, 'amount', e.target.value)}
-                    className="w-full rounded-md border border-gray-300 dark:border-dark-muted px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                    className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                   />
                 </div>
 
@@ -577,7 +577,7 @@ export const Send: React.FC = () => {
                 onChange={(e) =>
                   setForm((f) => ({ ...f, confTarget: Math.max(1, parseInt(e.target.value) || 6) }))
                 }
-                className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted px-3 py-1.5 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-1.5 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               />
             </div>
             <div className="flex-1">
@@ -599,7 +599,7 @@ export const Send: React.FC = () => {
                     feeRate: Math.max(0.01, parseFloat(e.target.value) || 1),
                   }))
                 }
-                className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted px-3 py-1.5 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="mt-1 w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-1.5 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               />
             </div>
             <Button

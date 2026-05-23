@@ -150,7 +150,7 @@ export const Transactions: React.FC = () => {
           placeholder="Search by txid or address..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-48 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+          className="flex-1 min-w-48 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
         />
         <select
           value={filterDirection}
@@ -208,7 +208,7 @@ export const Transactions: React.FC = () => {
             <p className="mt-3 text-sm text-gray-500 dark:text-dark-mutedText">
               No transactions found
             </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+            <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
               {search || filterDirection !== 'all' || startDate || endDate
                 ? 'Try adjusting your search or filters'
                 : 'Your transaction history will appear here'}
@@ -260,7 +260,7 @@ export const Transactions: React.FC = () => {
                         {tx.amount >= 0 ? '+' : ''}
                         {tx.amount.toFixed(8)} PHI
                         {tx.fee !== 0 && (
-                          <span className="ml-1 text-xs font-normal text-gray-400 dark:text-dark-mutedText">
+                          <span className="ml-1 text-xs font-normal text-gray-500 dark:text-dark-mutedText">
                             (fee: {Math.abs(tx.fee).toFixed(8)})
                           </span>
                         )}
@@ -334,7 +334,7 @@ export const Transactions: React.FC = () => {
                     </span>
                   </div>
                   {tx.fee !== 0 && (
-                    <span className="text-xs text-gray-400 dark:text-dark-mutedText">
+                    <span className="text-xs text-gray-500 dark:text-dark-mutedText">
                       fee: {Math.abs(tx.fee).toFixed(8)}
                     </span>
                   )}

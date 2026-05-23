@@ -350,8 +350,8 @@ export const RPCConsole: React.FC = () => {
               <div className="text-gray-500 space-y-1">
                 <p>PHICOIN RPC Console</p>
                 <p>Type a command or use quick buttons above.</p>
-                <p className="text-gray-600">Usage: method_name [params as JSON array]</p>
-                <p className="text-gray-600">Examples: getblockcount, getnetworkinfo</p>
+                <p className="text-gray-400">Usage: method_name [params as JSON array]</p>
+                <p className="text-gray-400">Examples: getblockcount, getnetworkinfo</p>
                 <p className="text-amber-500 mt-2">
                   Note: Sensitive RPC methods (dumpprivkey, signrawtransaction, etc.) are blocked.
                   Use phicoin-cli.
@@ -520,14 +520,14 @@ export const RPCConsole: React.FC = () => {
                 placeholder="IP address"
                 value={banIp}
                 onChange={(e) => setBanIp(e.target.value)}
-                className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               />
               <input
                 type="number"
                 placeholder="Cooldown (seconds)"
                 value={banCooldown}
                 onChange={(e) => setBanCooldown(Number(e.target.value))}
-                className="w-32 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="w-32 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               />
               <Button
                 variant="primary"

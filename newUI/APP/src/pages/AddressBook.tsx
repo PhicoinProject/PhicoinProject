@@ -213,7 +213,7 @@ export const AddressBook: React.FC = () => {
               <tbody>
                 {!receivingAddresses || receivingAddresses.length === 0 ? (
                   <tr className="border-b">
-                    <td className="px-4 py-3 text-gray-400 dark:text-dark-mutedText" colSpan={5}>
+                    <td className="px-4 py-3 text-gray-500 dark:text-dark-mutedText" colSpan={5}>
                       No receiving addresses yet. Click "New Address" to generate one.
                     </td>
                   </tr>
@@ -269,7 +269,7 @@ export const AddressBook: React.FC = () => {
             <tbody>
               {sendingEntries.length === 0 ? (
                 <tr className="border-b">
-                  <td className="px-4 py-3 text-gray-400 dark:text-dark-mutedText" colSpan={4}>
+                  <td className="px-4 py-3 text-gray-500 dark:text-dark-mutedText" colSpan={4}>
                     No sending addresses. Click "Add Address" to save one.
                   </td>
                 </tr>
@@ -362,7 +362,7 @@ export const AddressBook: React.FC = () => {
               disabled={modalMode !== 'add'} // address cannot change on edit
               className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 font-mono text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary dark:text-dark-text disabled:opacity-60"
             />
-            <p className="mt-1 text-xs text-gray-400 dark:text-dark-mutedText">
+            <p className="mt-1 text-xs text-gray-500 dark:text-dark-mutedText">
               Must start with P (pubkey hash) or H (script hash)
             </p>
           </div>

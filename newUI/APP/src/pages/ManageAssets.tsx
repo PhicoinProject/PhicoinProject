@@ -301,7 +301,7 @@ export const ManageAssets: React.FC = () => {
                         <div className="font-medium text-gray-900 dark:text-dark-text">
                           {asset.assetLabel}
                         </div>
-                        <div className="font-mono text-xs text-gray-400 dark:text-dark-mutedText">
+                        <div className="font-mono text-xs text-gray-500 dark:text-dark-mutedText">
                           {asset.assetId.slice(0, 16)}...
                         </div>
                       </td>

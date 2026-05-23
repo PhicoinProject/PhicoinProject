@@ -72,7 +72,7 @@ export const BackupVerify: React.FC = () => {
               key={i}
               className="flex items-center gap-2 rounded bg-gray-50 dark:bg-dark-elevated px-2 py-2"
             >
-              <span className="text-xs text-gray-400 dark:text-dark-mutedText">{i + 1}</span>
+              <span className="text-xs text-gray-500 dark:text-dark-mutedText">{i + 1}</span>
               <span className="text-sm font-medium text-gray-800 dark:text-dark-secondary">
                 {word}
               </span>

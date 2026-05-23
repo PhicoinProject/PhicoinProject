@@ -109,7 +109,7 @@ export const Unlock: React.FC = () => {
                 setPassphrase(e.target.value);
                 setError('');
               }}
-              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+              className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               placeholder="Enter passphrase"
               autoComplete="off"
               disabled={loading || cooldown > 0}

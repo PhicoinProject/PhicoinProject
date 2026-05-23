@@ -142,7 +142,7 @@ export const CreateWallet: React.FC = () => {
             key={i}
             className="flex items-center gap-2 rounded bg-gray-50 dark:bg-dark-elevated px-2 py-2"
           >
-            <span className="text-xs text-gray-400 dark:text-dark-mutedText">{i + 1}</span>
+            <span className="text-xs text-gray-500 dark:text-dark-mutedText">{i + 1}</span>
             <span className="text-sm font-medium text-gray-800 dark:text-dark-secondary">
               {word}
             </span>
@@ -198,7 +198,7 @@ export const CreateWallet: React.FC = () => {
           type="password"
           value={userSeed}
           onChange={(e) => setUserSeed(e.target.value)}
-          className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+          className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
           placeholder="At least 8 characters"
           autoComplete="off"
         />
@@ -234,7 +234,7 @@ export const CreateWallet: React.FC = () => {
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+            className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
             placeholder="Min 12 characters"
             autoComplete="off"
           />
@@ -278,7 +278,7 @@ export const CreateWallet: React.FC = () => {
           type="password"
           value={confirmPassword}
           onChange={(e) => setConfirmPassword(e.target.value)}
-          className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+          className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
           placeholder="Re-enter password"
           autoComplete="off"
         />
@@ -310,7 +310,7 @@ export const CreateWallet: React.FC = () => {
                 type="text"
                 value={quizAnswers[idx] || ''}
                 onChange={(e) => setQuizAnswers({ ...quizAnswers, [idx]: e.target.value })}
-                className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
+                className="flex-1 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
                 placeholder={`Word ${idx + 1}`}
                 autoComplete="off"
               />
