@@ -333,20 +333,36 @@ async function buildAndBroadcastAssetTx(params: {
   let totalInputSat = 0;
   const selectedUtxos: UTXO[] = [];
 
-  // Relay fee is 0.01 PHI/KB, asset tx is ~300 bytes -> need at least ~300000 sat
-  const minFee = 500000; // 0.005 PHI
   // All asset-issuance types burn 0.1 COIN to the single mainnet burn address.
   // GetBurnAmount() returns 0.1 * COIN for every issuance type
   // (src/assets/assets.cpp:3701-3729, chainparams.cpp:269-291).
   const burnAmount = params.issue ? Math.floor(0.1 * 1e8) : 0;
 
+  // Size-based fee so the tx always clears PHICOIN's relay floor (0.01 PHI/kB =
+  // 1000 sat/byte). A flat fee under-pays for larger asset txs (e.g. a SUB issuance with
+  // a parent owner-token input + extra outputs), which the daemon rejects with
+  // "min relay fee not met". Estimate generously (asset-script outputs are large).
+  const numAssetInputs = params.assetInputs?.length ?? 0;
+  let estOutputs = 1; // change
+  if (params.issue) {
+    estOutputs += 2; // burn + issue (rvnq)
+    if (params.issue.parentOwnerAsset) estOutputs += 1; // parent owner re-transfer
+    if (params.issue.assetType === AssetType.RESTRICTED) estOutputs += 1; // verifier
+    if (params.issue.createsOwnerToken) estOutputs += 1; // own owner (rvno)
+  } else {
+    estOutputs += 1; // asset transfer / reissue output
+  }
+  const estInputs = 3 + numAssetInputs; // generous PHI-input estimate + asset inputs
+  const RELAY_SAT_PER_BYTE = 1000; // 0.01 PHI/kB relay floor
+  const estSize = estInputs * 148 + estOutputs * 120 + 50;
+  const feeSat = Math.max(500000, estSize * RELAY_SAT_PER_BYTE);
+
   for (const utxo of sortedUtxos) {
     selectedUtxos.push(utxo);
     totalInputSat += Math.floor(utxo.amount * 1e8);
-    if (totalInputSat > minFee + burnAmount + 546) break;
+    if (totalInputSat > feeSat + burnAmount + 546) break;
   }
 
-  const feeSat = minFee;
   const changeValue = totalInputSat - feeSat - burnAmount;
 
   // Build outputs based on transaction type
