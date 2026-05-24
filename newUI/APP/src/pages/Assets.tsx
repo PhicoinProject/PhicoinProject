@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useMyAssets } from '@/hooks';
 import { assetService } from '@/services/assets';
 import { walletService } from '@/services/wallet';
+import { isValidPHICoinAddress } from '@/services/addressDerivation';
 import type { Asset } from '@/types';
 import { AssetTable, AssetIssuer } from '@/components/assets';
 import { Button } from '@/components/common/Button';
@@ -79,6 +80,10 @@ export const Assets: React.FC = () => {
       setSendError('Address and amount are required');
       return;
     }
+    if (!isValidPHICoinAddress(sendForm.toAddress.trim())) {
+      setSendError('Invalid PHICOIN address — failed the Base58Check checksum / version check.');
+      return;
+    }
     const qty = parseFloat(sendForm.amount);
     if (isNaN(qty) || qty <= 0) {
       setSendError('Amount must be greater than 0');
@@ -96,7 +101,7 @@ export const Assets: React.FC = () => {
       await assetService.transferAsset(
         sendAsset.assetId,
         qty,
-        sendForm.toAddress,
+        sendForm.toAddress.trim(),
         sendForm.message || undefined
       );
       setSendOpen(false);

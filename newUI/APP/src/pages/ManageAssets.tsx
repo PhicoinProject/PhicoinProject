@@ -2,12 +2,35 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useMyAssets } from '@/hooks';
 import { assetService } from '@/services/assets';
+import { isValidPHICoinAddress } from '@/services/addressDerivation';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
 import { Spinner } from '@/components/common/Spinner';
 import { Badge } from '@/components/common/Badge';
 import type { Asset } from '@/types';
+
+/**
+ * Normalize a qualifier name to its canonical `#NAME` form. PHICOIN qualifier
+ * assets are always prefixed with `#`; we tolerate the user typing the bare
+ * name and add the prefix so valid input is never rejected.
+ */
+function normalizeQualifierName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+}
+
+/**
+ * Normalize a restricted-asset name to its canonical `$NAME` form. Restricted
+ * assets are always prefixed with `$`; we tolerate the bare name and add the
+ * prefix so valid input is never rejected.
+ */
+function normalizeRestrictedName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('$') ? trimmed : `$${trimmed}`;
+}
 
 type ModalMode =
   | 'none'
@@ -66,6 +89,9 @@ export const ManageAssets: React.FC = () => {
 
   // Admin form
   const [adminForm, setAdminForm] = useState<AdminForm>(initialAdminForm);
+
+  // Confirmation gate for destructive global operations (global freeze/unfreeze)
+  const [globalConfirmed, setGlobalConfirmed] = useState(false);
 
   const { data: assets, isLoading } = useMyAssets();
 
@@ -126,6 +152,7 @@ export const ManageAssets: React.FC = () => {
       ...initialAdminForm,
       assetName: asset?.assetLabel ?? initialAdminForm.assetName,
     });
+    setGlobalConfirmed(false);
     setError(null);
     setSuccessTxid(null);
   };
@@ -139,62 +166,74 @@ export const ManageAssets: React.FC = () => {
 
       switch (modalMode) {
         case 'assign-qualifier':
-          if (!adminForm.qualifierAsset || !adminForm.targetAddress) {
-            throw new Error('Qualifier asset and target address are required');
+        case 'remove-qualifier': {
+          const qualifier = normalizeQualifierName(adminForm.qualifierAsset);
+          if (!qualifier) {
+            throw new Error('Qualifier asset is required');
           }
-          txid = await assetService.assignQualifier(
-            adminForm.qualifierAsset,
-            adminForm.targetAddress
-          );
-          break;
-
-        case 'remove-qualifier':
-          if (!adminForm.qualifierAsset || !adminForm.targetAddress) {
-            throw new Error('Qualifier asset and target address are required');
+          if (!adminForm.targetAddress.trim()) {
+            throw new Error('Target address is required');
           }
-          txid = await assetService.removeQualifier(
-            adminForm.qualifierAsset,
-            adminForm.targetAddress
-          );
+          if (!isValidPHICoinAddress(adminForm.targetAddress.trim())) {
+            throw new Error(
+              'Invalid PHICOIN address — failed the Base58Check checksum / version check.'
+            );
+          }
+          txid =
+            modalMode === 'assign-qualifier'
+              ? await assetService.assignQualifier(qualifier, adminForm.targetAddress.trim())
+              : await assetService.removeQualifier(qualifier, adminForm.targetAddress.trim());
           break;
+        }
 
         case 'freeze':
-          if (!adminForm.assetName || !adminForm.targetAddress) {
-            throw new Error('Asset name and target address are required');
+        case 'unfreeze': {
+          const restricted = normalizeRestrictedName(adminForm.assetName);
+          if (!restricted) {
+            throw new Error('Restricted asset name is required');
           }
-          txid = await assetService.freezeAddress(adminForm.assetName, adminForm.targetAddress);
-          break;
-
-        case 'unfreeze':
-          if (!adminForm.assetName || !adminForm.targetAddress) {
-            throw new Error('Asset name and target address are required');
+          if (!adminForm.targetAddress.trim()) {
+            throw new Error('Target address is required');
           }
-          txid = await assetService.unfreezeAddress(adminForm.assetName, adminForm.targetAddress);
+          if (!isValidPHICoinAddress(adminForm.targetAddress.trim())) {
+            throw new Error(
+              'Invalid PHICOIN address — failed the Base58Check checksum / version check.'
+            );
+          }
+          txid =
+            modalMode === 'freeze'
+              ? await assetService.freezeAddress(restricted, adminForm.targetAddress.trim())
+              : await assetService.unfreezeAddress(restricted, adminForm.targetAddress.trim());
           break;
+        }
 
         case 'global-freeze':
-          if (!adminForm.assetName) {
-            throw new Error('Asset name is required');
+        case 'global-unfreeze': {
+          const restricted = normalizeRestrictedName(adminForm.assetName);
+          if (!restricted) {
+            throw new Error('Restricted asset name is required');
           }
-          txid = await assetService.globalFreeze(adminForm.assetName);
-          break;
-
-        case 'global-unfreeze':
-          if (!adminForm.assetName) {
-            throw new Error('Asset name is required');
+          if (!globalConfirmed) {
+            throw new Error('Please confirm this global operation before continuing.');
           }
-          txid = await assetService.globalUnfreeze(adminForm.assetName);
+          txid =
+            modalMode === 'global-freeze'
+              ? await assetService.globalFreeze(restricted)
+              : await assetService.globalUnfreeze(restricted);
           break;
+        }
 
-        case 'set-verifier':
-          if (!adminForm.verifierString) {
+        case 'set-verifier': {
+          const restricted = normalizeRestrictedName(adminForm.assetName);
+          if (!restricted) {
+            throw new Error('Restricted asset name is required');
+          }
+          if (!adminForm.verifierString.trim()) {
             throw new Error('Verifier string is required');
           }
-          txid = await assetService.setVerifierString(
-            adminForm.assetName || '',
-            adminForm.verifierString
-          );
+          txid = await assetService.setVerifierString(restricted, adminForm.verifierString.trim());
           break;
+        }
 
         default:
           throw new Error('Unknown operation');
@@ -215,6 +254,7 @@ export const ManageAssets: React.FC = () => {
     setSuccessTxid(null);
     setReissueForm(initialReissueForm);
     setAdminForm(initialAdminForm);
+    setGlobalConfirmed(false);
   };
 
   const modalTitle = (() => {
@@ -502,10 +542,14 @@ export const ManageAssets: React.FC = () => {
                   <Input
                     id="admin-qualifier"
                     label="Qualifier Asset"
-                    placeholder="QUALIFIER_NAME"
+                    placeholder="#QUALIFIER_NAME"
                     value={adminForm.qualifierAsset}
                     onChange={(e) => setAdminForm({ ...adminForm, qualifierAsset: e.target.value })}
                   />
+                  <p className="text-xs text-gray-500 dark:text-dark-mutedText">
+                    Qualifier assets are prefixed with <span className="font-mono">#</span>. The
+                    prefix is added automatically if omitted.
+                  </p>
                   <Input
                     id="admin-target"
                     label="Target Address"
@@ -522,9 +566,14 @@ export const ManageAssets: React.FC = () => {
                   <Input
                     id="admin-asset"
                     label="Restricted Asset Name"
+                    placeholder="$RESTRICTED_NAME"
                     value={adminForm.assetName}
                     onChange={(e) => setAdminForm({ ...adminForm, assetName: e.target.value })}
                   />
+                  <p className="text-xs text-gray-500 dark:text-dark-mutedText">
+                    Restricted assets are prefixed with <span className="font-mono">$</span>. The
+                    prefix is added automatically if omitted.
+                  </p>
                   <Input
                     id="admin-target-freeze"
                     label="Target Address"
@@ -541,13 +590,25 @@ export const ManageAssets: React.FC = () => {
                   <Input
                     id="admin-asset-global"
                     label="Restricted Asset Name"
+                    placeholder="$RESTRICTED_NAME"
                     value={adminForm.assetName}
                     onChange={(e) => setAdminForm({ ...adminForm, assetName: e.target.value })}
                   />
                   <p className="text-sm text-amber-600 dark:text-amber-400">
                     This will {modalMode === 'global-freeze' ? 'freeze' : 'unfreeze'} all transfers
-                    of this restricted asset globally.
+                    of this restricted asset globally. Restricted assets are prefixed with{' '}
+                    <span className="font-mono">$</span>; the prefix is added automatically if
+                    omitted.
                   </p>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-secondary">
+                    <input
+                      type="checkbox"
+                      checked={globalConfirmed}
+                      onChange={(e) => setGlobalConfirmed(e.target.checked)}
+                      className="rounded border-gray-300 dark:border-dark-muted"
+                    />
+                    I understand this affects every holder of this asset
+                  </label>
                 </>
               )}
 
@@ -557,9 +618,14 @@ export const ManageAssets: React.FC = () => {
                   <Input
                     id="admin-asset-verifier"
                     label="Restricted Asset Name"
+                    placeholder="$RESTRICTED_NAME"
                     value={adminForm.assetName}
                     onChange={(e) => setAdminForm({ ...adminForm, assetName: e.target.value })}
                   />
+                  <p className="text-xs text-gray-500 dark:text-dark-mutedText">
+                    Restricted assets are prefixed with <span className="font-mono">$</span>. The
+                    prefix is added automatically if omitted.
+                  </p>
                   <Input
                     id="admin-verifier"
                     label="Verifier String"
@@ -580,6 +646,10 @@ export const ManageAssets: React.FC = () => {
                   variant="primary"
                   onClick={modalMode === 'reissue' ? handleReissue : handleAdminAction}
                   loading={processing}
+                  disabled={
+                    (modalMode === 'global-freeze' || modalMode === 'global-unfreeze') &&
+                    !globalConfirmed
+                  }
                 >
                   {processing ? (
                     <Spinner size="sm" />

@@ -7,13 +7,11 @@ import { walletService } from './wallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { receivePath, changePath, getCoinType } from './HDWallet';
 import {
-  buildAssetScript,
   encodeAssetPushData,
   serializeCNewAsset,
   serializeCAssetTransfer,
   serializeCReissueAsset,
   serializeCNullAssetTxData,
-  serializeCNullAssetTxVerifierString,
   buildOwnerOutputScript,
   buildVerifierOutputScript,
   buildNullAssetDataScript,
@@ -314,8 +312,13 @@ interface IssueDescriptor {
   // an input and re-output to the change address. Required for SUB / UNIQUE /
   // RESTRICTED. Undefined for ROOT / QUALIFIER.
   parentOwnerAsset?: string;
+  // Satoshi amount of parentOwnerAsset to re-output. Owner tokens are always
+  // 1*COIN; a SUB_QUALIFIER parent is the qualifier itself, which may hold >1
+  // unit in a single UTXO — re-output the full input amount so the asset balances.
+  // Defaults to OWNER_ASSET_AMOUNT.
+  parentReTransferAmount?: number;
   // Whether this issuance creates its own owner token (rvno) output. True for
-  // ROOT and SUB; false for UNIQUE / QUALIFIER / RESTRICTED.
+  // ROOT and SUB; false for UNIQUE / MSGCHANNEL / QUALIFIER / SUB_QUALIFIER / RESTRICTED.
   createsOwnerToken: boolean;
   // Verifier string for RESTRICTED assets (emits a CNullAssetTxVerifierString output).
   verifierString?: string;
@@ -451,7 +454,7 @@ async function buildAndBroadcastAssetTx(params: {
     if (params.issue.parentOwnerAsset) {
       const ownerTransfer = serializeCAssetTransfer({
         name: params.issue.parentOwnerAsset,
-        amount: OWNER_ASSET_AMOUNT,
+        amount: params.issue.parentReTransferAmount ?? OWNER_ASSET_AMOUNT,
         message: '',
       });
       const ownerTransferPayload = new Uint8Array(4 + ownerTransfer.length);
@@ -779,13 +782,13 @@ export class AssetService {
     let amountSat: number;
     let units: number;
     let reissuable: number;
-    if (assetType === AssetType.UNIQUE) {
-      // UNIQUE_ASSET_AMOUNT=1*COIN, UNIQUE_ASSET_UNITS=0, UNIQUE_ASSETS_REISSUABLE=0
+    if (assetType === AssetType.UNIQUE || assetType === AssetType.MSGCHANNEL) {
+      // UNIQUE/MSGCHANNEL: amount=1*COIN, units=0, reissuable=0 (rpc/assets.cpp:560).
       amountSat = OWNER_ASSET_AMOUNT;
       units = 0;
       reissuable = 0;
-    } else if (assetType === AssetType.QUALIFIER) {
-      // issuequalifierasset forces units=0, reissuable=false (rpc/assets.cpp:2434-2435)
+    } else if (assetType === AssetType.QUALIFIER || assetType === AssetType.SUB_QUALIFIER) {
+      // (sub)qualifier forces units=0, reissuable=false (rpc/assets.cpp:536, 2434-2435)
       amountSat = toSatoshis(quantity);
       units = 0;
       reissuable = 0;
@@ -819,6 +822,17 @@ export class AssetService {
       createsOwnerToken = false; // UNIQUE creates NO owner token (wallet.cpp:3608)
     } else if (assetType === AssetType.QUALIFIER) {
       createsOwnerToken = false; // no parent input, no owner token
+    } else if (assetType === AssetType.MSGCHANNEL) {
+      // Parent is the substring before the last "~"; owner token "PARENT!" is spent
+      // & re-output. MSGCHANNEL creates NO owner token (wallet.cpp:3608, assets.cpp:90-94).
+      parentOwnerAsset = label.substring(0, label.lastIndexOf('~')) + '!';
+      createsOwnerToken = false;
+    } else if (assetType === AssetType.SUB_QUALIFIER) {
+      // Parent is the substring before the last "/": the parent QUALIFIER itself
+      // (e.g. "#PARENT"), spent & re-output — NOT an owner token (no "!").
+      // assets.cpp:101-105 (re-transfer parentName) + 122-125 (ownership check).
+      parentOwnerAsset = label.substring(0, label.lastIndexOf('/'));
+      createsOwnerToken = false;
     } else if (assetType === AssetType.RESTRICTED) {
       // "$TOKEN" requires the "TOKEN!" owner token (assets.cpp:4028-4032).
       const stripped = label.startsWith('$') ? label.substring(1) : label;
@@ -834,16 +848,20 @@ export class AssetService {
     // Source the parent owner-token UTXO (1 * COIN) to spend & re-output.
     let assetInputs: Array<{ txid: string; vout: number; scriptPubKey: string }> | undefined;
     let senderAddress = addresses[0];
+    let parentReTransferAmount: number | undefined;
     if (parentOwnerAsset) {
       const found = await findAssetInputs(parentOwnerAsset, BigInt(OWNER_ASSET_AMOUNT), addresses);
       if (found.total < BigInt(OWNER_ASSET_AMOUNT)) {
         throw new Error(
-          `Owner token ${parentOwnerAsset} not found in this wallet. ` +
+          `Parent token ${parentOwnerAsset} not found in this wallet. ` +
           `You must hold it to issue this asset.`
         );
       }
       assetInputs = found.inputs;
-      // Re-output the parent owner token to the address that held it.
+      // Re-output the full parent amount so the asset balances (owner tokens are
+      // exactly 1*COIN; a SUB_QUALIFIER parent qualifier may hold more).
+      parentReTransferAmount = Number(found.total);
+      // Re-output the parent token to the address that held it.
       senderAddress = found.sourceAddress || addresses[0];
     }
 
@@ -859,6 +877,7 @@ export class AssetService {
         hasIPFS,
         ipfsHash: hasIPFS ? ipfsHash : undefined,
         parentOwnerAsset,
+        parentReTransferAmount,
         createsOwnerToken,
         verifierString: params.verifierString,
       },
@@ -1130,21 +1149,45 @@ export class AssetService {
   }
 
   /**
-   * Set a verifier string for a restricted asset.
+   * Change a restricted asset's verifier string.
+   *
+   * There is no standalone "set verifier" operation on PHICOIN: a verifier change
+   * is a REISSUE of the restricted asset that carries a CNullAssetTxVerifierString
+   * output (the reissuerestrictedasset change_verifier path). Mirrors
+   * CreateReissueAssetTransaction (assets.cpp:4177-4229): spend + re-output the
+   * TOKEN! owner token, emit the verifier output, burn 0.1 PHI, and place the rvnr
+   * reissue output LAST with amount 0 (no new supply) and units -1 (unchanged).
    */
-  async setVerifierString(_assetName: string, verifierString: string): Promise<string> {
-    const serialized = serializeCNullAssetTxVerifierString(verifierString);
-
-    const assetScriptHex = buildAssetScript(serialized);
+  async setVerifierString(assetName: string, verifierString: string): Promise<string> {
+    if (!assetName || !assetName.startsWith('$')) {
+      throw new Error('Verifier strings apply only to restricted ($) assets');
+    }
+    if (!verifierString) throw new Error('Verifier string is required');
 
     const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
+    if (!addresses.length) throw new Error('No wallet addresses available.');
 
+    const auth = await buildAuthTokenReTransfer(ownerTokenForRestricted(assetName), addresses);
+
+    // Verifier-only reissue: amount 0 (no new supply), units -1 (unchanged),
+    // keep the asset reissuable so the verifier can be changed again later.
+    const serialized = serializeCReissueAsset({ name: assetName, amount: 0, units: -1, reissuable: 1 });
+    const payload = new Uint8Array(4 + serialized.length);
+    payload.set(MAGIC_REISSUE_ASSET, 0);
+    payload.set(serialized, 4);
+    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '61';
+
+    const burnSat = Math.floor(0.1 * 1e8);
     return buildAndBroadcastAssetTx({
-      assetScriptHex,
       senderAddress: addresses[0],
+      assetInputs: auth.assetInputs,
+      extraBurnSat: burnSat,
+      customOutputs: [
+        auth.transferOutput, // owner-token re-transfer (authorization)
+        { scriptPubKey: buildVerifierOutputScript(verifierString), valueSatoshis: 0 }, // new verifier
+        { scriptPubKey: NETWORK.assetBurnScriptPubKey, valueSatoshis: burnSat }, // 0.1 PHI reissue burn
+      ],
+      finalOutput: { scriptPubKey: reissueScript, valueSatoshis: 0 }, // rvnr — last vout
     });
   }
 
