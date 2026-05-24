@@ -87,9 +87,53 @@ export class WalletService {
     if (!hdKey) return [];
 
     const network: 'mainnet' | 'testnet' = 'mainnet';
-    const usedCount = await this.getUsedAddressCount(network);
-    const count = Math.max(ADDRESS_POOL_SIZE, usedCount + ADDRESS_POOL_SIZE);
-    return this.deriveCombinedPool(hdKey, network, 0, count);
+    // Scan BOTH chains for usage (gap-limit scan) so addresses holding funds/assets on
+    // either the receive OR the change chain are discovered. The previous version only
+    // counted the receive chain, so assets/UTXOs sitting on change addresses were missed.
+    const [recvUsed, changeUsed] = await Promise.all([
+      this.getUsedCountForChain(network, false),
+      this.getUsedCountForChain(network, true),
+    ]);
+    const recvCount = Math.max(ADDRESS_POOL_SIZE, recvUsed + ADDRESS_POOL_SIZE);
+    const changeCount = Math.max(ADDRESS_POOL_SIZE, changeUsed + ADDRESS_POOL_SIZE);
+    const out: DerivedAddress[] = [];
+    for (let i = 0; i < recvCount; i++) out.push(deriveReceiveAddress(hdKey, network, i));
+    for (let i = 0; i < changeCount; i++) out.push(deriveChangeAddress(hdKey, network, i));
+    return out;
+  }
+
+  /**
+   * Gap-limit scan of one chain: keep scanning until SCAN_GAP consecutive addresses have
+   * no transactions, then return (last-used index + 1). Covers both receive and change.
+   */
+  private async getUsedCountForChain(
+    network: 'mainnet' | 'testnet',
+    isChange: boolean
+  ): Promise<number> {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (!hdKey) return 0;
+    const BATCH = 20; // also the gap limit: a full unused batch ends the scan
+    const HARD_CAP = 200;
+    let lastUsed = -1;
+    for (let start = 0; start < HARD_CAP; start += BATCH) {
+      const indices = Array.from({ length: BATCH }, (_, k) => start + k);
+      const addrs = indices.map((i) =>
+        isChange
+          ? deriveChangeAddress(hdKey, network, i).address
+          : deriveReceiveAddress(hdKey, network, i).address
+      );
+      // Query the whole batch in parallel (one round-trip per BATCH addresses).
+      const results = await Promise.all(addrs.map((a) => this.getAddressTxidsFor(a)));
+      let anyUsed = false;
+      results.forEach((txids, k) => {
+        if (txids.length > 0) {
+          lastUsed = indices[k];
+          anyUsed = true;
+        }
+      });
+      if (!anyUsed) break; // a full batch with no usage → past the gap, stop scanning
+    }
+    return lastUsed + 1;
   }
 
   /**
