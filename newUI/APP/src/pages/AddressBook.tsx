@@ -5,11 +5,9 @@ import { useAddressBookStore } from '@/stores/addressBookStore';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import type { Address } from '@/types';
-
-/** Basic PHICOIN address format check: starts with P (pubkey) or H (script), 34 chars */
-function isValidPhicoinAddress(addr: string): boolean {
-  return /^[PH][1-9A-HJ-NP-Za-km-z]{25,39}$/.test(addr.trim());
-}
+// Proper Base58Check validation (decodes + verifies checksum + version byte) — prevents
+// saving/sending to a typo'd address that merely "looks" valid.
+import { isValidPHICoinAddress } from '@/services/addressDerivation';
 
 /** Address Book page — manage saved addresses with labels (Qt parity: addressbookpage) */
 export const AddressBook: React.FC = () => {
@@ -25,19 +23,28 @@ export const AddressBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Address book store (localStorage backed)
-  const { addEntry, updateLabel, deleteEntry, getEntries, findByAddress } = useAddressBookStore();
+  const { addEntry, updateLabel, deleteEntry, getEntries, findByAddress, setLabel } =
+    useAddressBookStore();
   const sendingEntries = useMemo(() => getEntries('sending'), [getEntries]);
 
-  // Receiving addresses from wallet (RPC backed)
-  const addressPool = useMemo(() => walletService.getDerivedAddressPool(), []);
-  const addressList = useMemo(() => addressPool.map((a) => a.address), [addressPool]);
+  // Receiving addresses come from the wallet's derived pool. Use the ASYNC pool, which
+  // discovers actually-used addresses via RPC; the sync pool is a fixed narrow window that
+  // misses used addresses (e.g. where assets sit) and clutters the list with unused ones.
+  const { data: pool, isLoading: loadingPool } = useQuery({
+    queryKey: ['derivedPoolAsync'],
+    queryFn: () => walletService.getDerivedAddressPoolAsync(),
+    staleTime: 60_000,
+    enabled: activeTab === 'receiving',
+  });
+  const addressList = useMemo(() => (pool ?? []).map((a) => a.address), [pool]);
 
-  const { data: receivingAddresses, isLoading: loadingReceiving } = useQuery({
+  const { data: receivingAddresses, isLoading: loadingAddrs } = useQuery({
     queryKey: ['addressBook', addressList.join(',')],
     queryFn: () => walletService.getAddresses(addressList),
     staleTime: 30_000,
     enabled: addressList.length > 0 && activeTab === 'receiving',
   });
+  const loadingReceiving = loadingPool || loadingAddrs;
 
   const openAddModal = () => {
     setModalMode('add');
@@ -62,12 +69,21 @@ export const AddressBook: React.FC = () => {
       setModalError('Label is required');
       return;
     }
+
+    // Labeling one of the wallet's own receiving addresses (address is fixed, no validation).
+    if (modalMode === 'edit-receiving') {
+      setLabel(trimmedAddress, trimmedLabel, 'receiving');
+      closeModal();
+      return;
+    }
+
     if (!trimmedAddress) {
       setModalError('Address is required');
       return;
     }
-    if (!isValidPhicoinAddress(trimmedAddress)) {
-      setModalError('Invalid PHICOIN address. Must start with P or H and be 26–40 characters.');
+    // Full Base58Check validation — rejects typo'd addresses that fail the checksum.
+    if (!isValidPHICoinAddress(trimmedAddress)) {
+      setModalError('Invalid PHICOIN address — failed the Base58Check checksum / version check.');
       return;
     }
 
@@ -100,6 +116,14 @@ export const AddressBook: React.FC = () => {
     setModalLabel(entry.label);
     setModalError(null);
   }, []);
+
+  // Edit the label of one of the wallet's own (receiving) addresses.
+  const handleStartEditReceiving = (address: string, currentLabel: string) => {
+    setModalMode('edit-receiving');
+    setModalAddress(address);
+    setModalLabel(currentLabel);
+    setModalError(null);
+  };
 
   const handleDelete = (id: string) => {
     deleteEntry(id);
@@ -224,7 +248,7 @@ export const AddressBook: React.FC = () => {
                       className={`border-b ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'}`}
                     >
                       <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
-                        {addr.label || '(no label)'}
+                        {findByAddress(addr.address)?.label || addr.label || '(no label)'}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-dark-mutedText">
                         {addr.address}
@@ -237,12 +261,23 @@ export const AddressBook: React.FC = () => {
                       <td className="px-4 py-3 text-right text-gray-900 dark:text-dark-text">
                         {addr.totalReceived.toFixed(8)}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right space-x-2">
                         <button
                           onClick={() => handleCopy(addr.address)}
                           className="text-xs text-phi-primary hover:underline"
                         >
                           Copy
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleStartEditReceiving(
+                              addr.address,
+                              findByAddress(addr.address)?.label || ''
+                            )
+                          }
+                          className="text-xs text-phi-primary hover:underline"
+                        >
+                          Edit
                         </button>
                       </td>
                     </tr>
@@ -334,7 +369,13 @@ export const AddressBook: React.FC = () => {
       <Modal
         isOpen={modalMode !== null}
         onClose={closeModal}
-        title={modalMode === 'add' ? 'Add Sending Address' : 'Edit Sending Address'}
+        title={
+          modalMode === 'add'
+            ? 'Add Sending Address'
+            : modalMode === 'edit-receiving'
+              ? 'Label Receiving Address'
+              : 'Edit Sending Address'
+        }
       >
         <div className="space-y-4">
           <div>

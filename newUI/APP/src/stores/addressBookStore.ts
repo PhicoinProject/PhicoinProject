@@ -21,6 +21,7 @@ interface AddressBookActions {
   findByAddress: (address: string) => AddressBookEntry | undefined;
   findByLabel: (label: string) => AddressBookEntry | undefined;
   getEntries: (type?: 'sending' | 'receiving') => AddressBookEntry[];
+  setLabel: (address: string, label: string, type: 'sending' | 'receiving') => void;
   clearAll: () => void;
 }
 
@@ -46,6 +47,20 @@ export const useAddressBookStore = create<AddressBookState & AddressBookActions>
         set((state) => ({
           entries: state.entries.map((e) => (e.id === id ? { ...e, label } : e)),
         })),
+
+      // Upsert a label keyed by (address, type). Used to label the wallet's own
+      // receiving addresses, which are otherwise derived (not stored here).
+      setLabel: (address, label, type) =>
+        set((state) => {
+          const existing = state.entries.find((e) => e.address === address && e.type === type);
+          if (existing) {
+            return { entries: state.entries.map((e) => (e.id === existing.id ? { ...e, label } : e)) };
+          }
+          const id = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+          return {
+            entries: [...state.entries, { id, address, label, type, createdAt: Date.now() }],
+          };
+        }),
 
       deleteEntry: (id) =>
         set((state) => ({
