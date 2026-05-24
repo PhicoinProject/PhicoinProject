@@ -256,9 +256,20 @@ export class WalletService {
       if (r.value <= 0) throw new Error('Recipient amount must be positive');
     }
 
-    const utxos = await rpc.getAddressUTXOsBatch(addresses);
-    if (!utxos || utxos.length === 0) {
+    const rawUtxos = await rpc.getAddressUTXOsBatch(addresses);
+    if (!rawUtxos || rawUtxos.length === 0) {
       throw new Error('No UTXOs found for the given addresses');
+    }
+    // Exclude UTXOs already spent by unconfirmed mempool txs so rapid successive sends
+    // don't fail with "txn-mempool-conflict".
+    const spentKeys = await this.getMempoolSpentKeys(addresses);
+    const utxos = rawUtxos.filter((u) => {
+      const o = u as Record<string, unknown>;
+      const key = `${String(o.txid ?? o.txHash ?? '')}:${Number(o.vout ?? o.outputIndex ?? 0)}`;
+      return !spentKeys.has(key);
+    });
+    if (utxos.length === 0) {
+      throw new Error('All UTXOs are pending in the mempool; wait for a confirmation.');
     }
 
     const totalOutputSat = recipients.reduce((s, r) => s + Math.floor(r.value * 1e8), 0);
@@ -386,6 +397,24 @@ export class WalletService {
   }
 
   /**
+   * UTXO keys ("txid:vout") already being spent by unconfirmed mempool transactions, so
+   * coin selection can exclude them and avoid "txn-mempool-conflict" on rapid sends.
+   */
+  async getMempoolSpentKeys(addresses: string[]): Promise<Set<string>> {
+    const spent = new Set<string>();
+    if (!addresses.length) return spent;
+    try {
+      const entries = (await rpc.getAddressMempoolBatch(addresses)) as Array<Record<string, unknown>>;
+      for (const e of entries ?? []) {
+        if (e?.prevtxid) spent.add(`${String(e.prevtxid)}:${Number(e.prevout)}`);
+      }
+    } catch {
+      // best-effort: if the mempool query fails, fall back to confirmed UTXOs only
+    }
+    return spent;
+  }
+
+  /**
    * Get UTXOs for a pool of addresses.
    * Uses z_getaddressutxos RPC.
    */
@@ -401,20 +430,23 @@ export class WalletService {
         // Skip addresses with errors
       }
     }
+    const spentKeys = await this.getMempoolSpentKeys(addresses);
     const raw = rawList;
-    return (raw || []).map((u) => {
-      const obj = u as Record<string, unknown>;
-      return {
-        txid: String(obj.txid ?? obj.txHash ?? ''),
-        vout: Number(obj.vout ?? obj.outputIndex ?? 0),
-        scriptPubKey: (typeof obj.scriptPubKey === 'object' && obj.scriptPubKey && 'hex' in obj.scriptPubKey
-          ? String(obj.scriptPubKey.hex)
-          : String(obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? '')),
-        amount: Number(obj.satoshis ?? obj.value ?? obj.amount ?? 0) / 1e8,
-        confirmations: Number(obj.confirmations ?? obj.confirmationCount ?? 0),
-        coinbase: Boolean(obj.coinbase ?? false),
-      };
-    });
+    return (raw || [])
+      .map((u) => {
+        const obj = u as Record<string, unknown>;
+        return {
+          txid: String(obj.txid ?? obj.txHash ?? ''),
+          vout: Number(obj.vout ?? obj.outputIndex ?? 0),
+          scriptPubKey: (typeof obj.scriptPubKey === 'object' && obj.scriptPubKey && 'hex' in obj.scriptPubKey
+            ? String(obj.scriptPubKey.hex)
+            : String(obj.scriptPubKey ?? obj.script ?? obj.scriptPubKeyHex ?? '')),
+          amount: Number(obj.satoshis ?? obj.value ?? obj.amount ?? 0) / 1e8,
+          confirmations: Number(obj.confirmations ?? obj.confirmationCount ?? 0),
+          coinbase: Boolean(obj.coinbase ?? false),
+        };
+      })
+      .filter((u) => !spentKeys.has(`${u.txid}:${u.vout}`));
   }
 
   /**
