@@ -282,10 +282,13 @@ export function serializeCReissueAsset(params: {
     writeInt8(params.reissuable),
   ];
 
+  // IPFS hash uses ReadWriteAssetHash (assettypes.h:59-95), NOT a varstring: it
+  // serializes the 34-byte (0x12 0x20 + 32) or 32-byte hash, and writes NOTHING
+  // for an empty/other-length hash. Emitting an empty varstring (a trailing 0x00)
+  // leaves an unconsumed byte and the daemon rejects the tx with
+  // "bad-txns-reissue-serialization-failed".
   if (params.ipfsHash && params.ipfsHash.length > 0) {
     parts.push(serializeAssetHash(params.ipfsHash));
-  } else {
-    parts.push(writeVarString(''));
   }
 
   return concatBytes(...parts);
@@ -386,6 +389,39 @@ export function buildVerifierOutputScript(verifierString: string): string {
   const body = serializeCNullAssetTxVerifierString(stripVerifierString(verifierString));
   // OP_PHI_ASSET (0xc0) + OP_RESERVED (0x50) + pushdata(body)
   return 'c0' + '50' + encodeAssetPushData(body);
+}
+
+/**
+ * Build a per-address null-asset-data output scriptPubKey (qualifier tag /
+ * restricted address freeze-unfreeze).
+ *
+ * Per CNullAssetScriptVisitor (src/script/standard.cpp:334-336) the destination
+ * script is `OP_PHI_ASSET << ToByteVector(keyID)` = 0xc0 0x14 <20-byte h160>,
+ * then CNullAssetTxData::ConstructTransaction (assets.cpp:4577-4585) appends
+ * `<< ToByteVector(vchMessage)` = a pushdata of the serialized CNullAssetTxData.
+ * There is NO OP_DROP. IsNullAssetTxDataScript checks [0]==0xc0 && [1]==0x14.
+ *
+ * @param h160Hex the 20-byte (40 hex char) HASH160 of the target address
+ * @param serialized serialized CNullAssetTxData (asset name varstring + flag)
+ */
+export function buildNullAssetDataScript(h160Hex: string, serialized: Uint8Array): string {
+  if (h160Hex.length !== 40) throw new Error('h160 must be 20 bytes (40 hex chars)');
+  return 'c0' + '14' + h160Hex + encodeAssetPushData(serialized);
+}
+
+/**
+ * Build a global restriction null-asset-data output scriptPubKey (global
+ * freeze / unfreeze of a restricted asset).
+ *
+ * Per CNullAssetTxData::ConstructGlobalRestrictionTransaction (assets.cpp:4587-4595):
+ *   script << OP_PHI_ASSET << OP_RESERVED << OP_RESERVED << ToByteVector(vchMessage)
+ * = 0xc0 0x50 0x50 <pushdata(serialized)>. No P2PKH prefix, no OP_DROP.
+ * IsNullGlobalRestrictionAssetTxDataScript checks [0]==0xc0 && [1]==[2]==0x50.
+ *
+ * @param serialized serialized CNullAssetTxData (asset name varstring + flag)
+ */
+export function buildGlobalRestrictionScript(serialized: Uint8Array): string {
+  return 'c0' + '50' + '50' + encodeAssetPushData(serialized);
 }
 
 // ---- Raw transaction builder for asset transactions ----

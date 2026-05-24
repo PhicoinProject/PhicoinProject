@@ -16,6 +16,8 @@ import {
   serializeCNullAssetTxVerifierString,
   buildOwnerOutputScript,
   buildVerifierOutputScript,
+  buildNullAssetDataScript,
+  buildGlobalRestrictionScript,
   toSatoshis,
   buildRawTransaction,
   RestrictedType,
@@ -246,6 +248,48 @@ async function findAssetInputs(
   return { inputs, total, sourceAddress };
 }
 
+/** Extract the 20-byte HASH160 (40 hex chars) from a PHICOIN address. */
+function addressToH160Hex(address: string): string {
+  // buildP2PKHScriptPubKeyHex returns 76a914 <h160:40> 88ac.
+  return buildP2PKHScriptPubKeyHex(address).slice(6, 46);
+}
+
+/**
+ * Source the authorizing owner/qualifier token for a null-asset-data op and build
+ * its CAssetTransfer re-output. Qualifier tagging spends the qualifier token
+ * (#TAG, rpc/assets.cpp:202); restricted freeze/unfreeze — per-address and global —
+ * spend the ROOT owner token (TOKEN! for $TOKEN, rpc/assets.cpp:301,398). The full
+ * found amount is re-transferred back to the holding address so the asset balances.
+ */
+async function buildAuthTokenReTransfer(
+  token: string,
+  addresses: string[]
+): Promise<{
+  assetInputs: Array<{ txid: string; vout: number; scriptPubKey: string }>;
+  transferOutput: { scriptPubKey: string; valueSatoshis: number };
+}> {
+  const found = await findAssetInputs(token, BigInt(OWNER_ASSET_AMOUNT), addresses);
+  if (found.total < BigInt(OWNER_ASSET_AMOUNT)) {
+    throw new Error(
+      `Authorizing token ${token} not found in this wallet. You must hold it to perform this operation.`
+    );
+  }
+  const source = found.sourceAddress || addresses[0];
+  const p2pkh = buildP2PKHScriptPubKeyHex(source);
+  const transfer = serializeCAssetTransfer({ name: token, amount: Number(found.total), message: '' });
+  const payload = new Uint8Array(4 + transfer.length);
+  payload.set(MAGIC_ASSET_TRANSFER, 0);
+  payload.set(transfer, 4);
+  const scriptPubKey = p2pkh + 'c0' + encodeAssetPushData(payload) + '61';
+  return { assetInputs: found.inputs, transferOutput: { scriptPubKey, valueSatoshis: 0 } };
+}
+
+/** ROOT owner token (TOKEN!) that authorizes restricted-asset ops on $TOKEN. */
+function ownerTokenForRestricted(restrictedName: string): string {
+  const base = restrictedName.startsWith('$') ? restrictedName.slice(1) : restrictedName;
+  return base + '!';
+}
+
 /**
  * Per-type asset issuance descriptor.
  *
@@ -310,6 +354,19 @@ async function buildAndBroadcastAssetTx(params: {
 
   // Extra outputs to append (e.g., asset change)
   extraOutputs?: Array<{ scriptPubKey: string; valueSatoshis: number }>;
+
+  // Caller-supplied complete set of non-change outputs (null-asset-data ops:
+  // qualifier tag, freeze/unfreeze, global freeze). When present, these are
+  // emitted verbatim and a PHI change output is appended automatically.
+  customOutputs?: Array<{ scriptPubKey: string; valueSatoshis: number }>;
+
+  // Additional PHI burned to a burn output already included in customOutputs
+  // (e.g. the 0.1 PHI NULL_ADD_QUALIFIER burn). Reserved from change/fee math.
+  extraBurnSat?: number;
+
+  // Output forced to be the LAST vout, emitted after change. Required for reissue:
+  // the daemon reads the rvnr data from vout[size-1] (assets.cpp:633).
+  finalOutput?: { scriptPubKey: string; valueSatoshis: number };
 }): Promise<string> {
   // Use daemon's listunspent (reliable, unlike getaddressutxos)
   const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
@@ -336,7 +393,7 @@ async function buildAndBroadcastAssetTx(params: {
   // All asset-issuance types burn 0.1 COIN to the single mainnet burn address.
   // GetBurnAmount() returns 0.1 * COIN for every issuance type
   // (src/assets/assets.cpp:3701-3729, chainparams.cpp:269-291).
-  const burnAmount = params.issue ? Math.floor(0.1 * 1e8) : 0;
+  const burnAmount = (params.issue ? Math.floor(0.1 * 1e8) : 0) + (params.extraBurnSat ?? 0);
 
   // Size-based fee so the tx always clears PHICOIN's relay floor (0.01 PHI/kB =
   // 1000 sat/byte). A flat fee under-pays for larger asset txs (e.g. a SUB issuance with
@@ -349,6 +406,8 @@ async function buildAndBroadcastAssetTx(params: {
     if (params.issue.parentOwnerAsset) estOutputs += 1; // parent owner re-transfer
     if (params.issue.assetType === AssetType.RESTRICTED) estOutputs += 1; // verifier
     if (params.issue.createsOwnerToken) estOutputs += 1; // own owner (rvno)
+  } else if (params.customOutputs) {
+    estOutputs += params.customOutputs.length + (params.finalOutput ? 1 : 0);
   } else {
     estOutputs += 1; // asset transfer / reissue output
   }
@@ -441,6 +500,17 @@ async function buildAndBroadcastAssetTx(params: {
     issuePayload.set(assetData, 4);
     const issueScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(issuePayload) + '61';
     outputs.push({ scriptPubKey: issueScriptWithP2PKH, valueSatoshis: 0 });
+  } else if (params.customOutputs) {
+    // Null-asset-data ops (qualifier tag, freeze/unfreeze, global freeze): the
+    // caller supplies the complete set of asset/burn outputs (owner-token
+    // re-transfer + null-data output [+ add-tag burn]); we only append change.
+    outputs.push(...params.customOutputs);
+    if (changeValue > 546) {
+      outputs.push({ scriptPubKey: changeScript, valueSatoshis: changeValue });
+    }
+    if (params.finalOutput) {
+      outputs.push(params.finalOutput); // forced last vout (reissue rvnr)
+    }
   } else if (params.assetScriptHex) {
     // Transfer / Reissue / other asset ops
     outputs.push({ scriptPubKey: params.assetScriptHex, valueSatoshis: params.transferOutput ? 0 : 1000 });
@@ -897,166 +967,166 @@ export class AssetService {
     ipfsHash?: string;
   }): Promise<string> {
     if (!params.name) throw new Error('Asset name is required');
-    if (params.quantity <= 0) throw new Error('Quantity must be greater than 0');
+    if (params.quantity < 0) throw new Error('Quantity must be 0 or greater');
 
-    const amountSat = toSatoshis(params.quantity);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
+    if (!addresses.length) {
+      throw new Error('No wallet addresses available.');
+    }
+
+    // Reissue mirrors CreateReissueAssetTransaction (assets.cpp:4066-4141): it is
+    // authorized by spending + re-outputting the asset's owner token (NAME! for
+    // NAME, TOKEN! for $TOKEN) and burns 0.1 PHI. The rvnr reissue output is a
+    // P2PKH-prefixed asset output that MUST be the LAST vout (the daemon reads
+    // ReissueAssetFromScript on vout[size-1], assets.cpp:633).
+    const base = params.name.startsWith('$') ? params.name.slice(1) : params.name;
+    const auth = await buildAuthTokenReTransfer(base + '!', addresses);
 
     const serialized = serializeCReissueAsset({
       name: params.name,
-      amount: amountSat,
+      amount: toSatoshis(params.quantity),
       units: params.decimalPlaces ?? 8,
       reissuable: params.reissuable ? 1 : 0,
       ipfsHash: params.ipfsHash,
     });
+    const payload = new Uint8Array(4 + serialized.length);
+    payload.set(MAGIC_REISSUE_ASSET, 0);
+    payload.set(serialized, 4);
+    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '61';
 
-    const assetScriptHex = buildAssetScript(serialized, MAGIC_REISSUE_ASSET);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
+    const burnSat = Math.floor(0.1 * 1e8);
     return buildAndBroadcastAssetTx({
-      assetScriptHex,
       senderAddress: addresses[0],
+      assetInputs: auth.assetInputs,
+      extraBurnSat: burnSat,
+      customOutputs: [
+        auth.transferOutput, // owner-token re-transfer (authorization)
+        { scriptPubKey: NETWORK.assetBurnScriptPubKey, valueSatoshis: burnSat }, // 0.1 PHI burn
+      ],
+      finalOutput: { scriptPubKey: reissueScript, valueSatoshis: 0 }, // rvnr — last vout
     });
   }
 
   /**
-   * Assign a qualifier to an address (addtagtoaddress equivalent).
-   * Uses CNullAssetTxData with flag for qualifier assignment.
+   * Tag (assign) or untag (remove) an address with a qualifier (#TAG).
+   *
+   * Mirrors addtagtoaddress / removetagfromaddress (rpc/assets.cpp:165-221): the
+   * tx transfers the qualifier token (#TAG) back to a wallet address AND carries a
+   * per-address CNullAssetTxData output at the target. Adding a tag also burns
+   * 0.1 PHI to the NULL_ADD_QUALIFIER burn address; removing does not.
    */
+  private async updateAddressTag(
+    qualifierAsset: string,
+    targetAddress: string,
+    flag: number
+  ): Promise<string> {
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
+    if (!addresses.length) throw new Error('No wallet addresses available.');
+
+    const auth = await buildAuthTokenReTransfer(qualifierAsset, addresses);
+    const nullData = serializeCNullAssetTxData({ assetName: qualifierAsset, flag });
+    const nullScript = buildNullAssetDataScript(addressToH160Hex(targetAddress), nullData);
+
+    const customOutputs = [auth.transferOutput, { scriptPubKey: nullScript, valueSatoshis: 0 }];
+    const isAdd = flag === QualifierType.ADD_QUALIFIER;
+    const addTagBurn = isAdd ? Math.floor(0.1 * 1e8) : 0;
+    if (isAdd) {
+      customOutputs.push({ scriptPubKey: NETWORK.assetBurnScriptPubKey, valueSatoshis: addTagBurn });
+    }
+
+    return buildAndBroadcastAssetTx({
+      senderAddress: addresses[0],
+      assetInputs: auth.assetInputs,
+      customOutputs,
+      extraBurnSat: addTagBurn,
+    });
+  }
+
+  /** Assign a qualifier (#TAG) to an address (addtagtoaddress equivalent). */
   async assignQualifier(qualifierAsset: string, targetAddress: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName: qualifierAsset,
-      flag: QualifierType.ADD_QUALIFIER,
-    });
-
-    const assetScriptHex = buildAssetScript(serialized);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
-    return buildAndBroadcastAssetTx({
-      assetScriptHex,
-      senderAddress: addresses[0],
-      phiOutput: { address: targetAddress, valueSatoshis: 1000 },
-    });
+    return this.updateAddressTag(qualifierAsset, targetAddress, QualifierType.ADD_QUALIFIER);
   }
 
-  /**
-   * Remove a qualifier from an address.
-   */
+  /** Remove a qualifier (#TAG) from an address (removetagfromaddress equivalent). */
   async removeQualifier(qualifierAsset: string, targetAddress: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName: qualifierAsset,
-      flag: QualifierType.REMOVE_QUALIFIER,
-    });
-
-    const assetScriptHex = buildAssetScript(serialized);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
-    return buildAndBroadcastAssetTx({
-      assetScriptHex,
-      senderAddress: addresses[0],
-      phiOutput: { address: targetAddress, valueSatoshis: 1000 },
-    });
+    return this.updateAddressTag(qualifierAsset, targetAddress, QualifierType.REMOVE_QUALIFIER);
   }
 
   /**
-   * Freeze a restricted asset for a specific address.
+   * Freeze or unfreeze a restricted asset ($TOKEN) for a specific address.
+   *
+   * Mirrors UpdateAddressRestriction (rpc/assets.cpp:223-320): the tx transfers the
+   * ROOT owner token (TOKEN!) back to a wallet address AND carries a per-address
+   * CNullAssetTxData output (flag FREEZE_ADDRESS / UNFREEZE_ADDRESS) at the target.
    */
+  private async updateAddressRestriction(
+    assetName: string,
+    targetAddress: string,
+    flag: number
+  ): Promise<string> {
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
+    if (!addresses.length) throw new Error('No wallet addresses available.');
+
+    const auth = await buildAuthTokenReTransfer(ownerTokenForRestricted(assetName), addresses);
+    const nullData = serializeCNullAssetTxData({ assetName, flag });
+    const nullScript = buildNullAssetDataScript(addressToH160Hex(targetAddress), nullData);
+
+    return buildAndBroadcastAssetTx({
+      senderAddress: addresses[0],
+      assetInputs: auth.assetInputs,
+      customOutputs: [auth.transferOutput, { scriptPubKey: nullScript, valueSatoshis: 0 }],
+    });
+  }
+
+  /** Freeze a restricted asset for a specific address (lock). */
   async freezeAddress(assetName: string, targetAddress: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName,
-      flag: RestrictedType.FREEZE_ADDRESS,
-    });
-
-    const assetScriptHex = buildAssetScript(serialized);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
-    return buildAndBroadcastAssetTx({
-      assetScriptHex,
-      senderAddress: addresses[0],
-      phiOutput: { address: targetAddress, valueSatoshis: 1000 },
-    });
+    return this.updateAddressRestriction(assetName, targetAddress, RestrictedType.FREEZE_ADDRESS);
   }
 
-  /**
-   * Unfreeze a restricted asset for a specific address.
-   */
+  /** Unfreeze a restricted asset for a specific address (unlock). */
   async unfreezeAddress(assetName: string, targetAddress: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName,
-      flag: RestrictedType.UNFREEZE_ADDRESS,
-    });
+    return this.updateAddressRestriction(assetName, targetAddress, RestrictedType.UNFREEZE_ADDRESS);
+  }
 
-    const assetScriptHex = buildAssetScript(serialized);
-
+  /**
+   * Global freeze or unfreeze of a restricted asset ($TOKEN).
+   *
+   * Mirrors UpdateGlobalRestrictedAsset (rpc/assets.cpp:323-410): the tx transfers
+   * the ROOT owner token (TOKEN!) back to a wallet address AND carries a global
+   * restriction output (OP_PHI_ASSET OP_RESERVED OP_RESERVED, flag GLOBAL_FREEZE /
+   * GLOBAL_UNFREEZE).
+   */
+  private async updateGlobalRestriction(assetName: string, flag: number): Promise<string> {
     const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
+    if (!addresses.length) throw new Error('No wallet addresses available.');
+
+    const auth = await buildAuthTokenReTransfer(ownerTokenForRestricted(assetName), addresses);
+    const nullData = serializeCNullAssetTxData({ assetName, flag });
+    const globalScript = buildGlobalRestrictionScript(nullData);
 
     return buildAndBroadcastAssetTx({
-      assetScriptHex,
       senderAddress: addresses[0],
-      phiOutput: { address: targetAddress, valueSatoshis: 1000 },
+      assetInputs: auth.assetInputs,
+      customOutputs: [auth.transferOutput, { scriptPubKey: globalScript, valueSatoshis: 0 }],
     });
   }
 
   /**
-   * Global freeze of a restricted asset.
+   * Global freeze of a restricted asset — blocks all transfers (lock).
+   *
+   * The on-chain CNullAssetTxData.flag for a GLOBAL restriction is 1=freeze /
+   * 0=unfreeze (consensus check assets.cpp:4997 "flag must be 0 or 1";
+   * freezerestrictedasset calls UpdateGlobalRestrictedAsset(request, 1)). This is
+   * NOT the RestrictedType.GLOBAL_FREEZE=3 enum value, which is the daemon's
+   * internal representation and is rejected on the wire.
    */
   async globalFreeze(assetName: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName,
-      flag: RestrictedType.GLOBAL_FREEZE,
-    });
-
-    const assetScriptHex = buildAssetScript(serialized);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
-    return buildAndBroadcastAssetTx({
-      assetScriptHex,
-      senderAddress: addresses[0],
-    });
+    return this.updateGlobalRestriction(assetName, 1);
   }
 
-  /**
-   * Global unfreeze of a restricted asset.
-   */
+  /** Global unfreeze of a restricted asset — re-allows transfers (unlock). flag 0. */
   async globalUnfreeze(assetName: string): Promise<string> {
-    const serialized = serializeCNullAssetTxData({
-      assetName,
-      flag: RestrictedType.GLOBAL_UNFREEZE,
-    });
-
-    const assetScriptHex = buildAssetScript(serialized);
-
-    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
-    if (!addresses.length) {
-      throw new Error('No wallet addresses available.');
-    }
-
-    return buildAndBroadcastAssetTx({
-      assetScriptHex,
-      senderAddress: addresses[0],
-    });
+    return this.updateGlobalRestriction(assetName, 0);
   }
 
   /**
