@@ -312,7 +312,7 @@ async function buildAndBroadcastAssetTx(params: {
   extraOutputs?: Array<{ scriptPubKey: string; valueSatoshis: number }>;
 }): Promise<string> {
   // Use daemon's listunspent (reliable, unlike getaddressutxos)
-  const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+  const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
   const utxos = (await walletService.getUnspent(addresses)) as UTXO[];
 
   if (!utxos.length) {
@@ -710,7 +710,7 @@ export class AssetService {
     }
     const hasIPFS = isIPFS ? 1 : 0;
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available. Create or import a wallet first.');
     }
@@ -825,7 +825,7 @@ export class AssetService {
     // Step 1: Use listassetbalancesbyaddress to confirm balance per address
     // Step 2: Use getaddressutxos with assetName to get UTXOs
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available. Create or import a wallet first.');
     }
@@ -895,7 +895,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized, MAGIC_REISSUE_ASSET);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -918,7 +918,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -941,7 +941,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -964,7 +964,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -987,7 +987,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -1010,7 +1010,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -1032,7 +1032,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
@@ -1051,7 +1051,7 @@ export class AssetService {
 
     const assetScriptHex = buildAssetScript(serialized);
 
-    const addresses = walletService.getDerivedAddressPool().map((a) => a.address);
+    const addresses = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
     if (!addresses.length) {
       throw new Error('No wallet addresses available.');
     }
