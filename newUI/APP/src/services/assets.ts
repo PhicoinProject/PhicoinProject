@@ -1159,6 +1159,21 @@ export class AssetService {
    * reissue output LAST with amount 0 (no new supply) and units -1 (unchanged).
    */
   async setVerifierString(assetName: string, verifierString: string): Promise<string> {
+    // GUARD — DISABLED: a 0-amount verifier-change reissue (rvnr) is accepted into the
+    // mempool but is block-invalid on the current daemon (2.0.5); it wedges block
+    // production (getblocktemplate throws under cs_main -> mining AND peer-sync freeze).
+    // Confirmed on-chain: this tx froze the node twice (e.g. tx 94eaf300, $HHGHGHG2 —
+    // block production stopped the instant it entered the mempool). Flip ENABLED to true
+    // only after the daemon validates the verifier at amount==0 (assets.cpp:5585) AND
+    // getblocktemplate evicts-and-retries instead of throwing (miner.cpp:251).
+    const ENABLED = false as boolean;
+    if (!ENABLED) {
+      throw new Error(
+        'Changing a verifier string is temporarily disabled: on the current daemon a ' +
+        '0-amount verifier-change reissue is block-invalid and can freeze the node. ' +
+        'It will be re-enabled once the daemon is patched.'
+      );
+    }
     if (!assetName || !assetName.startsWith('$')) {
       throw new Error('Verifier strings apply only to restricted ($) assets');
     }
