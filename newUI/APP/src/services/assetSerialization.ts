@@ -20,11 +20,11 @@
  *   CNullAssetTxVerifierString: (no magic, wrapped with OP_PHI_ASSET + OP_RESERVED)
  *
  * Script format:
- *   OP_PHI_ASSET (0xc0) << pushdata_len << [magic][serialized] << OP_DROP (0x61)
+ *   OP_PHI_ASSET (0xc0) << pushdata_len << [magic][serialized] << OP_DROP (0x75)
  */
 
 const OP_PHI_ASSET = 0xc0;
-const OP_DROP = 0x61;
+const OP_DROP = 0x75;
 const OP_PUSHDATA1 = 0x4c;
 const OP_PUSHDATA2 = 0x4d;
 
@@ -170,7 +170,7 @@ export function buildAssetScript(data: Uint8Array, magic?: Uint8Array): string {
  * without the surrounding OP_PHI_ASSET / OP_DROP wrapper.
  *
  * Use this when manually concatenating a P2PKH prefix + OP_PHI_ASSET (0xc0)
- * + <pushdata> + OP_DROP (0x61) in services/assets.ts so the pushdata length
+ * + <pushdata> + OP_DROP (0x75) in services/assets.ts so the pushdata length
  * encoding stays consistent with buildAssetScript().
  */
 export function encodeAssetPushData(payload: Uint8Array): string {
@@ -248,10 +248,11 @@ export function serializeCAssetTransfer(params: {
     writeInt64(params.amount),
   ];
 
+  // The daemon emits NOTHING for an empty message (ReadWriteAssetHash no-ops). The
+  // previous code pushed an empty varstring (a stray trailing 0x00), which the daemon
+  // tolerates but makes transfers non-byte-identical to it — omit it here.
   if (params.message && params.message.length > 0) {
     parts.push(writeVarString(params.message));
-  } else {
-    parts.push(writeVarString(''));
   }
 
   if (params.expireTime && params.expireTime !== 0) {
@@ -354,7 +355,7 @@ export function serializeOwnerPayload(assetName: string): Uint8Array {
  */
 export function buildOwnerOutputScript(p2pkhHex: string, assetName: string): string {
   const payload = serializeOwnerPayload(assetName);
-  return p2pkhHex + 'c0' + encodeAssetPushData(payload) + '61';
+  return p2pkhHex + 'c0' + encodeAssetPushData(payload) + '75';
 }
 
 // ---- Verifier-string output (restricted assets) ----
@@ -515,5 +516,5 @@ function hexToArray(hex: string): Uint8Array {
 
 /** Convert a number of PHI to satoshis */
 export function toSatoshis(phiAmount: number): number {
-  return Math.floor(phiAmount * 1e8);
+  return Math.round(phiAmount * 1e8);
 }

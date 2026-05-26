@@ -272,7 +272,7 @@ export class WalletService {
       throw new Error('All UTXOs are pending in the mempool; wait for a confirmation.');
     }
 
-    const totalOutputSat = recipients.reduce((s, r) => s + Math.floor(r.value * 1e8), 0);
+    const totalOutputSat = recipients.reduce((s, r) => s + Math.round(r.value * 1e8), 0);
     const psbtInputs: PSBTInput[] = [];
     let totalInputSat = 0;
 
@@ -736,7 +736,7 @@ export class WalletService {
     const coinType = 0; // MAINNET_COIN_TYPE from HDWallet.ts
 
     // Scan receive chain first: m/0'/0'/0'/0/{i}
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 256; i++) {
       const path = `m/0'/${coinType}'/0'/0/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
@@ -745,7 +745,7 @@ export class WalletService {
     }
 
     // Scan change chain: m/0'/0'/0'/1/{i}
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 256; i++) {
       const path = `m/0'/${coinType}'/0'/1/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);

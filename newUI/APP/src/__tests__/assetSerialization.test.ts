@@ -41,14 +41,14 @@ describe('Asset Serialization', () => {
       // CScript << ToByteVector(data) prepends the pushdata length byte (Bitcoin
       // script semantics, matched by the C++ asset-script parser), so the length
       // byte IS part of the correct on-chain output.
-      expect(hex).toBe('c00301020361');
+      expect(hex).toBe('c00301020375');
     });
 
     it('should handle empty data', () => {
       const data = new Uint8Array([]);
       const hex = buildAssetScript(data);
       // OP_PHI_ASSET (0xc0), empty push (0x00), OP_DROP (0x61).
-      expect(hex).toBe('c00061');
+      expect(hex).toBe('c00075');
     });
 
     // ---- Bitcoin SCRIPT pushdata encoding (NOT varint) ----
@@ -64,7 +64,7 @@ describe('Asset Serialization', () => {
       expect(hex.startsWith('c04b')).toBe(true);
       expect(hex.slice(0, 2)).toBe('c0');
       expect(hex.slice(2, 4)).toBe('4b'); // 75 direct, NOT 0x4c pushdata
-      expect(hex.endsWith('61')).toBe(true);
+      expect(hex.endsWith('75')).toBe(true);
       // Total hex length: (1 + 1 + 75 + 1) bytes * 2
       expect(hex.length).toBe((1 + 1 + 75 + 1) * 2);
     });
@@ -76,7 +76,7 @@ describe('Asset Serialization', () => {
       expect(hex.slice(0, 2)).toBe('c0');
       expect(hex.slice(2, 4)).toBe('4c'); // OP_PUSHDATA1
       expect(hex.slice(4, 6)).toBe('4c'); // length 76 == 0x4c
-      expect(hex.endsWith('61')).toBe(true);
+      expect(hex.endsWith('75')).toBe(true);
       // Total: (1 + 1 + 1 + 76 + 1) bytes * 2
       expect(hex.length).toBe((1 + 2 + 76 + 1) * 2);
     });
@@ -87,7 +87,7 @@ describe('Asset Serialization', () => {
       expect(hex.slice(0, 2)).toBe('c0');
       expect(hex.slice(2, 4)).toBe('4c'); // OP_PUSHDATA1
       expect(hex.slice(4, 6)).toBe('ff'); // length 255 == 0xff
-      expect(hex.endsWith('61')).toBe(true);
+      expect(hex.endsWith('75')).toBe(true);
     });
 
     it('should use OP_PUSHDATA2 (0x4d) + LE length for a ~200-byte... 300-byte payload', () => {
@@ -97,14 +97,14 @@ describe('Asset Serialization', () => {
       expect(hex.slice(0, 2)).toBe('c0');
       expect(hex.slice(2, 4)).toBe('4d'); // OP_PUSHDATA2
       expect(hex.slice(4, 8)).toBe('2c01'); // 300 = 0x012c, little-endian -> 2c 01
-      expect(hex.endsWith('61')).toBe(true);
+      expect(hex.endsWith('75')).toBe(true);
       // Total: (1 + 1 + 2 + 300 + 1) bytes * 2
       expect(hex.length).toBe((1 + 3 + 300 + 1) * 2);
     });
 
     it('should keep the documented small-payload output identical (regression)', () => {
-      // 3-byte payload must still produce c00301020361 (no pushdata opcode).
-      expect(buildAssetScript(new Uint8Array([0x01, 0x02, 0x03]))).toBe('c00301020361');
+      // 3-byte payload must still produce c00301020375 (no pushdata opcode).
+      expect(buildAssetScript(new Uint8Array([0x01, 0x02, 0x03]))).toBe('c00301020375');
     });
   });
 
@@ -225,8 +225,10 @@ describe('Asset Serialization', () => {
         expireTime: 1234567890,
       });
 
-      // name (5) + amount (8) + empty message (1) + expireTime (8) = 22
-      expect(result.length).toBe(22);
+      // name (5) + amount (8) + expireTime (8) = 21.
+      // The source emits NOTHING for an empty message (daemon-byte-identical), so
+      // there is no trailing 0x00 empty-message byte between amount and expireTime.
+      expect(result.length).toBe(21);
     });
   });
 
@@ -240,8 +242,11 @@ describe('Asset Serialization', () => {
       });
 
       expect(result[0]).toBe(4);
-      // name(1+4) + amount(8) + units(1) + reissuable(1) + empty varString(1) = 16
-      expect(result.length).toBe(16);
+      // name(1+4) + amount(8) + units(1) + reissuable(1) = 15.
+      // An empty IPFS hash uses ReadWriteAssetHash, which writes NOTHING (no empty
+      // varstring) — emitting a trailing 0x00 would desync the daemon parser and
+      // trigger "bad-txns-reissue-serialization-failed".
+      expect(result.length).toBe(15);
     });
 
     it('should include IPFS hash when provided', () => {
@@ -307,7 +312,7 @@ describe('Asset Serialization', () => {
       const scriptHex = buildAssetScript(serialized);
 
       expect(scriptHex.startsWith('c0')).toBe(true);
-      expect(scriptHex.endsWith('61')).toBe(true);
+      expect(scriptHex.endsWith('75')).toBe(true);
     });
 
     it('should build a complete transfer asset script', () => {
@@ -319,7 +324,7 @@ describe('Asset Serialization', () => {
       const scriptHex = buildAssetScript(serialized);
 
       expect(scriptHex.startsWith('c0')).toBe(true);
-      expect(scriptHex.endsWith('61')).toBe(true);
+      expect(scriptHex.endsWith('75')).toBe(true);
     });
   });
 
@@ -360,11 +365,11 @@ describe('Asset Serialization', () => {
       const script = buildOwnerOutputScript(P2PKH, 'MYTOKEN');
       const payloadHex = '72766e6f' + '08' + ahex('MYTOKEN!'); // 13 bytes
       const pushLen = (payloadHex.length / 2).toString(16).padStart(2, '0'); // 0d
-      expect(script).toBe(P2PKH + 'c0' + pushLen + payloadHex + '61');
+      expect(script).toBe(P2PKH + 'c0' + pushLen + payloadHex + '75');
       // Structural checks
       expect(script.startsWith(P2PKH)).toBe(true);
       expect(script.slice(P2PKH.length, P2PKH.length + 2)).toBe('c0'); // OP_PHI_ASSET
-      expect(script.endsWith('61')).toBe(true);                        // OP_DROP
+      expect(script.endsWith('75')).toBe(true);                        // OP_DROP
     });
 
     it('owner payload has NO trailing 8-byte amount (canonical C++ form)', () => {
@@ -393,7 +398,7 @@ describe('Asset Serialization', () => {
       expect(script).toBe('c0' + '50' + pushLen + body);
       expect(script.startsWith('c050')).toBe(true);
       // No OP_DROP terminator (null-asset verifier output is data-only).
-      expect(script.endsWith('61')).toBe(false);
+      expect(script.endsWith('75')).toBe(false);
     });
 
     it('handles an empty verifier string', () => {
@@ -509,12 +514,12 @@ describe('Asset Serialization', () => {
         amount: OWNER_ASSET_AMOUNT,
         message: '',
       });
-      // strName: 07 + "PARENT!", amount(8) 100000000 LE, message len 00
+      // strName: 07 + "PARENT!", amount(8) 100000000 LE. The empty message emits
+      // NOTHING (daemon-byte-identical), so there is no trailing 0x00 length byte.
       expect(t[0]).toBe('PARENT!'.length); // 7
       expect(new TextDecoder().decode(t.slice(1, 1 + 7))).toBe('PARENT!');
       expect(hex(t.slice(8, 16))).toBe('00e1f50500000000'); // amount LE
-      expect(t[16]).toBe(0); // empty message length
-      expect(t.length).toBe(1 + 7 + 8 + 1);
+      expect(t.length).toBe(1 + 7 + 8); // name(8) + amount(8), no empty-message byte
     });
 
     it('rvnt magic is r,v,n,t', () => {

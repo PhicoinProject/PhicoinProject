@@ -31,19 +31,22 @@ test.describe('Transaction History', () => {
   });
 
   test('shows transaction rows for funded wallet', async ({ page }) => {
-    // Allow time for RPC data
-    await page.waitForTimeout(5000);
-    const rows = page.locator('table tbody tr');
-    const rowCount = await rows.count();
+    // The tx-history scan is async (it scans the chain for the wallet's
+    // addresses), so a fixed sleep is racy. Wait deterministically until the
+    // first row is visible instead of counting immediately after a sleep.
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 40000 });
+    const rowCount = await page.locator('table tbody tr').count();
     // Funded wallet has ~11 transactions; default count=50 so all should show
     expect(rowCount).toBeGreaterThan(0);
   });
 
   test('shows at least 5 transactions (funded wallet has ~11)', async ({ page }) => {
-    await page.waitForTimeout(6000);
-    const rows = page.locator('table tbody tr');
-    const rowCount = await rows.count();
-    expect(rowCount).toBeGreaterThanOrEqual(5);
+    // Poll until the table has accumulated at least 5 rows (the scan streams
+    // results in over several RPC polls). Web-first assertions auto-retry, so
+    // this waits up to the timeout rather than reading a single snapshot.
+    await expect
+      .poll(async () => page.locator('table tbody tr').count(), { timeout: 45000 })
+      .toBeGreaterThanOrEqual(5);
   });
 
   test('search input is visible', async ({ page }) => {
@@ -126,8 +129,10 @@ test.describe('Transaction History', () => {
   });
 
   test('CSV export button is visible', async ({ page }) => {
-    // Button says "Export CSV" and only appears when transactions are loaded
-    await page.waitForTimeout(5000);
+    // Button says "Export CSV" and only appears once transactions are loaded.
+    // Wait for the first row before asserting the button so we don't race the
+    // async tx-history scan.
+    await expect(page.locator('table tbody tr').first()).toBeVisible({ timeout: 40000 });
     const csvBtn = page.locator('button:has-text("Export CSV"), button:has-text("CSV"), button:has-text("Export")');
     await expect(csvBtn.first()).toBeVisible({ timeout: 15000 });
   });

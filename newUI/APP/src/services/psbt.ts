@@ -348,10 +348,10 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
   }));
 
   // Calculate total input value in satoshis
-  const totalInput = inputs.reduce((s, i) => s + Math.floor(i.value * 1e8), 0);
+  const totalInput = inputs.reduce((s, i) => s + Math.round(i.value * 1e8), 0);
 
   // Calculate total output value in satoshis
-  const totalOutput = outputs.reduce((s, o) => s + Math.floor(o.value * 1e8), 0);
+  const totalOutput = outputs.reduce((s, o) => s + Math.round(o.value * 1e8), 0);
 
   // Estimate transaction size and fee
   const estimatedSize = inputs.length * 180 + outputs.length * 34;
@@ -366,7 +366,7 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
   const outputScripts: { value: number; scriptPubKey: Uint8Array }[] = [];
   for (const out of outputs) {
     outputScripts.push({
-      value: Math.floor(out.value * 1e8),
+      value: Math.round(out.value * 1e8),
       scriptPubKey: buildScriptFromAddress(out.address),
     });
   }
@@ -398,7 +398,7 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
     const compressedKey = publicKey.length === 33 ? publicKey : compressPublicKey(publicKey);
 
     let sighash: Uint8Array;
-    const amountSat = Math.floor(input.value * 1e8);
+    const amountSat = Math.round(input.value * 1e8);
 
     if (inputTypes[i] === 'segwit') {
       // SegWit: scriptCode = OP_0 <hash160>
@@ -500,7 +500,7 @@ function serializeTx(
   parts.push(writeVarInt(outputs.length));
   for (const out of outputs) {
     const value = new Uint8Array(8);
-    new DataView(value.buffer).setBigInt64(0, BigInt(Math.floor(out.value * 1e8)), true);
+    new DataView(value.buffer).setBigInt64(0, BigInt(Math.round(out.value * 1e8)), true);
     parts.push(value);
 
     const script = buildScriptFromAddress(out.address);

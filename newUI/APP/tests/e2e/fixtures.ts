@@ -218,13 +218,28 @@ export async function gotoUnlocked(
       }, path);
       await page.waitForTimeout(500);
     }
-    // Wait for Suspense spinner to clear (lazy-loaded routes need bundle fetch time)
+    // Wait for the lazy-loaded route to actually render its content.
+    //
+    // The previous heuristic (wait for `.animate-spin` to hide, then a fixed
+    // 300ms) was racy: the Suspense fallback spinner may not yet be in the DOM
+    // when the check runs, so the wait resolves immediately while the route
+    // bundle is still fetching — leaving an EMPTY <main> and causing flaky
+    // "element not found" failures (sign-verify, rpc-console).
+    //
+    // Every page renders an <h1> heading inside <main>. Waiting for that heading
+    // is a deterministic "route content is mounted" signal, so downstream
+    // selectors (textarea, buttons, terminal div) are reliably present.
     await page
-      .locator('.animate-spin')
-      .waitFor({ state: 'hidden', timeout: 10000 })
+      .locator('main h1')
+      .first()
+      .waitFor({ state: 'visible', timeout: 15000 })
       .catch(() => {});
-    // Small settle time for React renders
-    await page.waitForTimeout(300);
+    // Fall back to the old spinner wait in case a route renders its heading
+    // lazily (defensive — should be a no-op once the h1 is visible).
+    await page
+      .locator('main .animate-spin')
+      .waitFor({ state: 'hidden', timeout: 5000 })
+      .catch(() => {});
   }
 }
 

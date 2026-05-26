@@ -175,6 +175,17 @@ function extractAssetScriptInfo(scriptHex: string): AssetScriptInfo | null {
   if (dataOffset + 1 + nameLen > script.length) return null;
   const assetName = new TextDecoder().decode(script.slice(dataOffset + 1, dataOffset + 1 + nameLen));
 
+  // Owner tokens (magic "rvno" 0x6f, or any name ending in "!") are always exactly
+  // OWNER_ASSET_AMOUNT (1 unit) on-chain and carry NO amount field in their canonical
+  // rvno script. Some legacy wallet builds wrote a stray trailing amount (the root
+  // asset's supply) into the owner script; reading it makes coin-selection totals wrong
+  // and produced "bad-txns-transfer-owner-amount-was-not-1" when re-transferring the
+  // owner token during SUB/UNIQUE/MSGCHANNEL/RESTRICTED issuance. Treat owner tokens as
+  // 1 unit regardless of any stray bytes.
+  if (script[offset + 3] === 0x6f || assetName.endsWith('!')) {
+    return { assetName, amount: BigInt(OWNER_ASSET_AMOUNT) };
+  }
+
   const amountOffset = dataOffset + 1 + nameLen;
   if (amountOffset + 8 > script.length) return null;
   const amount = new DataView(script.buffer, script.byteOffset + amountOffset, 8).getBigInt64(0, true);
@@ -278,7 +289,7 @@ async function buildAuthTokenReTransfer(
   const payload = new Uint8Array(4 + transfer.length);
   payload.set(MAGIC_ASSET_TRANSFER, 0);
   payload.set(transfer, 4);
-  const scriptPubKey = p2pkh + 'c0' + encodeAssetPushData(payload) + '61';
+  const scriptPubKey = p2pkh + 'c0' + encodeAssetPushData(payload) + '75';
   return { assetInputs: found.inputs, transferOutput: { scriptPubKey, valueSatoshis: 0 } };
 }
 
@@ -414,15 +425,29 @@ async function buildAndBroadcastAssetTx(params: {
   } else {
     estOutputs += 1; // asset transfer / reissue output
   }
-  const estInputs = 3 + numAssetInputs; // generous PHI-input estimate + asset inputs
   const RELAY_SAT_PER_BYTE = 1000; // 0.01 PHI/kB relay floor
-  const estSize = estInputs * 148 + estOutputs * 120 + 50;
-  const feeSat = Math.max(500000, estSize * RELAY_SAT_PER_BYTE);
+  const outputsAndOverhead = estOutputs * 120 + 50;
 
+  // Recompute the fee from the ACTUAL selected-input count so a fragmented wallet
+  // (many small UTXOs) still clears the relay floor (audit M2): the previous fixed
+  // 3-input estimate under-paid for txs that needed more inputs, which the daemon
+  // rejected with "min relay fee not met".
+  let feeSat = 500000;
   for (const utxo of sortedUtxos) {
     selectedUtxos.push(utxo);
-    totalInputSat += Math.floor(utxo.amount * 1e8);
-    if (totalInputSat > feeSat + burnAmount + 546) break;
+    totalInputSat += Math.round(utxo.amount * 1e8);
+    const estSize = (selectedUtxos.length + numAssetInputs) * 148 + outputsAndOverhead;
+    feeSat = Math.max(500000, estSize * RELAY_SAT_PER_BYTE);
+    if (totalInputSat >= feeSat + burnAmount + 546) break;
+  }
+
+  // Insufficient PHI for fee + burn -> fail clearly instead of building an invalid /
+  // under-funded transaction the daemon would reject cryptically (audit M1).
+  if (totalInputSat < feeSat + burnAmount) {
+    throw new Error(
+      `Insufficient PHI for fee + burn: need ${((feeSat + burnAmount) / 1e8).toFixed(8)} PHI, ` +
+      `have ${(totalInputSat / 1e8).toFixed(8)} PHI.`
+    );
   }
 
   const changeValue = totalInputSat - feeSat - burnAmount;
@@ -460,7 +485,7 @@ async function buildAndBroadcastAssetTx(params: {
       const ownerTransferPayload = new Uint8Array(4 + ownerTransfer.length);
       ownerTransferPayload.set(MAGIC_ASSET_TRANSFER, 0);
       ownerTransferPayload.set(ownerTransfer, 4);
-      const ownerTransferScript = changeScript + 'c0' + encodeAssetPushData(ownerTransferPayload) + '61';
+      const ownerTransferScript = changeScript + 'c0' + encodeAssetPushData(ownerTransferPayload) + '75';
       outputs.push({ scriptPubKey: ownerTransferScript, valueSatoshis: 0 });
     }
 
@@ -501,7 +526,7 @@ async function buildAndBroadcastAssetTx(params: {
     const issuePayload = new Uint8Array(4 + assetData.length);
     issuePayload.set(MAGIC_NEW_ASSET, 0);
     issuePayload.set(assetData, 4);
-    const issueScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(issuePayload) + '61';
+    const issueScriptWithP2PKH = changeScript + 'c0' + encodeAssetPushData(issuePayload) + '75';
     outputs.push({ scriptPubKey: issueScriptWithP2PKH, valueSatoshis: 0 });
   } else if (params.customOutputs) {
     // Null-asset-data ops (qualifier tag, freeze/unfreeze, global freeze): the
@@ -561,7 +586,7 @@ async function buildAndBroadcastAssetTx(params: {
 
     let foundPk: Uint8Array | null = null;
     for (let change = 0; change <= 1; change++) {
-      for (let index = 0; index < 50; index++) {
+      for (let index = 0; index < 256; index++) {
         try {
           const path = change === 0
             ? receivePath(coinType, index)
@@ -858,9 +883,13 @@ export class AssetService {
         );
       }
       assetInputs = found.inputs;
-      // Re-output the full parent amount so the asset balances (owner tokens are
-      // exactly 1*COIN; a SUB_QUALIFIER parent qualifier may hold more).
-      parentReTransferAmount = Number(found.total);
+      // Owner-token re-transfers (SUB/UNIQUE/MSGCHANNEL/RESTRICTED) must be EXACTLY
+      // OWNER_ASSET_AMOUNT — the daemon rejects any other amount with
+      // bad-txns-transfer-owner-amount-was-not-1. Only a SUB_QUALIFIER's parent is a
+      // real (non-owner) qualifier that may legitimately hold >1 unit, so re-output its
+      // full found amount to balance.
+      parentReTransferAmount =
+        assetType === AssetType.SUB_QUALIFIER ? Number(found.total) : OWNER_ASSET_AMOUNT;
       // Re-output the parent token to the address that held it.
       senderAddress = found.sourceAddress || addresses[0];
     }
@@ -924,7 +953,7 @@ export class AssetService {
     payload.set(serialized, 4);
 
     // Full script: recipientP2PKH + OP_PHI_ASSET + pushdata(payload) + OP_DROP
-    const assetScriptHex = recipientP2PKH + 'c0' + encodeAssetPushData(payload) + '61';
+    const assetScriptHex = recipientP2PKH + 'c0' + encodeAssetPushData(payload) + '75';
 
     // ---- Find asset UTXOs to use as inputs (Qt wallet approach) ----
     // Step 1: Use listassetbalancesbyaddress to confirm balance per address
@@ -956,7 +985,7 @@ export class AssetService {
       const changePayload = new Uint8Array(4 + changeSerialized.length);
       changePayload.set(MAGIC_ASSET_TRANSFER, 0);
       changePayload.set(changeSerialized, 4);
-      const changeAssetScript = changeScript + 'c0' + encodeAssetPushData(changePayload) + '61';
+      const changeAssetScript = changeScript + 'c0' + encodeAssetPushData(changePayload) + '75';
       extraOutputs.push({ scriptPubKey: changeAssetScript, valueSatoshis: 0 });
     }
 
@@ -1004,14 +1033,20 @@ export class AssetService {
     const serialized = serializeCReissueAsset({
       name: params.name,
       amount: toSatoshis(params.quantity),
-      units: params.decimalPlaces ?? 8,
+      // -1 = keep the asset's existing units (the daemon convention, assets.cpp:1988);
+      // only send a concrete value when the caller explicitly provides a valid one.
+      // Defaulting to 8 (or NaN from an empty form field) would force a units change
+      // the daemon rejects, or silently alter precision (audit M6).
+      units: Number.isInteger(params.decimalPlaces) && (params.decimalPlaces as number) >= 0
+        ? (params.decimalPlaces as number)
+        : -1,
       reissuable: params.reissuable ? 1 : 0,
       ipfsHash: params.ipfsHash,
     });
     const payload = new Uint8Array(4 + serialized.length);
     payload.set(MAGIC_REISSUE_ASSET, 0);
     payload.set(serialized, 4);
-    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '61';
+    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '75';
 
     const burnSat = Math.floor(0.1 * 1e8);
     return buildAndBroadcastAssetTx({
@@ -1190,7 +1225,7 @@ export class AssetService {
     const payload = new Uint8Array(4 + serialized.length);
     payload.set(MAGIC_REISSUE_ASSET, 0);
     payload.set(serialized, 4);
-    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '61';
+    const reissueScript = buildP2PKHScriptPubKeyHex(addresses[0]) + 'c0' + encodeAssetPushData(payload) + '75';
 
     const burnSat = Math.floor(0.1 * 1e8);
     return buildAndBroadcastAssetTx({
