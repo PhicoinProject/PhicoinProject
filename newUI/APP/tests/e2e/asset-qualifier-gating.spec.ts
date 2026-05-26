@@ -77,17 +77,37 @@ test.describe.serial('Qualifier gating (real broadcast, gated)', () => {
       const R = '$' + base;
       out.push({ step: 'pickBase', restricted: R });
 
-      // 3. Issue the restricted asset, verified by the qualifier just created.
+      // 3. Find the address that will receive the initial restricted supply — the one
+      //    holding the "base!" owner token (issueAsset re-outputs the supply there).
+      //    The daemon requires THAT address to satisfy the verifier at issuance, so it
+      //    must be tagged first (otherwise: bad-txns-null-verifier-address-failed-verification).
+      let issuerAddr: string | null = null;
+      for (const addr of pool) {
+        try {
+          const u = await rpc.raw('getaddressutxos', [{ addresses: [addr], assetName: base + '!' }]);
+          if (Array.isArray(u) && u.length) { issuerAddr = addr; break; }
+        } catch { /* skip */ }
+      }
+      if (!issuerAddr) { out.push({ step: 'findIssuer', error: 'owner-token holder not found' }); return out; }
+      out.push({ step: 'findIssuer', issuerAddr });
+
+      // 4. Tag the issuer address so the restricted issuance is allowed.
+      if (!(await run('tagIssuer', () => svc.assignQualifier(qual, issuerAddr!)))) return out;
+
+      // 5. Issue the restricted asset, verified by the qualifier just created.
       if (!(await run('issueRestricted', () => svc.issueAsset({ label: R, quantity: 100, decimalPlaces: 0, assetType: ser.AssetType.RESTRICTED, verifierString: qual })))) return out;
 
-      // 4. Tag pool[1] with the qualifier so it is allowed to hold the restricted asset.
-      if (!(await run('assignTag', () => svc.assignQualifier(qual, pool[1])))) return out;
+      // 6. Tag pool[1] so it too is allowed to hold the restricted asset.
+      const tagged = pool[1] === issuerAddr ? pool[2] : pool[1];
+      if (!(await run('assignTag', () => svc.assignQualifier(qual, tagged)))) return out;
 
-      // 5. Positive: a tagged address CAN receive the restricted asset.
-      if (!(await run('transferTagged', () => svc.transferAsset(R, 10, pool[1], '')))) return out;
+      // 7. Positive: a tagged address CAN receive the restricted asset.
+      if (!(await run('transferTagged', () => svc.transferAsset(R, 10, tagged, '')))) return out;
 
-      // 6. Negative: an UNtagged address (pool[3]) CANNOT receive — must be rejected.
-      await run('transferUntagged', () => svc.transferAsset(R, 10, pool[3], ''), true);
+      // 8. Negative: an UNtagged address CANNOT receive — must be rejected.
+      const untagged = pool.find((p: string) => p !== issuerAddr && p !== tagged) || pool[3];
+      out.push({ step: 'untaggedTarget', untagged });
+      await run('transferUntagged', () => svc.transferAsset(R, 10, untagged, ''), true);
       return out;
       /* eslint-enable @typescript-eslint/no-explicit-any */
     })) as Step[];

@@ -862,18 +862,29 @@ bool ReissueAssetFromScript(const CScript& scriptPubKey, CReissueAsset& reissue,
 
     strAddress = EncodeDestination(destination);
 
-    std::vector<unsigned char> vchReissueAsset;
-    auto it = scriptPubKey.begin() + nStartingIndex;
-    if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA1) {
-        uint8_t len = scriptPubKey[nStartingIndex];
-        vchReissueAsset.insert(vchReissueAsset.end(), it + 1, it + 1 + len);
-    } else if (scriptPubKey[nStartingIndex - 1] == OP_PUSHDATA2) {
-        uint16_t len = ReadLE16(&scriptPubKey[nStartingIndex]);
-        vchReissueAsset.insert(vchReissueAsset.end(), it + 2, it + 2 + len);
-    } else {
-        uint8_t len = scriptPubKey[nStartingIndex - 1];
-        vchReissueAsset.insert(vchReissueAsset.end(), it, it + len);
-    }
+    // nStartingIndex already points past the "rvnr" magic, directly to the
+    // serialized CReissueAsset payload. Feed the remainder of the script into
+    // the stream. Any trailing script byte (OP_DROP 0x75 from the C++ wallet,
+    // or OP_NOP 0x61 from some third-party wallets) is harmless: CReissueAsset
+    // stops at its optional IPFS hash field, and ReadWriteAssetHash safely
+    // no-ops when fewer than 33 bytes remain. CDataStream tolerates unread
+    // trailing bytes (it only throws on EOF when more is needed).
+    //
+    // This mirrors the behaviour of TransferAssetFromScript /
+    // OwnerAssetFromScript / RestrictedAssetFromScript and replaces the
+    // previous implementation, which mis-read the magic byte at
+    // scriptPubKey[nStartingIndex - 1] as a push-length. That length (0x72,
+    // the 'r' magic byte) was 114, causing an out-of-bounds read past
+    // scriptPubKey.end() and feeding uninitialised heap memory into the
+    // CDataStream. The undefined behaviour produced non-deterministic results
+    // across nodes and runs (sometimes failing, sometimes succeeding with
+    // garbage IPFS bytes), which in production left seed1 stuck rejecting a
+    // valid reissue block for >8 hours while seed2/3/4 accepted the same
+    // block. This change makes parsing fully deterministic so all nodes
+    // reach the same verdict on the same input, regardless of how a
+    // particular wallet constructed the trailing opcode.
+    std::vector<unsigned char> vchReissueAsset(
+        scriptPubKey.begin() + nStartingIndex, scriptPubKey.end());
 
     CDataStream ssReissue(vchReissueAsset, SER_NETWORK, PROTOCOL_VERSION);
     try {
