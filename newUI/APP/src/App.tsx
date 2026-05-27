@@ -7,13 +7,6 @@ import { Navbar } from '@/components/common/Navbar';
 import { ToastProvider } from '@/components/common/Toast';
 import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 import { Overview } from '@/pages/Overview';
-import { Send } from '@/pages/Send';
-import { Receive } from '@/pages/Receive';
-import { Wallet } from '@/pages/Wallet';
-import { Assets } from '@/pages/Assets';
-import { Transactions } from '@/pages/Transactions';
-import { RestrictedAssets } from '@/pages/RestrictedAssets';
-import { CreateAsset } from '@/pages/CreateAsset';
 import { Unlock } from '@/pages/Unlock';
 import { CreateWallet } from '@/pages/CreateWallet';
 import { BackupVerify } from '@/pages/BackupVerify';
@@ -30,6 +23,24 @@ const SignVerify = lazy(() => import('@/pages/SignVerify'));
 const BackupWallet = lazy(() => import('@/pages/BackupWallet'));
 const ImportWallet = lazy(() => import('@/pages/ImportWallet'));
 const AddressBook = lazy(() => import('@/pages/AddressBook'));
+
+// Lazy-load post-auth feature pages: not needed for first paint (landing/auth
+// path renders Overview/Unlock/CreateWallet/BackupVerify only). These modules
+// export named components, so map the named export onto the `default` key that
+// React.lazy() expects.
+const Send = lazy(() => import('@/pages/Send').then((m) => ({ default: m.Send })));
+const Receive = lazy(() => import('@/pages/Receive').then((m) => ({ default: m.Receive })));
+const Wallet = lazy(() => import('@/pages/Wallet').then((m) => ({ default: m.Wallet })));
+const Assets = lazy(() => import('@/pages/Assets').then((m) => ({ default: m.Assets })));
+const Transactions = lazy(() =>
+  import('@/pages/Transactions').then((m) => ({ default: m.Transactions }))
+);
+const RestrictedAssets = lazy(() =>
+  import('@/pages/RestrictedAssets').then((m) => ({ default: m.RestrictedAssets }))
+);
+const CreateAsset = lazy(() =>
+  import('@/pages/CreateAsset').then((m) => ({ default: m.CreateAsset }))
+);
 
 /** Suspense boundary with a lightweight loading fallback */
 const LazyRoute: React.FC<{ component: React.LazyExoticComponent<React.FC> }> = (props) => {
@@ -67,17 +78,17 @@ const NAV_ITEMS = [
 
 const PAGES = [
   { path: '/', element: <Overview /> },
-  { path: '/send', element: <Send /> },
-  { path: '/receive', element: <Receive /> },
-  { path: '/wallet', element: <Wallet /> },
-  { path: '/assets', element: <Assets /> },
-  { path: '/create-asset', element: <CreateAsset /> },
+  { path: '/send', element: <LazyRoute component={Send} /> },
+  { path: '/receive', element: <LazyRoute component={Receive} /> },
+  { path: '/wallet', element: <LazyRoute component={Wallet} /> },
+  { path: '/assets', element: <LazyRoute component={Assets} /> },
+  { path: '/create-asset', element: <LazyRoute component={CreateAsset} /> },
   {
     path: '/manage-assets',
     element: <LazyRoute component={ManageAssets} />,
   },
-  { path: '/restricted', element: <RestrictedAssets /> },
-  { path: '/transactions', element: <Transactions /> },
+  { path: '/restricted', element: <LazyRoute component={RestrictedAssets} /> },
+  { path: '/transactions', element: <LazyRoute component={Transactions} /> },
   {
     path: '/addressbook',
     element: <LazyRoute component={AddressBook} />,

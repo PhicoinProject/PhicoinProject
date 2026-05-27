@@ -284,6 +284,31 @@ export class RpcClient {
   }
 
   /**
+   * Get the COMBINED balance/received for many addresses in a SINGLE RPC call.
+   *
+   * The daemon's getaddressbalance accepts the {addresses:[...]} object form and
+   * sums `balance`/`received` (in satoshis) across every address into one object
+   * (see src/rpc/misc.cpp getaddressbalance, non-asset branch). Unused/empty
+   * addresses simply contribute 0 (GetAddressIndex returns success with no
+   * entries), so this is equivalent to summing per-address balances but uses one
+   * round-trip instead of N. Use this when you only need the aggregate total.
+   *
+   * NOTE: this returns a single combined total and CANNOT be used to attribute a
+   * balance to an individual address — use {@link getAddressBalanceBatch} for
+   * per-address results.
+   */
+  async getAddressBalanceCombined(addresses: string[]): Promise<{ balance: number; received: number }> {
+    if (addresses.length === 0) return { balance: 0, received: 0 };
+    const result = await this.raw<unknown>('getaddressbalance', [{ addresses }]);
+    const data: Record<string, unknown> =
+      result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+    return {
+      balance: Number(data.balance ?? 0),
+      received: Number(data.received ?? 0),
+    };
+  }
+
+  /**
    * Get the total received balance for multiple addresses (batched).
    * Calls getaddressbalance for each address and returns a map.
    */

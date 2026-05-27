@@ -25,23 +25,54 @@ const DISCOVERY_HARD_CAP = 1000;
  */
 export class WalletService {
   /**
+   * PERF: memo cache for derivePathForAddress (scriptPubKey hex -> derivation
+   * path). Without it, every signed input triggers an O(2*DISCOVERY_HARD_CAP)
+   * scan recomputing hash160 on both chains; with many inputs this dominates
+   * send-time CPU. Lookups become O(1) once a path has been found.
+   *
+   * SECURITY: a stale entry would map a scriptPubKey to a path under the WRONG
+   * key, i.e. sign with the wrong key -> funds risk. The cache is therefore
+   * bound to a specific hdKey instance via {@link derivePathCacheKeyRef}. The
+   * hdKey store replaces the HDKey reference on every unlock (and nulls it on
+   * lock/zeroize), so an identity check on that reference detects any wallet
+   * change and forces a full cache clear before serving any lookup.
+   */
+  private derivePathCache = new Map<string, string>();
+  private derivePathCacheKeyRef: HDKey | null = null;
+
+  /**
+   * Drop the derivation-path cache whenever the active HDKey reference changes
+   * (lock, unlock, or wallet switch). Returns the current hdKey (or null).
+   * MUST be called before any cache read so a stale path is never returned for
+   * a different key.
+   */
+  private syncDerivePathCache(): HDKey | null {
+    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    if (hdKey !== this.derivePathCacheKeyRef) {
+      this.derivePathCache.clear();
+      this.derivePathCacheKeyRef = hdKey;
+    }
+    return hdKey;
+  }
+
+  /**
    * Get total received balance for a pool of addresses.
    * Uses z_getaddressbalance RPC.
    */
   async getBalance(addresses: string[]): Promise<number> {
     if (!addresses.length) return 0;
-    let total = 0;
-    for (const addr of addresses) {
-      try {
-        const result = await rpc.getAddressBalance(addr);
-        const data = result as AddressBalanceResult;
-        const rawBalance = 'balance' in data ? data.balance : data.result.balance;
-        total += Number(rawBalance ?? 0) / 1e8;
-      } catch {
-        // Skip addresses with errors
-      }
+    // PERF: the daemon's getaddressbalance accepts {addresses:[...]} and returns
+    // the COMBINED balance summed over every address in ONE call, so we no longer
+    // loop one RPC per address (N -> 1 round-trips). The non-asset branch tolerates
+    // unused/empty addresses (they contribute 0), matching the old loop's result.
+    // Falls back to 0 on RPC failure, preserving the prior catch-and-skip behavior
+    // (e.g. address index disabled), so the observable return value is unchanged.
+    try {
+      const { balance } = await rpc.getAddressBalanceCombined(addresses);
+      return Number(balance ?? 0) / 1e8;
+    } catch {
+      return 0;
     }
-    return total;
   }
 
   /**
@@ -733,8 +764,17 @@ export class WalletService {
    * Paths match HDWallet.ts: m/44'/coinType'/0'/change/index (coinType=0 for mainnet).
    */
   private derivePathForAddress(scriptPubKey: string): string | null {
-    const hdKey = useWalletHDKeyStore.getState().hdKey;
+    // PERF + SECURITY: clear the memo cache if the active HDKey reference changed
+    // (lock/unlock/wallet switch) BEFORE reading it, so we can never serve a path
+    // derived under a different key. syncDerivePathCache returns the live hdKey.
+    const hdKey = this.syncDerivePathCache();
     if (!hdKey) return null;
+
+    // PERF: O(1) hit once this scriptPubKey has been resolved for the current key.
+    // Keyed by the exact input string so a hit returns precisely what a fresh
+    // scan would (the scan match below is also case-sensitive).
+    const cached = this.derivePathCache.get(scriptPubKey);
+    if (cached !== undefined) return cached;
 
     const coinType = 0; // MAINNET_COIN_TYPE from HDWallet.ts
 
@@ -743,7 +783,10 @@ export class WalletService {
       const path = `m/44'/${coinType}'/0'/0/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
-        if (toHex(spk) === scriptPubKey) return path;
+        if (toHex(spk) === scriptPubKey) {
+          this.derivePathCache.set(scriptPubKey, path); // memoize for subsequent inputs
+          return path;
+        }
       } catch { /* skip */ }
     }
 
@@ -752,10 +795,16 @@ export class WalletService {
       const path = `m/44'/${coinType}'/0'/1/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
-        if (toHex(spk) === scriptPubKey) return path;
+        if (toHex(spk) === scriptPubKey) {
+          this.derivePathCache.set(scriptPubKey, path); // memoize for subsequent inputs
+          return path;
+        }
       } catch { /* skip */ }
     }
 
+    // Not found: deliberately NOT cached. A negative result is cheap relative to
+    // the funds risk of caching "no path" if the pool/key state later changes,
+    // and avoids unbounded growth from hostile/unrelated scripts.
     return null;
   }
 

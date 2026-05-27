@@ -137,9 +137,23 @@ export function useRealtimeUpdates(addresses?: string[]) {
       }
     };
 
-    fetchMempool();
-    const id = setInterval(fetchMempool, MEMPOOL_POLL_INTERVAL);
-    return () => clearInterval(id);
+    // Visibility-aware: skip polling while the tab is hidden; refetch once
+    // immediately when it becomes visible again.
+    const tick = () => {
+      if (document.hidden) return;
+      fetchMempool();
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchMempool();
+    };
+
+    if (!document.hidden) fetchMempool();
+    const id = setInterval(tick, MEMPOOL_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- addrList is the source of truth; explicitAddresses is derived from stable `addresses` param
   }, [addrList]);
 
@@ -165,9 +179,24 @@ export function useRealtimeUpdates(addresses?: string[]) {
       }
     };
 
-    fetchBlockHeight();
-    const id = setInterval(fetchBlockHeight, BLOCK_HEIGHT_POLL_INTERVAL);
-    return () => clearInterval(id);
+    // Visibility-aware: skip while hidden (lastHeight is preserved across the
+    // pause, so new-block detection stays correct on resume); refetch once
+    // immediately when the tab becomes visible again.
+    const tick = () => {
+      if (document.hidden) return;
+      fetchBlockHeight();
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchBlockHeight();
+    };
+
+    if (!document.hidden) fetchBlockHeight();
+    const id = setInterval(tick, BLOCK_HEIGHT_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [setWalletState]);
 
   // ---- Balance polling ----
@@ -195,9 +224,23 @@ export function useRealtimeUpdates(addresses?: string[]) {
       }
     };
 
-    fetchBalance();
-    const id = setInterval(fetchBalance, BALANCE_POLL_INTERVAL);
-    return () => clearInterval(id);
+    // Visibility-aware: skip while hidden; refetch once immediately when the
+    // tab becomes visible again.
+    const tick = () => {
+      if (document.hidden) return;
+      fetchBalance();
+    };
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetchBalance();
+    };
+
+    if (!document.hidden) fetchBalance();
+    const id = setInterval(tick, BALANCE_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [addrList, ready, setBalance, setError]);
 
   // ---- New transaction notification listener ----

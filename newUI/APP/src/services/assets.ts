@@ -120,6 +120,39 @@ function buildP2PKHScriptPubKeyBytes(h160: Uint8Array): Uint8Array {
   return s;
 }
 
+// ---- Asset-input signing-path memo cache ----
+//
+// Signing an asset-tx input requires finding which HD derivation path owns the
+// input's scriptPubKey. The naive scan derives up to 2 * DISCOVERY_SCAN_CAP keys
+// per input (O(512)+ of hash160 work). We memoize the resolved path keyed by the
+// 20-byte HASH160 (the wallet-owned part of the scriptPubKey, identical for the
+// P2PKH and asset-script forms of the same address) so repeat inputs are O(1).
+//
+// CRITICAL CORRECTNESS: a stale path → wrong signing key → wrong wallet/funds at
+// risk. The cache is therefore tied to the *identity* of the current HDKey object.
+// hdKeyStore.setHDKey() installs a brand-new HDKey on every unlock/import and
+// clearHDKey() nulls it on lock, so a reference change unambiguously means the
+// key material changed. `assetPathCacheKey` tracks the HDKey the cache was built
+// for; getAssetPathCache() clears the map the moment that identity differs.
+const DISCOVERY_SCAN_CAP = 1000; // match wallet.ts DISCOVERY_HARD_CAP for deep-address coverage
+
+let assetPathCache: Map<string, string> = new Map();
+let assetPathCacheKey: object | null = null;
+
+/**
+ * Return the path memo Map valid for the *currently unlocked* HDKey, clearing it
+ * if the wallet identity changed (new unlock / different wallet / lock). Keying to
+ * the live HDKey object guarantees a cached path can never be reused under a
+ * different key, which would otherwise sign with the wrong private key.
+ */
+function getAssetPathCache(currentHdKey: object | null): Map<string, string> {
+  if (assetPathCacheKey !== currentHdKey) {
+    assetPathCache = new Map();
+    assetPathCacheKey = currentHdKey;
+  }
+  return assetPathCache;
+}
+
 // ---- Asset script parsing helpers ----
 
 interface AssetScriptInfo {
@@ -577,34 +610,57 @@ async function buildAndBroadcastAssetTx(params: {
     privateKey: Uint8Array;
   }> = [];
 
+  // Memo of resolved derivation paths keyed by hash160 hex, scoped to the current
+  // HDKey identity (cleared automatically if the wallet changed). A cache hit
+  // replaces the O(512)+ derive-and-hash scan with a single derive of the known
+  // path, so signing many asset inputs from the same addresses is near O(1).
+  const pathCache = getAssetPathCache(hdKey);
+
   for (const inp of allInputs) {
     const scriptPubKeyHex = inp.scriptPubKey.startsWith('0x') ? inp.scriptPubKey.slice(2) : inp.scriptPubKey;
     const scriptBytes = hexToArray(scriptPubKeyHex);
 
-    // Asset scripts: P2PKH prefix is bytes 0-24 (hash160 at bytes 3-22)
+    // Asset scripts: P2PKH prefix is bytes 0-24 (hash160 at bytes 3-22). The
+    // hash160 uniquely identifies the wallet address, so it is the cache key.
     const targetH160 = scriptBytes.slice(3, 23);
+    const h160Hex = toHex(targetH160);
 
     let foundPk: Uint8Array | null = null;
-    for (let change = 0; change <= 1; change++) {
-      for (let index = 0; index < 256; index++) {
-        try {
-          const path = change === 0
-            ? receivePath(coinType, index)
-            : changePath(coinType, index);
-          const derived = hdKey.derive(path);
-          const pk = derived.privateKey;
-          const pubKey = derived.publicKey;
-          if (!pk || !pubKey) continue;
 
-          const compressedPubKey = pubKey.length === 33 ? pubKey : compressPubKey(pubKey);
-          const h160 = hash160(compressedPubKey);
-          if (arraysEqual(h160, targetH160)) {
-            foundPk = pk;
-            break;
-          }
-        } catch { /* skip */ }
+    // Fast path: derive directly from the memoized path for this address.
+    const cachedPath = pathCache.get(h160Hex);
+    if (cachedPath) {
+      try {
+        const pk = hdKey.derive(cachedPath).privateKey;
+        if (pk) foundPk = pk;
+      } catch { /* fall through to full scan if the cached path fails to derive */ }
+    }
+
+    // Slow path: scan both chains (receive then change) up to DISCOVERY_SCAN_CAP.
+    // Cap raised from 256 to 1000 to match wallet.ts DISCOVERY_HARD_CAP so asset
+    // inputs on deep addresses inside the discovery window can still be signed.
+    if (!foundPk) {
+      for (let change = 0; change <= 1 && !foundPk; change++) {
+        for (let index = 0; index < DISCOVERY_SCAN_CAP; index++) {
+          try {
+            const path = change === 0
+              ? receivePath(coinType, index)
+              : changePath(coinType, index);
+            const derived = hdKey.derive(path);
+            const pk = derived.privateKey;
+            const pubKey = derived.publicKey;
+            if (!pk || !pubKey) continue;
+
+            const compressedPubKey = pubKey.length === 33 ? pubKey : compressPubKey(pubKey);
+            const h160 = hash160(compressedPubKey);
+            if (arraysEqual(h160, targetH160)) {
+              foundPk = pk;
+              pathCache.set(h160Hex, path); // memoize for subsequent inputs/calls
+              break;
+            }
+          } catch { /* skip */ }
+        }
       }
-      if (foundPk) break;
     }
 
     if (!foundPk) {
@@ -678,47 +734,61 @@ export class AssetService {
     const assets: Asset[] = [];
     const seen = new Set<string>();
 
-    for (const addr of addresses) {
-      try {
-        const result = await rpc.raw<Record<string, number>>('listassetbalancesbyaddress', [addr, false, 1000, 0]);
-        if (!result || typeof result !== 'object') continue;
+    // Fire all per-address balance queries concurrently instead of awaiting each
+    // in series. Each address is independent, so this collapses N sequential
+    // round-trips into one parallel batch. Failures resolve to null and are
+    // skipped, preserving the prior per-address try/catch behavior.
+    const balanceResults = await Promise.all(
+      addresses.map((addr) =>
+        rpc
+          .raw<Record<string, number>>('listassetbalancesbyaddress', [addr, false, 1000, 0])
+          .catch(() => null)
+      )
+    );
 
-        // listassetbalancesbyaddress returns { assetName: balance, "ASSET!": ownerBalance, ... }
-        const balances = result as Record<string, number>;
-        for (const [assetId, balance] of Object.entries(balances)) {
-          const isOwner = assetId.endsWith('!');
-          if (seen.has(assetId)) continue;
-          seen.add(assetId);
+    // Iterate results in the ORIGINAL address order so the deduped output order is
+    // byte-for-byte identical to the previous sequential implementation.
+    for (const result of balanceResults) {
+      if (!result || typeof result !== 'object') continue;
 
-          assets.push({
-            assetId,
-            assetLabel: isOwner ? assetId.slice(0, -1) : assetId,
-            status: 'ISSUED',
-            assetTx: '',
-            nonce: 0,
-            precision: isOwner ? 0 : 8, // Owner assets always have 0 precision
-            previousAmount: Number(balance ?? 0),
-            previousTransactions: 0,
-            ipfsHash: undefined,
-            isOwner,
-          });
-        }
-      } catch {
-        // Skip addresses with no asset balances
+      // listassetbalancesbyaddress returns { assetName: balance, "ASSET!": ownerBalance, ... }
+      const balances = result as Record<string, number>;
+      for (const [assetId, balance] of Object.entries(balances)) {
+        const isOwner = assetId.endsWith('!');
+        if (seen.has(assetId)) continue;
+        seen.add(assetId);
+
+        assets.push({
+          assetId,
+          assetLabel: isOwner ? assetId.slice(0, -1) : assetId,
+          status: 'ISSUED',
+          assetTx: '',
+          nonce: 0,
+          precision: isOwner ? 0 : 8, // Owner assets always have 0 precision
+          previousAmount: Number(balance ?? 0),
+          previousTransactions: 0,
+          ipfsHash: undefined,
+          isOwner,
+        });
       }
     }
 
-    // Fetch details for each asset to fill precision and ipfsHash
-    for (const asset of assets) {
-      try {
-        const data = await rpc.raw<Record<string, unknown>>('getassetdata', [asset.assetId]);
-        if (data) {
-          asset.precision = Number(data.units ?? 8);
-          if (data.has_ipfs) {
-            asset.ipfsHash = String(data.ipfsHash ?? '');
-          }
+    // Fetch details for each (already-unique) asset to fill precision and ipfsHash.
+    // Run all getassetdata lookups concurrently and apply each result back to its
+    // asset by index — same final field values as the prior sequential loop.
+    const detailResults = await Promise.all(
+      assets.map((asset) =>
+        rpc.raw<Record<string, unknown>>('getassetdata', [asset.assetId]).catch(() => null)
+      )
+    );
+    for (let i = 0; i < assets.length; i++) {
+      const data = detailResults[i];
+      if (data) {
+        assets[i].precision = Number(data.units ?? 8);
+        if (data.has_ipfs) {
+          assets[i].ipfsHash = String(data.ipfsHash ?? '');
         }
-      } catch { /* skip */ }
+      }
     }
 
     return assets;

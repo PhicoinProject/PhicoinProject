@@ -25,8 +25,25 @@ export function useSyncStatus() {
       }
     };
 
-    fetch();
-    const id = setInterval(fetch, NETWORK_STATUS_POLL_INTERVAL);
-    return () => clearInterval(id);
+    // Visibility-aware tick: skip the RPC call while the tab is hidden to
+    // avoid pointless background traffic.
+    const tick = () => {
+      if (document.hidden) return;
+      fetch();
+    };
+
+    // When the tab becomes visible again, refetch immediately so the user
+    // sees fresh data without waiting for the next interval.
+    const onVisibilityChange = () => {
+      if (!document.hidden) fetch();
+    };
+
+    if (!document.hidden) fetch();
+    const id = setInterval(tick, NETWORK_STATUS_POLL_INTERVAL);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [setSyncStatus]);
 }
