@@ -33,14 +33,18 @@ export function derivePath(hdKey: HDKey, path: string): HDKey {
   return hdKey.derive(path);
 }
 
-/** Standard receive path: m/0'/coinType'/0'/0/addressIndex */
+// BIP44 receive path: m/44'/coinType'/0'/0/addressIndex. The purpose level is 44'
+// to match the PHICOIN Qt/core wallet's HD scheme (src/wallet/wallet.cpp DeriveNewChildKey,
+// hdKeypath "m/44'/<ExtCoinType>'/<account>'/<change>/<index>"), so a mnemonic is portable
+// between Qt and this wallet. (It previously used 0', which derived different addresses and
+// broke seed migration from Qt.)
 export function receivePath(coinType: number, index: number): string {
-  return `m/0'/${coinType}'/0'/0/${index}`;
+  return `m/44'/${coinType}'/0'/0/${index}`;
 }
 
-/** Standard change path: m/0'/coinType'/0'/1/addressIndex */
+/** BIP44 change path: m/44'/coinType'/0'/1/addressIndex (matches Qt internal chain). */
 export function changePath(coinType: number, index: number): string {
-  return `m/0'/${coinType}'/0'/1/${index}`;
+  return `m/44'/${coinType}'/0'/1/${index}`;
 }
 
 /** Get coin type for network */

@@ -18,7 +18,7 @@ describe('Chain Scanner', () => {
     mockDeps = {
       derive: (_hdKey, _network, index) => ({
         address: `PtestAddress${index}`,
-        path: `m/0'/0'/0'/0/${index}`,
+        path: `m/44'/0'/0'/0/${index}`,
         index,
       }),
       getAddressTxIds: async () => [],
@@ -56,7 +56,7 @@ describe('Chain Scanner', () => {
         lastNetwork = network;
         return {
           address: `PtestAddress${index}`,
-          path: `m/0'/0'/0'/0/${index}`,
+          path: `m/44'/0'/0'/0/${index}`,
           index,
         };
       };

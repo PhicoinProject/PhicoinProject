@@ -77,7 +77,7 @@ export interface ScanDeps {
 /**
  * Scan the blockchain for funds on sequentially derived receive addresses.
  *
- * Derives addresses starting from index 0 (m/0'/coinType'/0'/0/0), batches
+ * Derives addresses starting from index 0 (m/44'/coinType'/0'/0/0), batches
  * RPC calls to check for transaction history, and continues until the gap
  * limit of consecutive unused addresses is reached.
  *

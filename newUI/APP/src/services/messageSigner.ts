@@ -147,7 +147,7 @@ export async function signMessageWithWallet(
   const hdKey = useWalletHDKeyStore.getState().hdKey;
   if (!hdKey) throw new Error('Wallet not unlocked');
 
-  // Canonical PHICOIN path: m/0'/coinType'/0'/0/0 (coinType=0 for mainnet).
+  // Canonical PHICOIN path: m/44'/coinType'/0'/0/0 (coinType=0 for mainnet).
   // Must match receive-address derivation so the signing address is a real
   // wallet receive address (avoids "address mismatch" on verify).
   const path = derivationPath ?? receivePath(getCoinType('mainnet'), 0);

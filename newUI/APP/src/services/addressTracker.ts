@@ -211,7 +211,7 @@ export class AddressTracker {
   }
 
   private receivePath(index: number): string {
-    // Canonical PHICOIN receive path m/0'/coinType'/0'/0/index (coinType=0 mainnet).
+    // Canonical PHICOIN receive path m/44'/coinType'/0'/0/index (coinType=0 mainnet).
     return canonicalReceivePath(getCoinType(this.getNetwork()), index);
   }
 

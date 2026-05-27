@@ -60,7 +60,7 @@ export type NetworkType = 'mainnet' | 'testnet';
  * PHICOIN chainparams.cpp.
  */
 export interface NetworkParams {
-  /** BIP44 coin type used in derivation path m/0'/coinType'/0'/change/index */
+  /** BIP44 coin type used in derivation path m/44'/coinType'/0'/change/index */
   coinType: number;
   /** Base58Check version byte for P2PKH ('P' addresses) */
   pubKeyHashVersion: number;

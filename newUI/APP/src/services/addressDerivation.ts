@@ -134,7 +134,7 @@ export function scriptPubKeyFromPubKeyP2SHP2WPKH(pubKey: Uint8Array): Uint8Array
   return getP2SHScriptPubKey(witnessScript);
 }
 
-/** Derive a receive address at m/0'/coinType'/0'/0/index */
+/** Derive a receive address at m/44'/coinType'/0'/0/index */
 export function deriveReceiveAddress(
   hdKey: HDKey,
   network: 'mainnet' | 'testnet',
@@ -154,7 +154,7 @@ export function deriveReceiveAddress(
   };
 }
 
-/** Derive a change address at m/0'/coinType'/0'/1/index */
+/** Derive a change address at m/44'/coinType'/0'/1/index */
 export function deriveChangeAddress(
   hdKey: HDKey,
   network: 'mainnet' | 'testnet',

@@ -85,7 +85,7 @@ describe('Wallet create / import / unlock (v2)', () => {
       expect(hdKey).not.toBeNull();
 
       // Address derived from the unlocked store key must equal the address
-      // derived directly from mnemonic+seed (same canonical m/0'/0'/0'/0/0 path).
+      // derived directly from mnemonic+seed (same canonical m/44'/0'/0'/0/0 path).
       const fromStore = deriveReceiveAddress(hdKey!, 'mainnet', 0).address;
       const expectedSeed = await deriveMasterSeed(TEST_MNEMONIC, USER_SEED);
       const expectedKey = seedToHDKey(expectedSeed);
@@ -95,7 +95,7 @@ describe('Wallet create / import / unlock (v2)', () => {
       // PHICOIN mainnet P2PKH addresses start with 'P'.
       expect(fromStore.startsWith('P')).toBe(true);
       // Path used must be the canonical one.
-      expect(deriveReceiveAddress(hdKey!, 'mainnet', 0).path).toBe("m/0'/0'/0'/0/0");
+      expect(deriveReceiveAddress(hdKey!, 'mainnet', 0).path).toBe("m/44'/0'/0'/0/0");
     });
 
     it('unlocks consistently across repeated lock/unlock cycles (same address)', async () => {

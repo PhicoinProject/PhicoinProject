@@ -33,19 +33,19 @@ describe('BIP32 HD Wallet', () => {
       expect(derived.privateKey).toBeDefined();
     });
 
-    it("should follow PHICOIN path format m/0'/coinType'/0'/change/index", () => {
+    it("should follow PHICOIN path format m/44'/coinType'/0'/change/index", () => {
       const seed = new Uint8Array(64).fill(1);
       const hdKey = seedToHDKey(seed);
-      const receive = derivePath(hdKey, "m/0'/0'/0'/0/0");
-      const change = derivePath(hdKey, "m/0'/0'/0'/1/0");
+      const receive = derivePath(hdKey, "m/44'/0'/0'/0/0");
+      const change = derivePath(hdKey, "m/44'/0'/0'/1/0");
       expect(receive.publicKey).not.toEqual(change.publicKey);
     });
 
     it('should produce different keys for different indices', () => {
       const seed = new Uint8Array(64).fill(1);
       const hdKey = seedToHDKey(seed);
-      const addr0 = derivePath(hdKey, "m/0'/0'/0'/0/0");
-      const addr1 = derivePath(hdKey, "m/0'/0'/0'/0/1");
+      const addr0 = derivePath(hdKey, "m/44'/0'/0'/0/0");
+      const addr1 = derivePath(hdKey, "m/44'/0'/0'/0/1");
       expect(addr0.publicKey).not.toEqual(addr1.publicKey);
     });
   });
