@@ -12,6 +12,12 @@ import type { ChainScanResult } from './chainScanner';
 // Number of addresses to pre-generate for the pool
 const ADDRESS_POOL_SIZE = 10;
 
+// Max address index scanned per chain for BOTH gap-limit discovery and the
+// signing-path scriptPubKey->path lookup. These MUST share one cap: if discovery
+// builds a pool deeper than the signing scan, UTXOs on those addresses can't be
+// signed (path lookup returns null -> input silently dropped -> insufficient funds).
+const DISCOVERY_HARD_CAP = 1000;
+
 /**
  * High-level wallet service for the pure frontend wallet.
  * All queries are address-based via the address index; no wallet.dat is required.
@@ -113,7 +119,7 @@ export class WalletService {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return 0;
     const BATCH = 20; // also the gap limit: a full unused batch ends the scan
-    const HARD_CAP = 1000;
+    const HARD_CAP = DISCOVERY_HARD_CAP;
     let lastUsed = -1;
     for (let start = 0; start < HARD_CAP; start += BATCH) {
       const indices = Array.from({ length: BATCH }, (_, k) => start + k);
@@ -574,15 +580,22 @@ export class WalletService {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return;
 
-    // Check if current change address has zero balance
     try {
       const changeAddr = deriveChangeAddress(hdKey, 'mainnet', currentChangeIndex);
+      // Only advance once the current change address has actually been USED and then
+      // fully spent. A brand-new (never-used) change address, or one holding an
+      // as-yet-unconfirmed change output (not in the tx index), both report balance 0 —
+      // advancing on balance alone burned through a fresh change address on every send.
+      // Require txids>0 so we reuse the address (Electrum model) until it is spent.
+      const txids = await this.getAddressTxidsFor(changeAddr.address);
+      if (txids.length === 0) return; // unused → keep reusing this change address
+
       const result = await rpc.getAddressBalance(changeAddr.address);
       const data = result as AddressBalanceResult;
       const balanceVal = 'balance' in data ? data.balance : data.result.balance;
       const balance = Number(balanceVal ?? 0);
 
-      // If balance is zero, the change address is fully spent — advance
+      // Used and now empty → fully spent → advance to the next change address.
       if (balance === 0 && currentChangeIndex < 100000) {
         const nextIndex = currentChangeIndex + 1;
         localStorage.setItem('phi:changeIndex', String(nextIndex));
@@ -726,7 +739,7 @@ export class WalletService {
     const coinType = 0; // MAINNET_COIN_TYPE from HDWallet.ts
 
     // Scan receive chain first: m/44'/0'/0'/0/{i}
-    for (let i = 0; i < 256; i++) {
+    for (let i = 0; i < DISCOVERY_HARD_CAP; i++) {
       const path = `m/44'/${coinType}'/0'/0/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);
@@ -735,7 +748,7 @@ export class WalletService {
     }
 
     // Scan change chain: m/44'/0'/0'/1/{i}
-    for (let i = 0; i < 256; i++) {
+    for (let i = 0; i < DISCOVERY_HARD_CAP; i++) {
       const path = `m/44'/${coinType}'/0'/1/${i}`;
       try {
         const spk = getScriptPubKeyFromPublicKey(hdKey, path);

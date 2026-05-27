@@ -114,8 +114,11 @@ describe('Chain Scanner', () => {
         batchSize: 5,
       }, mockDeps);
 
-      expect(result.totalScanned).toBe(15);
-      expect(result.lastUsedIndex).toBeGreaterThanOrEqual(0);
+      // Used at index 0, then unused. gapLimit=10 → stop after exactly 10 consecutive
+      // unused (indices 1..10), i.e. 11 addresses scanned. (Previously the scan over-ran
+      // to the batch boundary at 15; the gap break is now address-granular.)
+      expect(result.totalScanned).toBe(11);
+      expect(result.lastUsedIndex).toBe(0);
     });
   });
 

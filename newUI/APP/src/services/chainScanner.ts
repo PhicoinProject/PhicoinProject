@@ -147,6 +147,9 @@ export async function scanChain(
         lastUsedIndex = derivedAddr.index;
       } else {
         consecutiveUnused++;
+        // Stop as soon as gapLimit consecutive unused addresses are seen (address-granular),
+        // instead of over-scanning to the batch boundary. The outer while then exits.
+        if (consecutiveUnused >= gapLimit) break;
       }
     }
 
