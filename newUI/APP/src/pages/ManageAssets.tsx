@@ -8,6 +8,7 @@ import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
 import { Spinner } from '@/components/common/Spinner';
 import { Badge } from '@/components/common/Badge';
+import { useToast } from '@/components/common/Toast';
 import type { Asset } from '@/types';
 
 /**
@@ -78,6 +79,7 @@ const initialAdminForm: AdminForm = {
 /** Manage Assets page — reissue supply, admin operations (qualifiers, freezes, verifier strings) */
 export const ManageAssets: React.FC = () => {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [activeSection, setActiveSection] = useState<'my-assets' | 'admin'>('my-assets');
   const [modalMode, setModalMode] = useState<ModalMode>('none');
   const [processing, setProcessing] = useState(false);
@@ -137,9 +139,12 @@ export const ManageAssets: React.FC = () => {
         ipfsHash: reissueForm.isIPFS ? reissueForm.ipfsHash : undefined,
       });
       setSuccessTxid(txid);
+      showToast('Asset reissued successfully', 'success');
       await refreshAssets();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reissue asset');
+      const msg = err instanceof Error ? err.message : 'Failed to reissue asset';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setProcessing(false);
     }
@@ -240,9 +245,12 @@ export const ManageAssets: React.FC = () => {
       }
 
       setSuccessTxid(txid);
+      showToast('Operation completed successfully', 'success');
       await refreshAssets();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Operation failed');
+      const msg = err instanceof Error ? err.message : 'Operation failed';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setProcessing(false);
     }
@@ -651,13 +659,7 @@ export const ManageAssets: React.FC = () => {
                     !globalConfirmed
                   }
                 >
-                  {processing ? (
-                    <Spinner size="sm" />
-                  ) : modalMode === 'reissue' ? (
-                    'Reissue'
-                  ) : (
-                    'Confirm'
-                  )}
+                  {modalMode === 'reissue' ? 'Reissue' : 'Confirm'}
                 </Button>
               </div>
             </>

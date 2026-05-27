@@ -10,6 +10,7 @@ import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
 import { Spinner } from '@/components/common/Spinner';
 import { Badge } from '@/components/common/Badge';
+import { useToast } from '@/components/common/Toast';
 import { ASSET_STATUS_ISSUED, ASSET_STATUS_REVOKED } from '@/utils/constants';
 
 function getStatusBadgeVariant(status: string): 'success' | 'error' | 'default' {
@@ -27,6 +28,7 @@ interface SendAssetForm {
 /** Asset browser page with send/receive for each asset */
 export const Assets: React.FC = () => {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [search, setSearch] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
 
@@ -64,7 +66,8 @@ export const Assets: React.FC = () => {
     return a.assetLabel.toLowerCase().includes(s) || a.assetId.toLowerCase().includes(s);
   });
 
-  const handleIssued = (_txid: string) => {
+  const handleIssued = (txid: string) => {
+    showToast(`Asset issued: ${txid.slice(0, 16)}…`, 'success');
     queryClient.invalidateQueries({ queryKey: ['myAssets'] });
   };
 
@@ -98,17 +101,20 @@ export const Assets: React.FC = () => {
     setSending(true);
     setSendError(null);
     try {
-      await assetService.transferAsset(
+      const txid = await assetService.transferAsset(
         sendAsset.assetId,
         qty,
         sendForm.toAddress.trim(),
         sendForm.message || undefined
       );
+      showToast(`Sent ${qty} ${sendAsset.assetLabel} (${txid.slice(0, 12)}…)`, 'success');
       setSendOpen(false);
       setSendAsset(null);
       await queryClient.invalidateQueries({ queryKey: ['myAssets'] });
     } catch (err) {
-      setSendError(err instanceof Error ? err.message : 'Failed to send asset');
+      const msg = err instanceof Error ? err.message : 'Failed to send asset';
+      setSendError(msg);
+      showToast(msg, 'error');
     } finally {
       setSending(false);
     }
@@ -337,6 +343,7 @@ export const Assets: React.FC = () => {
                   variant="secondary"
                   onClick={() => {
                     navigator.clipboard.writeText(receiveAddr);
+                    showToast('Address copied to clipboard', 'success');
                   }}
                 >
                   Copy Address

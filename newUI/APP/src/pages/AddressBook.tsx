@@ -4,6 +4,7 @@ import { walletService } from '@/services/wallet';
 import { useAddressBookStore } from '@/stores/addressBookStore';
 import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
+import { useToast } from '@/components/common/Toast';
 import type { Address } from '@/types';
 // Proper Base58Check validation (decodes + verifies checksum + version byte) — prevents
 // saving/sending to a typo'd address that merely "looks" valid.
@@ -12,6 +13,7 @@ import { isValidPHICoinAddress } from '@/services/addressDerivation';
 /** Address Book page — manage saved addresses with labels (Qt parity: addressbookpage) */
 export const AddressBook: React.FC = () => {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'sending' | 'receiving'>('receiving');
 
   // Modal state: null = closed, 'add' = adding new, entry id = editing existing
@@ -23,9 +25,13 @@ export const AddressBook: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Address book store (localStorage backed)
-  const { addEntry, updateLabel, deleteEntry, getEntries, findByAddress, setLabel } =
-    useAddressBookStore();
-  const sendingEntries = useMemo(() => getEntries('sending'), [getEntries]);
+  const { addEntry, updateLabel, deleteEntry, findByAddress, setLabel } = useAddressBookStore();
+  // Subscribe to the entries slice itself (a stable ref that changes only when the
+  // store mutates) so the sending list re-renders on add/edit/delete. The previous
+  // code memoized getEntries('sending') on the stable getEntries method ref, which
+  // never changed — so the list stayed frozen at its first-render contents.
+  const entries = useAddressBookStore((s) => s.entries);
+  const sendingEntries = useMemo(() => entries.filter((e) => e.type === 'sending'), [entries]);
 
   // Receiving addresses come from the wallet's derived pool. Use the ASYNC pool, which
   // discovers actually-used addresses via RPC; the sync pool is a fixed narrow window that
@@ -73,6 +79,7 @@ export const AddressBook: React.FC = () => {
     // Labeling one of the wallet's own receiving addresses (address is fixed, no validation).
     if (modalMode === 'edit-receiving') {
       setLabel(trimmedAddress, trimmedLabel, 'receiving');
+      showToast('Label saved', 'success');
       closeModal();
       return;
     }
@@ -95,18 +102,24 @@ export const AddressBook: React.FC = () => {
         return;
       }
       addEntry({ address: trimmedAddress, label: trimmedLabel, type: 'sending' });
+      showToast('Address added', 'success');
     } else if (typeof modalMode === 'string') {
       updateLabel(modalMode, trimmedLabel);
+      showToast('Address updated', 'success');
     }
     closeModal();
   };
 
   const handleGenerateReceiveAddress = async () => {
+    setError(null);
     try {
-      await walletService.createAddress();
+      const addr = await walletService.createAddress();
+      showToast(`New address generated: ${addr.slice(0, 12)}…`, 'success');
       queryClient.invalidateQueries({ queryKey: ['addressBook'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate address');
+      const msg = err instanceof Error ? err.message : 'Failed to generate address';
+      setError(msg);
+      showToast(msg, 'error');
     }
   };
 
@@ -127,10 +140,12 @@ export const AddressBook: React.FC = () => {
 
   const handleDelete = (id: string) => {
     deleteEntry(id);
+    showToast('Address removed from address book', 'success');
   };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
+    showToast('Address copied to clipboard', 'success');
   };
 
   const handleExportCSV = () => {
@@ -218,7 +233,7 @@ export const AddressBook: React.FC = () => {
 
       {/* Receiving addresses (RPC backed) */}
       {activeTab === 'receiving' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-sm">
           {loadingReceiving ? (
             <p className="p-6 text-sm text-gray-500 dark:text-dark-mutedText">
               Loading addresses...
@@ -291,7 +306,7 @@ export const AddressBook: React.FC = () => {
 
       {/* Sending addresses (localStorage backed) */}
       {activeTab === 'sending' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="border-b bg-gray-50 dark:bg-dark-elevated text-gray-500 dark:text-dark-mutedText">
               <tr>

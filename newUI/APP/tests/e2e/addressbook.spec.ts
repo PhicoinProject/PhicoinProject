@@ -38,7 +38,10 @@ const VALID_TEST_ADDRESS_2 = 'Pum3xBGkPWK9pcpvanoMyfGTdWYuzMWmsr';
  * validation/duplicate/empty-label tests still run — they read live store
  * state (findByAddress) or modal error text, which are unaffected.
  */
-const SENDING_LIST_NOT_REACTIVE = true;
+// FIXED: AddressBook now derives the sending list from a Zustand `entries` selector
+// (useAddressBookStore((s) => s.entries) + useMemo), so it re-renders on add/edit/delete.
+// Flag kept (false) so the add/delete-in-place assertions run and guard against regression.
+const SENDING_LIST_NOT_REACTIVE = false;
 
 // Modal selector — Modal component uses .fixed.inset-0.z-50 (no role="dialog")
 const MODAL_SEL = '.fixed.inset-0.z-50';

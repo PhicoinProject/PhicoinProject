@@ -119,13 +119,19 @@ test.describe('Create Asset — Type-specific Fields', () => {
   });
 
   test('RESTRICTED type shows verifier string field', async ({ page }) => {
-    await page.locator('button:has-text("RESTRICTED"), h3:has-text("RESTRICTED")').first().click();
+    // Exact-match the RESTRICTED card's heading: the QUALIFIER card's description
+    // ("Qualifier for restricted assets") also contains "restricted", so a loose
+    // has-text("RESTRICTED") + .first() would click the QUALIFIER card instead.
+    await page.locator('button:has(h3:text-is("RESTRICTED"))').first().click();
     await expect(page.locator('#create-asset-label')).toBeVisible({ timeout: 8000 });
     await expect(page.locator('#create-asset-verifier')).toBeVisible({ timeout: 10000 });
   });
 
   test('RESTRICTED type validates empty verifier string on issue', async ({ page }) => {
-    await page.locator('button:has-text("RESTRICTED"), h3:has-text("RESTRICTED")').first().click();
+    // Exact-match the RESTRICTED card's heading: the QUALIFIER card's description
+    // ("Qualifier for restricted assets") also contains "restricted", so a loose
+    // has-text("RESTRICTED") + .first() would click the QUALIFIER card instead.
+    await page.locator('button:has(h3:text-is("RESTRICTED"))').first().click();
     await expect(page.locator('#create-asset-label')).toBeVisible({ timeout: 8000 });
     await page.fill('#create-asset-label', 'RESTRICTTEST');
     await page.fill('#create-asset-quantity', '1000');

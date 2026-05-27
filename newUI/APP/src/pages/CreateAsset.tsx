@@ -4,7 +4,7 @@ import { assetService } from '@/services/assets';
 import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { Modal } from '@/components/common/Modal';
-import { Spinner } from '@/components/common/Spinner';
+import { useToast } from '@/components/common/Toast';
 import { AssetType } from '@/services/assetSerialization';
 import { useMyAssets } from '@/hooks/useMyAssets';
 
@@ -165,6 +165,7 @@ function validateForm(form: IssueForm): string | null {
 /** Create Asset page — issue all asset types (ROOT/SUB/UNIQUE/QUALIFIER/RESTRICTED) */
 export const CreateAsset: React.FC = () => {
   const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [form, setForm] = useState<IssueForm>(initialForm);
   const [issuing, setIssuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -229,9 +230,12 @@ export const CreateAsset: React.FC = () => {
       });
 
       setTxid(newTxid);
+      showToast(`${form.assetType} asset issued: ${fullName}`, 'success');
       await queryClient.invalidateQueries({ queryKey: ['myAssets'] });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to issue asset');
+      const msg = err instanceof Error ? err.message : 'Failed to issue asset';
+      setError(msg);
+      showToast(msg, 'error');
     } finally {
       setIssuing(false);
     }
@@ -445,7 +449,7 @@ export const CreateAsset: React.FC = () => {
                 Reset
               </Button>
               <Button variant="primary" onClick={handleSubmit} loading={issuing}>
-                {issuing ? <Spinner size="sm" /> : `Issue ${form.assetType} Asset`}
+                {`Issue ${form.assetType} Asset`}
               </Button>
             </div>
           </div>

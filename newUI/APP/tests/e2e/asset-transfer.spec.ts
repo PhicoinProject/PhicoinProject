@@ -29,12 +29,11 @@ test.describe('Manage Assets', () => {
   });
 
   test('shows My Assets and Admin Operations section tabs', async ({ page }) => {
-    // Tabs are "My Assets" and "Admin Operations"
-    const myAssetsBtn = page.locator('button:has-text("My Assets")').first();
-    const adminBtn = page.locator('button:has-text("Admin Operations")').first();
-    const hasMyAssets = await myAssetsBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    const hasAdmin = await adminBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(hasMyAssets || hasAdmin).toBe(true);
+    // toBeVisible polls up to the timeout; the prior isVisible() returns immediately and
+    // raced the SPA route mount (the beforeEach only waits for `body`, which is instant).
+    await expect(
+      page.locator('button:has-text("My Assets"), button:has-text("Admin Operations")').first()
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test('My Assets section shows owned assets or empty state', async ({ page }) => {

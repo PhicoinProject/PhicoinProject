@@ -3,6 +3,7 @@ import { rpc, RpcError, BLOCKED_METHODS } from '@/services/rpc';
 import { Badge } from '@/components/common/Badge';
 import { Button } from '@/components/common/Button';
 import { Spinner } from '@/components/common/Spinner';
+import { useToast } from '@/components/common/Toast';
 
 /** Safe accessor for `Record<string, unknown>` network info — avoids `as any`. */
 function netInfo(networkInfo: Record<string, unknown> | null, key: string, fallback = '-'): string {
@@ -14,6 +15,7 @@ function netInfo(networkInfo: Record<string, unknown> | null, key: string, fallb
 
 /** RPC Console page -- interactive RPC command interface (Qt parity: rpcconsole) */
 export const RPCConsole: React.FC = () => {
+  const { showToast } = useToast();
   const [input, setInput] = useState('');
   const [output, setOutput] = useState<string[]>([]);
   const [history, setHistory] = useState<string[]>([]);
@@ -190,13 +192,15 @@ export const RPCConsole: React.FC = () => {
 
   const handleBan = async () => {
     if (!banIp.trim()) return;
+    const target = banIp.trim();
     setBanActionLoading(true);
     try {
-      await rpc.raw('setban', [banIp.trim(), 'ban', banCooldown]);
+      await rpc.raw('setban', [target, 'ban', banCooldown]);
       setBanIp('');
+      showToast(`Banned ${target}`, 'success');
       await fetchBanList();
-    } catch {
-      // RPC error handled silently
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Failed to ban ${target}`, 'error');
     } finally {
       setBanActionLoading(false);
     }
@@ -205,9 +209,10 @@ export const RPCConsole: React.FC = () => {
   const handleUnban = async (address: string) => {
     try {
       await rpc.raw('setban', [address, 'unban']);
+      showToast(`Unbanned ${address}`, 'success');
       await fetchBanList();
-    } catch {
-      // RPC error handled silently
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : `Failed to unban ${address}`, 'error');
     }
   };
 

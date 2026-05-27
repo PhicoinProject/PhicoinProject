@@ -3,7 +3,6 @@ import { assetService } from '@/services/assets';
 import { Input } from '@/components/common/Input';
 import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
-import { Spinner } from '@/components/common/Spinner';
 
 interface AssetIssuerProps {
   onIssued?: (txid: string) => void;
@@ -184,7 +183,7 @@ export const AssetIssuer: React.FC<AssetIssuerProps> = ({ onIssued }) => {
               Cancel
             </Button>
             <Button variant="primary" onClick={handleSubmit} loading={issuing}>
-              {issuing ? <Spinner size="sm" /> : 'Issue Asset'}
+              Issue Asset
             </Button>
           </div>
         </div>

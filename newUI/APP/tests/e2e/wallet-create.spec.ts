@@ -21,7 +21,10 @@ test.use({ storageState: { cookies: [], origins: [] } });
  * clearing in the unmount cleanup). Tests that only use the backup checkbox /
  * Next button are unaffected and still run.
  */
-const MNEMONIC_EMPTY_UNDER_STRICTMODE = true;
+// FIXED: CreateWallet no longer calls setMnemonic('') in its unmount cleanup, so the
+// StrictMode mount→unmount→remount probe no longer wipes the phrase. Flag kept (false)
+// so the rendered-24-words assertions run and guard against regression.
+const MNEMONIC_EMPTY_UNDER_STRICTMODE = false;
 
 test.describe('Wallet Creation Flow', () => {
   test('should show PHICOIN Wallet title', async ({ page }) => {

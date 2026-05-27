@@ -126,7 +126,7 @@ export const BackupWallet: React.FC = () => {
       )}
 
       <p className="mb-4 text-sm text-gray-600 dark:text-dark-mutedText">
-        Download your wallet&apos; encrypted data. You can import this file on any device via{' '}
+        Download your wallet&apos;s encrypted data. You can import this file on any device via{' '}
         <button
           type="button"
           onClick={() => navigate('/import')}

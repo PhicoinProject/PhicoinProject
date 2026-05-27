@@ -79,10 +79,11 @@ test.describe('Mining', () => {
   });
 
   test('hash rate is formatted with units (H/s, KH/s, MH/s, etc.)', async ({ page }) => {
-    await page.waitForTimeout(6000);
-    const hashRateEl = page.locator('text=/ H\\/s| KH\\/s| MH\\/s| GH\\/s| TH\\/s/').first();
-    const hasFormatted = await hashRateEl.isVisible({ timeout: 5000 }).catch(() => false);
-    const hasNA = await page.locator('text=N/A').isVisible({ timeout: 3000 }).catch(() => false);
-    expect(hasFormatted || hasNA).toBe(true);
+    // Mining.formatHashRate renders "<n> <UNIT>" (e.g. "1.50 MH/s") or "N/A" for 0.
+    // toBeVisible polls up to the timeout; the async getnetworkhashps query can outlast a
+    // fixed waitForTimeout, and isVisible() returns immediately without waiting.
+    const formatted = page.locator('text=/ (H|KH|MH|GH|TH|PH|EH)\\/s/');
+    const na = page.locator('text=N/A');
+    await expect(formatted.or(na).first()).toBeVisible({ timeout: 20000 });
   });
 });

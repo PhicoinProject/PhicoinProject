@@ -30,12 +30,12 @@ test.describe('Assets Display', () => {
   });
 
   test('shows asset table or empty state', async ({ page }) => {
-    // Wait for RPC data
-    await page.waitForTimeout(5000);
-    const hasTable = await page.locator('table').isVisible().catch(() => false);
-    const hasEmptyMsg = await page.locator('text=/No assets|no assets/i').isVisible().catch(() => false);
-    const hasAssetRow = (await page.locator('[class*="asset"], tr').count()) > 0;
-    expect(hasTable || hasEmptyMsg || hasAssetRow).toBe(true);
+    // The page shows a <Spinner/> while useMyAssets loads, then the AssetTable (<table>) or
+    // "No assets found." toBeVisible polls up to the timeout; the prior waitForTimeout(5000)
+    // + isVisible() raced the (sometimes slow) wallet asset scan and failed both attempts.
+    await expect(
+      page.locator('table').or(page.getByText('No assets found.')).first()
+    ).toBeVisible({ timeout: 25000 });
   });
 
   test('asset rows are visible (wallet may hold assets)', async ({ page }) => {

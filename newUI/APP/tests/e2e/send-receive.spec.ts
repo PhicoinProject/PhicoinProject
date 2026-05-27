@@ -232,9 +232,15 @@ test.describe('Send', () => {
   });
 
   test('coin control / From address selector is present', async ({ page }) => {
-    const fromSelect = page.locator('select[id*="from"], button:has-text("Coin Control"), text=/From|UTXO/i').first();
-    const visible = await fromSelect.isVisible({ timeout: 5000 }).catch(() => false);
-    expect(visible).toBe(true);
+    // Coin control on the Send page surfaces as: a "View All UTXOs" button in the default
+    // all-address state, a From-address <select> when >1 funded address exists, or a
+    // "Select Coins" button once a from-address is picked. These must be combined with
+    // .or() — mixing the CSS and `text=` engines in one comma-string is a parse error,
+    // which the original test hid behind .catch(() => false) so it never actually passed.
+    const fromSelect = page.locator('select#fromAddress');
+    const coinBtn = page.getByRole('button', { name: /View All UTXOs|Select Coins/i });
+    const utxoText = page.getByText(/From Address|UTXOs/i);
+    await expect(fromSelect.or(coinBtn).or(utxoText).first()).toBeVisible({ timeout: 15000 });
   });
 
   test('Estimate Fee button fetches a rate', async ({ page }) => {

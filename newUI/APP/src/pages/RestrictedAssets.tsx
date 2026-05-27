@@ -53,7 +53,7 @@ export const RestrictedAssets: React.FC = () => {
 
       {/* My Restricted Assets */}
       {activeTab === 'my-restricted' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
             My Restricted Assets
           </h2>
@@ -107,7 +107,7 @@ export const RestrictedAssets: React.FC = () => {
 
       {/* Qualifiers */}
       {activeTab === 'qualifiers' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
             My Qualifiers
           </h2>
@@ -116,7 +116,9 @@ export const RestrictedAssets: React.FC = () => {
           </p>
           <div className="mt-4">
             <p className="text-sm text-gray-500 dark:text-dark-mutedText">
-              Qualifiers can only be issued via CLI for now.
+              Issue a new qualifier from the <span className="font-medium text-gray-700 dark:text-dark-secondary">Create Asset</span> page
+              (select the QUALIFIER type), then assign it to addresses under{' '}
+              <span className="font-medium text-gray-700 dark:text-dark-secondary">Manage Assets &rarr; Admin Operations</span>.
             </p>
           </div>
           {qualifiersLoading ? (
@@ -149,7 +151,7 @@ export const RestrictedAssets: React.FC = () => {
 
       {/* Tags */}
       {activeTab === 'tags' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
             Address Tags
           </h2>
@@ -192,7 +194,7 @@ export const RestrictedAssets: React.FC = () => {
 
       {/* Restrictions */}
       {activeTab === 'restrictions' && (
-        <div className="rounded-lg border bg-white dark:bg-dark-surface p-6 shadow-sm">
+        <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-800 dark:text-dark-secondary">
             Address Restrictions
           </h2>

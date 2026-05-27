@@ -36,11 +36,14 @@ export const CreateWallet: React.FC = () => {
 
   const strength = useMemo(() => calculateStrength(password), [password]);
 
-  // SECURITY (P2): on unmount, drop the in-memory phrase and defensively remove
-  // any legacy plaintext mnemonic that an older build may have persisted.
+  // SECURITY (P2): on unmount, defensively remove any legacy plaintext mnemonic an
+  // older build may have persisted to web storage. We deliberately do NOT call
+  // setMnemonic('') here: clearing state in an unmount cleanup is a no-op for a real
+  // unmount (React GCs the component state anyway), but under React 18 StrictMode's
+  // dev-only mount→unmount→remount probe the cleanup fires on the first mount and
+  // wipes the freshly generated phrase, leaving the recovery-phrase grid blank.
   useEffect(() => {
     return () => {
-      setMnemonic('');
       sessionStorage.removeItem('phi:createMnemonic');
     };
   }, []);
