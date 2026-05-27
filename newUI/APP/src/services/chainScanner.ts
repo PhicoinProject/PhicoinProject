@@ -10,7 +10,7 @@ const DEFAULT_GAP_LIMIT = 20;
 const BATCH_SIZE = 10;
 
 /** Maximum addresses to scan in one run to prevent runaway derivation. */
-const MAX_SCAN_LIMIT = 100;
+const MAX_SCAN_LIMIT = 1000;
 
 /** Result of a single address check during scanning. */
 interface AddressScanEntry {

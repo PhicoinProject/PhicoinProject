@@ -9,9 +9,15 @@ import { TRANSACTION_POLL_INTERVAL, DATA_STALE_TIME, DEFAULT_PAGE_SIZE } from '@
 export function useTransactions(filters?: TxHistoryFilters) {
   const count = filters?.count ?? DEFAULT_PAGE_SIZE;
 
-  const addrList = useMemo(() => {
-    return walletService.getDerivedAddressPool().map((a) => a.address);
-  }, []);
+  // Use the ASYNC pool (gap-limit RPC discovery), shared with useMyAssets via the
+  // ['derivedPoolAsync'] cache key. The old sync pool only covered indices 0-9, so
+  // transactions on addresses beyond that window never appeared in history (R2).
+  const { data: poolAddrs = [] } = useQuery({
+    queryKey: ['derivedPoolAsync'],
+    queryFn: () => walletService.getDerivedAddressPoolAsync(),
+    staleTime: 60_000,
+  });
+  const addrList = useMemo(() => poolAddrs.map((a) => a.address), [poolAddrs]);
 
   return useQuery({
     queryKey: ['transactions', addrList.join(','), JSON.stringify(filters)],

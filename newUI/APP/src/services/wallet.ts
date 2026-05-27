@@ -113,7 +113,7 @@ export class WalletService {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return 0;
     const BATCH = 20; // also the gap limit: a full unused batch ends the scan
-    const HARD_CAP = 200;
+    const HARD_CAP = 1000;
     let lastUsed = -1;
     for (let start = 0; start < HARD_CAP; start += BATCH) {
       const indices = Array.from({ length: BATCH }, (_, k) => start + k);
@@ -583,7 +583,7 @@ export class WalletService {
       const balance = Number(balanceVal ?? 0);
 
       // If balance is zero, the change address is fully spent — advance
-      if (balance === 0 && currentChangeIndex < 99) {
+      if (balance === 0 && currentChangeIndex < 100000) {
         const nextIndex = currentChangeIndex + 1;
         localStorage.setItem('phi:changeIndex', String(nextIndex));
       }
@@ -687,20 +687,10 @@ export class WalletService {
   }
 
   private async getUsedAddressCount(network: 'mainnet' | 'testnet'): Promise<number> {
-    const hdKey = useWalletHDKeyStore.getState().hdKey;
-    if (!hdKey) return 0;
-
-    let usedCount = 0;
-    for (let i = 0; i < ADDRESS_POOL_SIZE; i++) {
-      const addr = deriveReceiveAddress(hdKey, network, i);
-      const txids = await this.getAddressTxidsFor(addr.address);
-      if (txids.length > 0) {
-        usedCount = i + 1;
-      } else {
-        break;
-      }
-    }
-    return usedCount;
+    // Proper gap-limit scan of the receive chain (reuses getUsedCountForChain). The old
+    // loop stopped at the FIRST unused index within the first 10 addresses, so a gap before
+    // a used address made createAddress hand back an already-used address (reuse / R9).
+    return this.getUsedCountForChain(network, false);
   }
 
   /**
