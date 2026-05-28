@@ -23,6 +23,8 @@
  *   OP_PHI_ASSET (0xc0) << pushdata_len << [magic][serialized] << OP_DROP (0x75)
  */
 
+import { base58 } from '@scure/base';
+
 const OP_PHI_ASSET = 0xc0;
 const OP_DROP = 0x75;
 const OP_PUSHDATA1 = 0x4c;
@@ -210,23 +212,33 @@ export function serializeCNewAsset(params: {
  * 0x12 0x20 [32 bytes] for IPFS hash, 0x54 [32 bytes] for TXID
  */
 function serializeAssetHash(hashStr: string): Uint8Array {
-  if (hashStr.length === 34) {
-    // IPFS SHA2-256: 0x12, 0x20, 32 bytes
-    const hashBytes = new TextEncoder().encode(hashStr);
-    const result = new Uint8Array(2 + hashBytes.length);
-    result[0] = 0x12;
-    result[1] = 0x20;
-    result.set(hashBytes, 2);
-    return result;
-  } else if (hashStr.length === 32) {
-    // TXID notifier: 0x54, 32 bytes
-    const hashBytes = new TextEncoder().encode(hashStr);
-    const result = new Uint8Array(1 + hashBytes.length);
+  const s = hashStr.trim();
+
+  // IPFS CIDv0: a 46-char Base58 string ("Qm…"). The daemon stores DecodeBase58(CID) and
+  // requires the result to be exactly 34 raw bytes (0x12 sha2-256, 0x20 length=32, then the
+  // 32-byte digest), so we emit those decoded bytes VERBATIM. The previous code ASCII-encoded
+  // the string (wrong content AND length), so every IPFS issuance/reissue was rejected.
+  if (s.length === 46) {
+    const raw = base58.decode(s);
+    if (raw.length !== 34) {
+      throw new Error(`Invalid IPFS hash: CID decoded to ${raw.length} bytes, expected 34`);
+    }
+    return raw;
+  }
+
+  // TXID notifier hash: a 64-char hex string -> 0x54 followed by the 32 raw bytes.
+  if (s.length === 64 && /^[0-9a-fA-F]{64}$/.test(s)) {
+    const raw = hexToArray(s);
+    const result = new Uint8Array(1 + raw.length);
     result[0] = 0x54;
-    result.set(hashBytes, 1);
+    result.set(raw, 1);
     return result;
   }
-  return writeVarString(hashStr);
+
+  // Fail fast in the UI rather than emit an invalid on-chain hash.
+  throw new Error(
+    `Invalid asset hash "${s}": expected a 46-char IPFS CIDv0 (Qm…) or a 64-char hex txid`
+  );
 }
 
 // ---- CAssetTransfer serialization (asset transfer) ----

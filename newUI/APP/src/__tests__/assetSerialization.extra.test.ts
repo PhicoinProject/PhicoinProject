@@ -12,6 +12,7 @@
  * match the actual function output. These are byte-exact reference vectors.
  */
 import { describe, it, expect } from '@jest/globals';
+import { base58 } from '@scure/base';
 import {
   serializeCNullAssetTxData,
   serializeCReissueAsset,
@@ -129,15 +130,18 @@ describe('Asset Serialization (extra)', () => {
       expect(result[result.length - 1]).toBe(1);
     });
 
-    it('serializes a 34-char IPFS hash as 0x12 0x20 + the 32 raw bytes', () => {
-      const ipfs = 'Qm' + 'a'.repeat(32); // 34 chars
-      expect(ipfs.length).toBe(34);
-      const result = serializeCReissueAsset({ name: 'TEST', amount: 1, units: 0, reissuable: 0, ipfsHash: ipfs });
-      // base = name(5) + amount(8) + units(1) + reissuable(1) = 15; hash = 2 + 34 = 36
-      expect(result.length).toBe(15 + 36);
+    it('serializes an IPFS CIDv0 as the 34 Base58-decoded bytes (0x12 0x20 + 32)', () => {
+      // The daemon stores DecodeBase58(CID) = 34 raw bytes and requires size()==34, so the
+      // serialized hash must be those decoded bytes verbatim (NOT the ASCII of the CID).
+      const cid = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+      const expected = base58.decode(cid);
+      expect(expected.length).toBe(34);
+      const result = serializeCReissueAsset({ name: 'TEST', amount: 1, units: 0, reissuable: 0, ipfsHash: cid });
+      // base = name(5) + amount(8) + units(1) + reissuable(1) = 15; hash = 34 verbatim
+      expect(result.length).toBe(15 + 34);
       const hashPart = result.slice(15);
       expect(hex(hashPart.slice(0, 2))).toBe('1220'); // 0x12 0x20 multihash prefix
-      expect(hashPart.length).toBe(36);
+      expect(Array.from(hashPart)).toEqual(Array.from(expected));
     });
   });
 

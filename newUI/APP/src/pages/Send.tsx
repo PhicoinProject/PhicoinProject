@@ -151,6 +151,16 @@ function parsePhicoinUri(
   return result;
 }
 
+// Validate a recipient address. On mainnet use the full Base58Check + version-byte check
+// (walletService.isValidAddress) so a typo'd/corrupted address is caught client-side; the
+// old prefix-only check let any "P…"/"H…" string through. (No testnet Base58Check validator
+// exists yet, so testnet falls back to the prefix check.) Module-scope so it isn't a hook dep.
+function isAddressValid(addr: string, network: 'mainnet' | 'testnet'): boolean {
+  return network === 'mainnet'
+    ? walletService.isValidAddress(addr.trim())
+    : isValidPhicoinAddress(addr.trim(), network);
+}
+
 /** Send coins page with multi-recipient, coin selection, fee estimation, and confirmation */
 export const Send: React.FC = () => {
   const phiBalance = useWalletStore((s) => s.phiBalance);
@@ -169,7 +179,7 @@ export const Send: React.FC = () => {
         showToast('Invalid PHICOIN URI', 'error');
         return;
       }
-      if (!isValidPhicoinAddress(parsed.address, network)) {
+      if (!isAddressValid(parsed.address, network)) {
         showToast('Invalid address in PHICOIN URI', 'error');
         return;
       }
@@ -308,7 +318,7 @@ export const Send: React.FC = () => {
   // ---- Validation ----
   const validateRecipient = (r: Recipient, index: number): string | null => {
     if (!r.address.trim()) return `Recipient ${index + 1}: address is required`;
-    if (!isValidPhicoinAddress(r.address, network)) {
+    if (!isAddressValid(r.address, network)) {
       return `Recipient ${index + 1}: invalid PHICOIN address for ${network}`;
     }
     if (!r.amount.trim()) return `Recipient ${index + 1}: amount is required`;

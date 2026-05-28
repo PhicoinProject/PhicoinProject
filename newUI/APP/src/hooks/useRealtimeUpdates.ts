@@ -230,6 +230,7 @@ export function useRealtimeUpdates(addresses?: string[]) {
           }
         }
         setBalance(totalBalance / 1e8);
+        setError(null); // a successful poll clears any prior "failed to fetch" banner
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to fetch balance';
         setError(message);

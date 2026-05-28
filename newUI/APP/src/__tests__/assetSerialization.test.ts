@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
+import { base58 } from '@scure/base';
 import {
   serializeCNewAsset,
   serializeCAssetTransfer,
@@ -166,19 +167,43 @@ describe('Asset Serialization', () => {
       expect(nameBytes).toBe('MyLongAssetName');
     });
 
-    it('should include IPFS hash when hasIPFS is 1', () => {
+    it('should include IPFS hash (Base58-decoded, not ASCII) when hasIPFS is 1', () => {
+      // A real 46-char CIDv0. The daemon stores DecodeBase58(CID) = 34 raw bytes
+      // (0x12 0x20 + 32-byte digest) and requires size()==34, so the serialized tail
+      // must be exactly those decoded bytes — NOT the ASCII characters of the CID.
+      const cid = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
+      const expectedHash = base58.decode(cid);
+      expect(expectedHash.length).toBe(34);
+      expect(expectedHash[0]).toBe(0x12);
+      expect(expectedHash[1]).toBe(0x20);
+
       const result = serializeCNewAsset({
         name: 'NFT',
         amount: 100000000,
         units: 0,
         reissuable: 0,
         hasIPFS: 1,
-        ipfsHash: '1220' + 'a'.repeat(32),
+        ipfsHash: cid,
       });
 
-      // name (1 + 3) + amount (8) + units (1) + reissuable (1) + hasIPFS (1) + hash bytes
+      // name (1 + 3) + amount (8) + units (1) + reissuable (1) + hasIPFS (1) = 14, then the
+      // 34-byte decoded hash appended verbatim.
       const baseLen = 4 + 8 + 1 + 1 + 1;
-      expect(result.length).toBeGreaterThan(baseLen);
+      expect(result.length).toBe(baseLen + 34);
+      expect(Array.from(result.slice(baseLen))).toEqual(Array.from(expectedHash));
+    });
+
+    it('should reject a malformed IPFS hash instead of emitting an invalid one', () => {
+      expect(() =>
+        serializeCNewAsset({
+          name: 'NFT',
+          amount: 100000000,
+          units: 0,
+          reissuable: 0,
+          hasIPFS: 1,
+          ipfsHash: 'not-a-real-cid',
+        })
+      ).toThrow(/Invalid asset hash|Invalid IPFS/);
     });
 
     it('should throw for names longer than 252 bytes', () => {
@@ -249,16 +274,19 @@ describe('Asset Serialization', () => {
       expect(result.length).toBe(15);
     });
 
-    it('should include IPFS hash when provided', () => {
+    it('should include IPFS hash (Base58-decoded) when provided', () => {
+      const cid = 'QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG';
       const result = serializeCReissueAsset({
         name: 'TEST',
         amount: 100000000,
         units: 8,
         reissuable: 0,
-        ipfsHash: '1220' + 'b'.repeat(32),
+        ipfsHash: cid,
       });
 
-      expect(result.length).toBeGreaterThan(15);
+      // name(1+4) + amount(8) + units(1) + reissuable(1) = 15, then the 34-byte decoded hash.
+      expect(result.length).toBe(15 + 34);
+      expect(Array.from(result.slice(15))).toEqual(Array.from(base58.decode(cid)));
     });
   });
 

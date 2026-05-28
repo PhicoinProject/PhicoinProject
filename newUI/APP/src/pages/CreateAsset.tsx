@@ -42,13 +42,17 @@ const ASSET_TYPES: { key: AssetTypeKey; label: string; description: string }[] =
   { key: 'RESTRICTED', label: 'RESTRICTED', description: 'Restricted transfer asset' },
 ];
 
-// Name-character rules mirrored from src/assets/assets.cpp regexes.
-const ROOT_NAME_RE = /^[A-Z]([A-Z0-9-]{1,30}[A-Z0-9])?$/; // 1-31 chars, no leading/trailing/double hyphen handled separately
-const SUB_NAME_RE = /^[A-Z0-9]([A-Z0-9-]{0,61}[A-Z0-9])?$/;
+// Name-character rules mirrored EXACTLY from src/assets/assets.cpp regexes.
+// ROOT_NAME_CHARACTERS = ^([A-Z]|[A-Z][A-Z0-9-]{0,62}[A-Z0-9])$  -> 1-64 chars, starts with a
+// letter, ends alphanumeric. (The daemon's IsRootNameValid checks ONLY this regex.)
+const ROOT_NAME_RE = /^([A-Z]|[A-Z][A-Z0-9-]{0,62}[A-Z0-9])$/;
+// SUB_NAME_CHARACTERS = ^([A-Z0-9]|[A-Z0-9][A-Z0-9-]{0,61}[A-Z0-9])$  -> 1-63 chars.
+const SUB_NAME_RE = /^([A-Z0-9]|[A-Z0-9][A-Z0-9-]{0,61}[A-Z0-9])$/;
 const UNIQUE_TAG_RE = /^[-A-Za-z0-9@$%&*()[\]{}?:]+$/;
 const QUALIFIER_NAME_RE = /^[A-Z0-9-]{3,}$/; // the part after the leading '#'
 const RESTRICTED_NAME_RE = /^[A-Z0-9-]{3,}$/; // the part after the leading '$'
 const DOUBLE_HYPHEN_RE = /--/;
+const HYPHEN_EDGE_RE = /^-|-$/; // leading or trailing hyphen (daemon LEADING_HYPHEN/TRAILING_HYPHEN)
 
 /**
  * Whether the selected asset type needs a parent ROOT asset.
@@ -102,15 +106,16 @@ function validateForm(form: IssueForm): string | null {
   switch (form.assetType) {
     case 'ROOT': {
       const name = raw.toUpperCase();
-      if (name.length < 3 || name.length > 31) return 'ROOT name must be 3-31 characters';
-      if (!ROOT_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name)) {
-        return 'ROOT name: A-Z, 0-9, single hyphens; must start with a letter';
+      // Daemon IsRootNameValid = the ROOT regex alone (1-64 chars, no extra hyphen rule).
+      if (name.length < 1 || name.length > 64) return 'ROOT name must be 1-64 characters';
+      if (!ROOT_NAME_RE.test(name)) {
+        return 'ROOT name: A-Z, 0-9, hyphens; must start with a letter and end alphanumeric';
       }
       break;
     }
     case 'SUB': {
       const name = raw.toUpperCase();
-      if (name.length < 1 || name.length > 31) return 'Sub-asset name must be 1-31 characters';
+      if (name.length < 1 || name.length > 63) return 'Sub-asset name must be 1-63 characters';
       if (!SUB_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name)) {
         return 'Sub-asset name: A-Z, 0-9, single hyphens';
       }
@@ -124,15 +129,17 @@ function validateForm(form: IssueForm): string | null {
     }
     case 'QUALIFIER': {
       const name = raw.toUpperCase();
-      if (!QUALIFIER_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name)) {
-        return 'Qualifier name: at least 3 characters of A-Z, 0-9, single hyphens';
+      // Daemon IsQualifierNameValid also rejects leading & trailing hyphens.
+      if (!QUALIFIER_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name) || HYPHEN_EDGE_RE.test(name)) {
+        return 'Qualifier name: at least 3 chars of A-Z, 0-9, single hyphens; no leading/trailing hyphen';
       }
       break;
     }
     case 'RESTRICTED': {
       const name = raw.toUpperCase();
-      if (!RESTRICTED_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name)) {
-        return 'Restricted name: at least 3 characters of A-Z, 0-9, single hyphens';
+      // Daemon IsRestrictedNameValid also rejects leading & trailing hyphens.
+      if (!RESTRICTED_NAME_RE.test(name) || DOUBLE_HYPHEN_RE.test(name) || HYPHEN_EDGE_RE.test(name)) {
+        return 'Restricted name: at least 3 chars of A-Z, 0-9, single hyphens; no leading/trailing hyphen';
       }
       // Every restricted asset issuance must carry a verifier string
       // (src/assets/assets.cpp:4043-4046).

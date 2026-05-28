@@ -85,14 +85,17 @@ export const Transactions: React.FC = () => {
     }
   };
 
+  // Canonical direction colors (must match Dashboard/Overview): sent=amber, received=green,
+  // self=blue (distinct from sent), other=gray. Previously sent was red here while the
+  // Dashboard used amber — a semantic divergence.
   const directionColor = (d: TxDirection) => {
     switch (d) {
       case 'sent':
-        return 'text-red-600 dark:text-red-400';
+        return 'text-amber-600 dark:text-amber-400';
       case 'received':
         return 'text-green-600 dark:text-green-400';
       case 'self':
-        return 'text-amber-600 dark:text-amber-400';
+        return 'text-blue-600 dark:text-blue-400';
       case 'other':
         return 'text-gray-600 dark:text-gray-400';
       default:
@@ -103,11 +106,11 @@ export const Transactions: React.FC = () => {
   const directionBadgeColor = (d: TxDirection) => {
     switch (d) {
       case 'sent':
-        return 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400';
+        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400';
       case 'received':
         return 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400';
       case 'self':
-        return 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400';
+        return 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400';
       case 'other':
         return 'bg-gray-100 text-gray-700 dark:bg-dark-elevated dark:text-dark-secondary';
       default:
@@ -446,7 +449,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
               value={`${tx.amount >= 0 ? '+' : ''}${tx.amount.toFixed(8)} PHI`}
               color={
                 tx.direction === 'sent'
-                  ? 'text-red-600 dark:text-red-400'
+                  ? 'text-amber-600 dark:text-amber-400'
                   : tx.direction === 'received'
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-gray-900 dark:text-dark-text'
