@@ -293,6 +293,13 @@ export class RpcClient {
     chunkSize = 50
   ): Promise<(T | null)[]> {
     if (calls.length === 0) return [];
+    // Defense-in-depth: bound the total work a single rawBatch can request, so a caller
+    // (or a pathological address pool) can't build an enormous batch. All current callers
+    // are well under this; chunkSize still caps each HTTP request's size.
+    const MAX_BATCH_CALLS = 5000;
+    if (calls.length > MAX_BATCH_CALLS) {
+      throw new Error(`rawBatch: too many calls (${calls.length} > ${MAX_BATCH_CALLS})`);
+    }
     for (const c of calls) this.assertAllowedMethod(c.method);
 
     const out: (T | null)[] = [];

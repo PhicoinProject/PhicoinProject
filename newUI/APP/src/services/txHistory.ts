@@ -168,15 +168,14 @@ export async function getTransactionHistory(
       if (!item) continue;
       const { txid, tx } = item;
 
-      // Recompute volatile fields live from currentHeight every call so cached
-      // txs never report stale confirmations/blockHeight.
-      const confirmations = Number(tx.confirmations ?? 0);
+      // blockHeight is the tx's FIXED block height from getrawtransaction (stable even
+      // for cached txs); confirmations is recomputed live from currentHeight. Reading the
+      // cached tx.confirmations would be frozen at fetch time, so both it AND a blockHeight
+      // derived from it would drift as the chain advances. Unconfirmed/mempool txs have no
+      // height -> height 0, confirmations 0.
       const timestamp = Number(tx.time ?? tx.blocktime ?? 0);
-
-      let blockHeight = 0;
-      if (confirmations > 0) {
-        blockHeight = currentHeight - confirmations + 1;
-      }
+      const blockHeight = Number(tx.height ?? 0);
+      const confirmations = blockHeight > 0 ? Math.max(0, currentHeight - blockHeight + 1) : 0;
 
       // Apply date filters
       if (filters.startDate && filters.endDate) {
@@ -254,8 +253,10 @@ export async function getTransactionDetail(
     const tx = txData as Record<string, unknown>;
 
     const currentHeight = await rpc.getBlockCount();
-    const confirmations = Number(tx.confirmations ?? 0);
-    const blockHeight = confirmations > 0 ? currentHeight - confirmations + 1 : 0;
+    // Fixed block height from getrawtransaction; confirmations recomputed live (see note
+    // in getTransactionHistory — avoids stale cached confirmations).
+    const blockHeight = Number(tx.height ?? 0);
+    const confirmations = blockHeight > 0 ? Math.max(0, currentHeight - blockHeight + 1) : 0;
     const walletSet = new Set(walletAddresses);
 
     const computed = computeTransactionAmount(tx, walletSet);

@@ -268,10 +268,12 @@ async function findAssetInputs(
 
         if (info && info.assetName === assetId) {
           total += info.amount;
-        } else if (info && assetId.endsWith(info.assetName)) {
-          total += info.amount;
         } else {
-          // Daemon already filtered by assetName; trust its satoshis field.
+          // getaddressutxos was already filtered by assetName == assetId, so this UTXO
+          // belongs to the asset even when our scriptPubKey parse didn't yield an exact
+          // name (e.g. an owner/sub-asset encoding). Use the daemon's authoritative asset
+          // amount (`satoshis`) rather than a fuzzy `endsWith` name match, which could
+          // over-count an unrelated asset whose name is a suffix of this one.
           total += BigInt(Number(obj.satoshis ?? 0));
         }
 
