@@ -26,8 +26,12 @@ test.describe('Overview / Dashboard', () => {
   });
 
   test('displays PHI balance with correct unit', async ({ page }) => {
-    // Balance card contains a number followed by PHI
-    await expect(page.locator('text=/\\d+\\.\\d+ PHI/')).toBeVisible({ timeout: 15000 });
+    // Target the balance card's amount specifically (the main p.text-phi-primary). A bare
+    // "X.Y PHI" text locator also matches the Recent Transactions amounts (e.g. "-0.10 PHI")
+    // now that they render, which is a Playwright strict-mode multi-match.
+    await expect(
+      page.locator('p.text-phi-primary').filter({ hasText: /\d+\.\d+ PHI/ }).first()
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test('balance is approximately 0.95 PHI (between 0.5 and 2.0)', async ({ page }) => {

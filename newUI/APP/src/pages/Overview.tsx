@@ -218,7 +218,7 @@ export const Overview: React.FC = () => {
                           {formatRelativeTime(time)}
                         </td>
                         <td
-                          className={`whitespace-nowrap px-4 py-3 text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}
+                          className={`whitespace-nowrap px-4 py-3 text-sm font-medium ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
                         >
                           {isPositive ? '+' : '-'}
                           {Math.abs(displayAmount)
@@ -253,7 +253,7 @@ export const Overview: React.FC = () => {
                   >
                     <div className="flex items-center justify-between">
                       <span
-                        className={`text-sm font-medium ${isPositive ? 'text-green-600' : 'text-red-600'}`}
+                        className={`text-sm font-medium ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}
                       >
                         {isPositive ? '+' : '-'}
                         {Math.abs(displayAmount)
