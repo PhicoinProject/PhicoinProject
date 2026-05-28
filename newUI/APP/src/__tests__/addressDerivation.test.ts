@@ -1,5 +1,6 @@
-import { deriveAddress, deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, isValidPHICoinAddress } from '@/services/addressDerivation';
+import { deriveAddress, deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, deriveScriptPubKeyRange, getScriptPubKeyFromPublicKey, isValidPHICoinAddress } from '@/services/addressDerivation';
 import { seedToHDKey } from '@/services/HDWallet';
+import { toHex } from '@/services/crypto';
 
 describe('Address Derivation', () => {
   let hdKey: ReturnType<typeof seedToHDKey>;
@@ -92,6 +93,61 @@ describe('Address Derivation', () => {
       expect(range[0].index).toBe(17);
       expect(range[0].address).toBe(deriveReceiveAddress(hdKey, 'mainnet', 17).address);
       expect(range[4].address).toBe(deriveReceiveAddress(hdKey, 'mainnet', 21).address);
+    });
+  });
+
+  describe('deriveScriptPubKeyRange', () => {
+    // CORRECTNESS-CRITICAL: this batched deriver feeds the signing-time
+    // scriptPubKey -> path lookup. If its scriptPubKeyHex or path drifts by even one
+    // byte from the old per-index getScriptPubKeyFromPublicKey path, the signer would
+    // pick the wrong key for an input and produce an invalid signature / unspendable
+    // funds. Assert byte-for-byte equality with the legacy derivation on both chains.
+    it('matches toHex(getScriptPubKeyFromPublicKey(...)) for receive indices 0..24', () => {
+      const range = deriveScriptPubKeyRange(hdKey, 'mainnet', false, 0, 25);
+      expect(range).toHaveLength(25);
+      for (let i = 0; i < 25; i++) {
+        const path = `m/44'/0'/0'/0/${i}`;
+        const legacyHex = toHex(getScriptPubKeyFromPublicKey(hdKey, path));
+        expect(range[i].scriptPubKeyHex).toBe(legacyHex);
+        expect(range[i].path).toBe(path);
+        expect(range[i].index).toBe(i);
+      }
+    });
+
+    it('matches toHex(getScriptPubKeyFromPublicKey(...)) for change indices 0..24', () => {
+      const range = deriveScriptPubKeyRange(hdKey, 'mainnet', true, 0, 25);
+      expect(range).toHaveLength(25);
+      for (let i = 0; i < 25; i++) {
+        const path = `m/44'/0'/0'/1/${i}`;
+        const legacyHex = toHex(getScriptPubKeyFromPublicKey(hdKey, path));
+        expect(range[i].scriptPubKeyHex).toBe(legacyHex);
+        expect(range[i].path).toBe(path);
+        expect(range[i].index).toBe(i);
+      }
+    });
+
+    it('produces a 25-byte P2PKH scriptPubKey (50 hex chars) per entry', () => {
+      const range = deriveScriptPubKeyRange(hdKey, 'mainnet', false, 0, 3);
+      for (const entry of range) {
+        // OP_DUP OP_HASH160 <20-byte push> OP_EQUALVERIFY OP_CHECKSIG = 25 bytes.
+        expect(entry.scriptPubKeyHex).toHaveLength(50);
+        expect(entry.scriptPubKeyHex.startsWith('76a914')).toBe(true);
+        expect(entry.scriptPubKeyHex.endsWith('88ac')).toBe(true);
+      }
+    });
+
+    it('honors a non-zero start index on the change chain', () => {
+      const range = deriveScriptPubKeyRange(hdKey, 'mainnet', true, 17, 5);
+      expect(range).toHaveLength(5);
+      expect(range[0].index).toBe(17);
+      expect(range[0].path).toBe("m/44'/0'/0'/1/17");
+      expect(range[0].scriptPubKeyHex).toBe(
+        toHex(getScriptPubKeyFromPublicKey(hdKey, "m/44'/0'/0'/1/17"))
+      );
+      expect(range[4].path).toBe("m/44'/0'/0'/1/21");
+      expect(range[4].scriptPubKeyHex).toBe(
+        toHex(getScriptPubKeyFromPublicKey(hdKey, "m/44'/0'/0'/1/21"))
+      );
     });
   });
 

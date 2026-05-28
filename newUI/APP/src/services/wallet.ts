@@ -1,10 +1,9 @@
 import { rpc } from './rpc';
 import { HDKey } from '@scure/bip32';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
-import { deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, isValidPHICoinAddress, getScriptPubKeyFromPublicKey } from './addressDerivation';
+import { deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, deriveScriptPubKeyRange, isValidPHICoinAddress } from './addressDerivation';
 import { buildAndSignOnly, testMempoolAccept, broadcastTx } from './psbt';
 import { scanChain } from './chainScanner';
-import { toHex } from './crypto';
 import type { Address, WalletState, UTXO, DerivedAddress, AddressBalanceResult } from '@/types';
 import type { PSBTInput, PSBTOutput } from './psbt';
 import type { ChainScanResult } from './chainScanner';
@@ -317,7 +316,12 @@ export class WalletService {
       const u = utxo as Record<string, unknown>;
       const txid = String(u.txid ?? u.txHash ?? '');
       const vout = Number(u.vout ?? u.outputIndex ?? 0);
-      const valueSat = Number(u.satoshis ?? u.value ?? u.amount ?? 0);
+      // getaddressutxos returns `satoshis` (integer sats). `value`/`amount` (if a fallback
+      // ever applies) are PHI floats, so convert them to sats — otherwise coin selection
+      // would undercount inputs by 1e8 and abort an otherwise-valid send.
+      const valueSat = u.satoshis != null
+        ? Number(u.satoshis)
+        : Math.round(Number(u.value ?? u.amount ?? 0) * 1e8);
       const scriptPubKey = String(u.scriptPubKey ?? u.script ?? u.scriptPubKeyHex ?? '');
 
       const path = this.derivePathForAddress(scriptPubKey);
@@ -773,31 +777,31 @@ export class WalletService {
     const cached = this.derivePathCache.get(scriptPubKey);
     if (cached !== undefined) return cached;
 
-    const coinType = 0; // MAINNET_COIN_TYPE from HDWallet.ts
+    // PERF: derive each chain's node ONCE and take only the non-hardened leaf per
+    // index (~1 EC op/index) instead of re-deriving the full hardened path per index
+    // (~5 ops). deriveScriptPubKeyRange runs the identical hash160 + scriptPubKey +
+    // toHex pipeline as the old getScriptPubKeyFromPublicKey path, and BIP32
+    // guarantees chainNode.deriveChild(i) === deriving the full path, so the
+    // scriptPubKeyHex (and returned path string) are byte-for-byte unchanged. Network
+    // 'mainnet' -> coinType 0 keeps the path prefix m/44'/0'/0'/{chain}/{i} identical.
+    const network: 'mainnet' | 'testnet' = 'mainnet';
 
-    // Scan receive chain first: m/44'/0'/0'/0/{i}
-    for (let i = 0; i < DISCOVERY_HARD_CAP; i++) {
-      const path = `m/44'/${coinType}'/0'/0/${i}`;
-      try {
-        const spk = getScriptPubKeyFromPublicKey(hdKey, path);
-        if (toHex(spk) === scriptPubKey) {
-          this.derivePathCache.set(scriptPubKey, path); // memoize for subsequent inputs
-          return path;
+    // Scan receive chain first (m/44'/0'/0'/0/{i}), then change (m/44'/0'/0'/1/{i}),
+    // each up to DISCOVERY_HARD_CAP — same order and bound as before. The match is
+    // case-sensitive (===) against the exact input string, matching the prior scan.
+    // The try/catch mirrors the old per-index `catch { skip }`: a derivation failure
+    // yields no match (null) rather than propagating.
+    try {
+      for (const isChange of [false, true]) {
+        const range = deriveScriptPubKeyRange(hdKey, network, isChange, 0, DISCOVERY_HARD_CAP);
+        for (const entry of range) {
+          if (entry.scriptPubKeyHex === scriptPubKey) {
+            this.derivePathCache.set(scriptPubKey, entry.path); // memoize for subsequent inputs
+            return entry.path;
+          }
         }
-      } catch { /* skip */ }
-    }
-
-    // Scan change chain: m/44'/0'/0'/1/{i}
-    for (let i = 0; i < DISCOVERY_HARD_CAP; i++) {
-      const path = `m/44'/${coinType}'/0'/1/${i}`;
-      try {
-        const spk = getScriptPubKeyFromPublicKey(hdKey, path);
-        if (toHex(spk) === scriptPubKey) {
-          this.derivePathCache.set(scriptPubKey, path); // memoize for subsequent inputs
-          return path;
-        }
-      } catch { /* skip */ }
-    }
+      }
+    } catch { /* derivation failure → treat as no match */ }
 
     // Not found: deliberately NOT cached. A negative result is cheap relative to
     // the funds risk of caching "no path" if the pool/key state later changes,

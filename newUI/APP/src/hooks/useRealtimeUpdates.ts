@@ -10,6 +10,7 @@ import {
   MEMPOOL_POLL_INTERVAL,
   BLOCK_HEIGHT_POLL_INTERVAL,
   BALANCE_POLL_INTERVAL,
+  DERIVED_POOL_STALE_TIME,
 } from '@/utils/constants';
 
 /**
@@ -98,7 +99,18 @@ export function useRealtimeUpdates(addresses?: string[]) {
     let cancelled = false;
     (async () => {
       try {
-        const fullAddrs = (await walletService.getDerivedAddressPoolAsync()).map((a) => a.address);
+        // Route through React Query's shared ['derivedPoolAsync'] cache so this
+        // expensive gap-scan dedupes with useTransactions/useMyAssets instead of
+        // firing a 3rd independent scan on every page load. fetchQuery returns the
+        // cached pool if fresh (within DERIVED_POOL_STALE_TIME) or shares an
+        // in-flight promise; the queryFn/queryKey/staleTime mirror those hooks so
+        // the shared key has one consistent TTL.
+        const pool = await queryClient.fetchQuery({
+          queryKey: ['derivedPoolAsync'],
+          queryFn: () => walletService.getDerivedAddressPoolAsync(),
+          staleTime: DERIVED_POOL_STALE_TIME,
+        });
+        const fullAddrs = pool.map((a) => a.address);
         if (!cancelled && fullAddrs.length > addrListRef.current.length) {
           setAddrList(fullAddrs);
         }

@@ -3,6 +3,7 @@ import { base58, bech32 } from '@scure/base';
 import { sha256 } from '@noble/hashes/sha256';
 import { ripemd160 } from '@noble/hashes/ripemd160';
 import { getCoinType, receivePath, changePath } from './HDWallet';
+import { toHex } from './crypto';
 import { NETWORK } from '@/utils/constants';
 import type { DerivedAddress } from '@/types';
 
@@ -211,6 +212,58 @@ export function deriveAddressRange(
       isChange,
       network: coinType,
       label: `${isChange ? 'Change' : 'Receive'} ${index}`,
+    });
+  }
+  return out;
+}
+
+/**
+ * Result of {@link deriveScriptPubKeyRange}: the P2PKH scriptPubKey (as hex) and
+ * the full BIP44 path for one leaf index on a single chain.
+ */
+export interface ScriptPubKeyRangeEntry {
+  index: number;
+  path: string;
+  scriptPubKeyHex: string;
+}
+
+/**
+ * Derive the P2PKH scriptPubKey (hex) for a contiguous range of indices on ONE
+ * BIP44 chain efficiently.
+ *
+ * This is the scriptPubKey-hex analogue of {@link deriveAddressRange}, used by the
+ * signing-time scriptPubKey->path lookup. Naively that lookup called
+ * {@link getScriptPubKeyFromPublicKey} per index, which re-derives the full path
+ * m/44'/coinType'/0'/{chain}/index from the master key (5 deriveChild ops/index, 3
+ * hardened) — up to ~5000 EC ops for a cold scan over both chains.
+ *
+ * Here we derive the chain node m/44'/coinType'/0'/{chain} ONCE, then take only the
+ * non-hardened leaf child per index (~1 op/index). BIP32 guarantees
+ * chainNode.deriveChild(i) yields the same key as deriving the full path, and we run
+ * the SAME hash160 + scriptPubKeyFromPubKey + toHex pipeline as
+ * getScriptPubKeyFromPublicKey, so scriptPubKeyHex is byte-for-byte identical
+ * (covered by addressDerivation.test).
+ */
+export function deriveScriptPubKeyRange(
+  hdKey: HDKey,
+  network: 'mainnet' | 'testnet',
+  isChange: boolean,
+  startIndex: number,
+  count: number
+): ScriptPubKeyRangeEntry[] {
+  const coinType = getCoinType(network);
+  const chain = isChange ? 1 : 0;
+  const chainNode = hdKey.derive(`m/44'/${coinType}'/0'/${chain}`);
+  const out: ScriptPubKeyRangeEntry[] = [];
+  for (let k = 0; k < count; k++) {
+    const index = startIndex + k;
+    const leaf = chainNode.deriveChild(index);
+    if (!leaf.publicKey) throw new Error('No public key derived');
+    const scriptPubKey = scriptPubKeyFromPubKey(compressPublicKey(leaf.publicKey));
+    out.push({
+      index,
+      path: `m/44'/${coinType}'/0'/${chain}/${index}`,
+      scriptPubKeyHex: toHex(scriptPubKey),
     });
   }
   return out;
