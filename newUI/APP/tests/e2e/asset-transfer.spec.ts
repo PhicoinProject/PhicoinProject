@@ -37,13 +37,16 @@ test.describe('Manage Assets', () => {
   });
 
   test('My Assets section shows owned assets or empty state', async ({ page }) => {
-    await page.waitForTimeout(3000);
-    const hasAssets = (await page.locator('table tbody tr').count()) > 0;
-    const hasEmpty = await page
-      .locator('text=/No assets|no assets|empty/i')
-      .isVisible()
-      .catch(() => false);
-    expect(hasAssets || hasEmpty).toBe(true);
+    // Wait for the section to SETTLE into a real end-state (asset rows OR the empty
+    // state), rather than sampling at a fixed 3s. useMyAssets now shows a loading
+    // skeleton during address-pool discovery (previously it rendered the empty state
+    // prematurely), so a fixed delay races the load.
+    await expect(
+      page
+        .locator('table tbody tr')
+        .first()
+        .or(page.locator('text=/No assets|no assets|empty/i').first())
+    ).toBeVisible({ timeout: 30000 });
   });
 
   test('Reissue button opens reissue modal (if assets present)', async ({ page }) => {

@@ -734,16 +734,30 @@ export class AssetService {
     const assets: Asset[] = [];
     const seen = new Set<string>();
 
-    // One JSON-RPC batch (single HTTP request) for ALL per-address balances. Firing
-    // these as separate requests serialized them behind the browser's ~6-connection
-    // limit (dozens of fast-on-daemon calls became a ~10s-each queue). Failures
-    // resolve to null and are skipped, preserving the prior per-address behavior.
-    const balanceResults = await rpc.rawBatch<Record<string, number>>(
-      addresses.map((addr) => ({
-        method: 'listassetbalancesbyaddress',
-        params: [addr, false, 1000, 0],
-      }))
-    );
+    // Fetch ALL per-address asset balances. Prefer the daemon's multi-address form
+    // (listassetbalancesbyaddress {addresses:[...]} → {address:{asset:amount}}): ONE
+    // request, and the daemon amortizes a single cs_main lock over every address. Fall
+    // back to a JSON-RPC batch of single-address calls for older daemons that don't
+    // support the {addresses} form. Missing/failed entries resolve to null and are skipped.
+    let balanceResults: (Record<string, number> | null)[] = [];
+    if (addresses.length > 0) {
+      try {
+        const byAddr = await rpc.raw<Record<string, Record<string, number>>>(
+          'listassetbalancesbyaddress',
+          [{ addresses }, false, 1000, 0]
+        );
+        if (!byAddr || typeof byAddr !== 'object' || Array.isArray(byAddr))
+          throw new Error('unexpected multi-address listassetbalancesbyaddress response');
+        balanceResults = addresses.map((addr) => byAddr[addr] ?? null);
+      } catch {
+        balanceResults = await rpc.rawBatch<Record<string, number>>(
+          addresses.map((addr) => ({
+            method: 'listassetbalancesbyaddress',
+            params: [addr, false, 1000, 0],
+          }))
+        );
+      }
+    }
 
     // Iterate results in the ORIGINAL address order so the deduped output order is
     // byte-for-byte identical to the previous sequential implementation.
