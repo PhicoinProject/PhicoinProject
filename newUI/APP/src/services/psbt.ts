@@ -446,6 +446,11 @@ export async function buildP2PKHTx(options: PSBTBuildOptions): Promise<string> {
       scriptSigs.push(scriptSig);
       witnessStacks.push([]);
     }
+
+    // Zeroize per-input private key material as soon as it is no longer needed
+    // (defense-in-depth: minimise how long a derived signing key lives in memory).
+    privateKeyBytes.fill(0);
+    derivedKey.wipePrivateData();
   }
 
   // Serialize final transaction (with witness support if any segwit inputs)

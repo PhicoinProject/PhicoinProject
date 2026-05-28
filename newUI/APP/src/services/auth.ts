@@ -7,6 +7,8 @@ import {
 } from './encryptedWallet';
 import { deriveMasterSeed, seedToHDKey } from './HDWallet';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
+import { useWalletStore } from '@/stores';
+import { queryClient } from './queryClient';
 
 const SALT_KEY = 'phi:salt';
 const SENTINEL_KEY = 'phi:sentinel';
@@ -403,6 +405,11 @@ export function lockWallet(): void {
   sessionStorage.removeItem(UNLOCKED_KEY);
   clearSessionSecrets();
   useWalletHDKeyStore.getState().clearHDKey();
+  // Clear cached wallet data so a relock (or importing a different wallet) can't serve or
+  // flash the previous session's balances / transactions / assets. React Query refetches
+  // fresh on the next unlock; the wallet store resets to its zeroed initial state.
+  useWalletStore.getState().reset();
+  queryClient.clear();
 }
 
 /** Get wallet metadata (creation date, mnemonic hash) without unlocking. */
