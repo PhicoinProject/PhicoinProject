@@ -69,8 +69,10 @@ test.describe('Create Asset — Form Validation', () => {
     });
   });
 
-  test('label exceeding 31 chars shows error', async ({ page }) => {
-    await page.fill('#create-asset-label', 'A'.repeat(32));
+  test('label exceeding 64 chars shows error', async ({ page }) => {
+    // The daemon's ROOT_NAME_CHARACTERS allows 1-64 chars, so the UI now accepts up to 64
+    // (a 32-char name is valid). Only names longer than 64 are rejected.
+    await page.fill('#create-asset-label', 'A'.repeat(65));
     await page.locator('button:has-text("Issue ROOT Asset")').first().click();
     await expect(page.locator('.text-red-600, .text-red-500').first()).toBeVisible({
       timeout: 10000,
