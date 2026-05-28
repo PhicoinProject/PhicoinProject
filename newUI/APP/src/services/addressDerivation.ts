@@ -174,6 +174,48 @@ export function deriveChangeAddress(
   };
 }
 
+/**
+ * Derive a contiguous range of addresses on ONE BIP44 chain efficiently.
+ *
+ * deriveReceiveAddress/deriveChangeAddress re-derive the full path from the master
+ * key on every call — for m/44'/coinType'/0'/{chain}/index that is 5 deriveChild ops
+ * per address (3 of them hardened, the expensive kind). A gap-limit pool scan derives
+ * 100+ addresses across both chains, so re-doing the hardened m/44'/coinType'/0' prefix
+ * every time dominates wall-clock time (~8s measured; the RPC is not the bottleneck).
+ *
+ * Here we derive the chain node m/44'/coinType'/0'/{chain} ONCE, then take only the
+ * non-hardened leaf child per index — ~1 op per address instead of 5. BIP32 guarantees
+ * chainNode.deriveChild(i) equals deriving the full path, so addresses are identical
+ * (covered by addressDerivation.test).
+ */
+export function deriveAddressRange(
+  hdKey: HDKey,
+  network: 'mainnet' | 'testnet',
+  isChange: boolean,
+  startIndex: number,
+  count: number
+): DerivedAddress[] {
+  const coinType = getCoinType(network);
+  const chain = isChange ? 1 : 0;
+  const chainNode = hdKey.derive(`m/44'/${coinType}'/0'/${chain}`);
+  const out: DerivedAddress[] = [];
+  for (let k = 0; k < count; k++) {
+    const index = startIndex + k;
+    const leaf = chainNode.deriveChild(index);
+    if (!leaf.publicKey) throw new Error('No public key derived');
+    const h160 = hash160(compressPublicKey(leaf.publicKey));
+    out.push({
+      address: base58CheckEncode(PUB_KEY_HASH, h160),
+      path: `m/44'/${coinType}'/0'/${chain}/${index}`,
+      index,
+      isChange,
+      network: coinType,
+      label: `${isChange ? 'Change' : 'Receive'} ${index}`,
+    });
+  }
+  return out;
+}
+
 /** Generate a pool of unused receive addresses */
 export function deriveAddressPool(
   hdKey: HDKey,

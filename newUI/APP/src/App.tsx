@@ -146,6 +146,42 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     autoUnlock();
   }, []);
 
+  // Warm the lazy route chunks once the app is idle, so in-app navigation doesn't pay
+  // a chunk download. On the dev server (and any HTTP/1.1 origin) that download competes
+  // with the RPC burst for the browser's ~6 connections and can delay the next page's
+  // first paint by many seconds. import() is deduped, so this only primes the cache that
+  // React.lazy reads on navigation.
+  useEffect(() => {
+    let cancelled = false;
+    const warm = () => {
+      if (cancelled) return;
+      void import('@/pages/Assets');
+      void import('@/pages/Transactions');
+      void import('@/pages/Wallet');
+      void import('@/pages/Send');
+      void import('@/pages/Receive');
+      void import('@/pages/ManageAssets');
+      void import('@/pages/CreateAsset');
+      void import('@/pages/RestrictedAssets');
+    };
+    const w = window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof w.requestIdleCallback === 'function') {
+      const id = w.requestIdleCallback(warm, { timeout: 2500 });
+      return () => {
+        cancelled = true;
+        w.cancelIdleCallback?.(id);
+      };
+    }
+    const t = setTimeout(warm, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, []);
+
   // Apply dark mode class on mount and when localStorage changes
   useEffect(() => {
     const applyDark = () => {

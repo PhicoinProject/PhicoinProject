@@ -734,16 +734,15 @@ export class AssetService {
     const assets: Asset[] = [];
     const seen = new Set<string>();
 
-    // Fire all per-address balance queries concurrently instead of awaiting each
-    // in series. Each address is independent, so this collapses N sequential
-    // round-trips into one parallel batch. Failures resolve to null and are
-    // skipped, preserving the prior per-address try/catch behavior.
-    const balanceResults = await Promise.all(
-      addresses.map((addr) =>
-        rpc
-          .raw<Record<string, number>>('listassetbalancesbyaddress', [addr, false, 1000, 0])
-          .catch(() => null)
-      )
+    // One JSON-RPC batch (single HTTP request) for ALL per-address balances. Firing
+    // these as separate requests serialized them behind the browser's ~6-connection
+    // limit (dozens of fast-on-daemon calls became a ~10s-each queue). Failures
+    // resolve to null and are skipped, preserving the prior per-address behavior.
+    const balanceResults = await rpc.rawBatch<Record<string, number>>(
+      addresses.map((addr) => ({
+        method: 'listassetbalancesbyaddress',
+        params: [addr, false, 1000, 0],
+      }))
     );
 
     // Iterate results in the ORIGINAL address order so the deduped output order is
@@ -774,12 +773,10 @@ export class AssetService {
     }
 
     // Fetch details for each (already-unique) asset to fill precision and ipfsHash.
-    // Run all getassetdata lookups concurrently and apply each result back to its
-    // asset by index — same final field values as the prior sequential loop.
-    const detailResults = await Promise.all(
-      assets.map((asset) =>
-        rpc.raw<Record<string, unknown>>('getassetdata', [asset.assetId]).catch(() => null)
-      )
+    // One JSON-RPC batch (single HTTP request) instead of one request per asset, then
+    // apply each result back to its asset by index — same final field values.
+    const detailResults = await rpc.rawBatch<Record<string, unknown>>(
+      assets.map((asset) => ({ method: 'getassetdata', params: [asset.assetId] }))
     );
     for (let i = 0; i < assets.length; i++) {
       const data = detailResults[i];

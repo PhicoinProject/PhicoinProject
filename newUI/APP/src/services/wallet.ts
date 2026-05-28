@@ -1,7 +1,7 @@
 import { rpc } from './rpc';
 import { HDKey } from '@scure/bip32';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
-import { deriveReceiveAddress, deriveChangeAddress, isValidPHICoinAddress, getScriptPubKeyFromPublicKey } from './addressDerivation';
+import { deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, isValidPHICoinAddress, getScriptPubKeyFromPublicKey } from './addressDerivation';
 import { buildAndSignOnly, testMempoolAccept, broadcastTx } from './psbt';
 import { scanChain } from './chainScanner';
 import { toHex } from './crypto';
@@ -133,10 +133,11 @@ export class WalletService {
     ]);
     const recvCount = Math.max(ADDRESS_POOL_SIZE, recvUsed + ADDRESS_POOL_SIZE);
     const changeCount = Math.max(ADDRESS_POOL_SIZE, changeUsed + ADDRESS_POOL_SIZE);
-    const out: DerivedAddress[] = [];
-    for (let i = 0; i < recvCount; i++) out.push(deriveReceiveAddress(hdKey, network, i));
-    for (let i = 0; i < changeCount; i++) out.push(deriveChangeAddress(hdKey, network, i));
-    return out;
+    // Derive each chain from its chain node once (~1 EC op/address instead of 5).
+    return [
+      ...deriveAddressRange(hdKey, network, false, 0, recvCount),
+      ...deriveAddressRange(hdKey, network, true, 0, changeCount),
+    ];
   }
 
   /**
@@ -153,18 +154,17 @@ export class WalletService {
     const HARD_CAP = DISCOVERY_HARD_CAP;
     let lastUsed = -1;
     for (let start = 0; start < HARD_CAP; start += BATCH) {
-      const indices = Array.from({ length: BATCH }, (_, k) => start + k);
-      const addrs = indices.map((i) =>
-        isChange
-          ? deriveChangeAddress(hdKey, network, i).address
-          : deriveReceiveAddress(hdKey, network, i).address
+      // Derive the whole batch from the chain node once (~1 EC op/address, not 5).
+      const batch = deriveAddressRange(hdKey, network, isChange, start, BATCH);
+      // ONE JSON-RPC batch request for the whole batch, not BATCH separate HTTP
+      // requests that would serialize behind the browser's ~6-connection limit.
+      const results = await rpc.rawBatch<string[]>(
+        batch.map((a) => ({ method: 'getaddresstxids', params: [a.address] }))
       );
-      // Query the whole batch in parallel (one round-trip per BATCH addresses).
-      const results = await Promise.all(addrs.map((a) => this.getAddressTxidsFor(a)));
       let anyUsed = false;
       results.forEach((txids, k) => {
-        if (txids.length > 0) {
-          lastUsed = indices[k];
+        if (txids && txids.length > 0) {
+          lastUsed = batch[k].index;
           anyUsed = true;
         }
       });
@@ -749,14 +749,11 @@ export class WalletService {
     start: number,
     count: number
   ): DerivedAddress[] {
-    const addresses: DerivedAddress[] = [];
-    for (let i = start; i < start + count; i++) {
-      addresses.push(deriveReceiveAddress(hdKey, network, i));
-    }
-    for (let i = start; i < start + count; i++) {
-      addresses.push(deriveChangeAddress(hdKey, network, i));
-    }
-    return addresses;
+    // Derive each chain from its chain node once (~1 EC op/address instead of 5).
+    return [
+      ...deriveAddressRange(hdKey, network, false, start, count),
+      ...deriveAddressRange(hdKey, network, true, start, count),
+    ];
   }
 
   /**

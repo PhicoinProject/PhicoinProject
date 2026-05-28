@@ -1,4 +1,4 @@
-import { deriveAddress, deriveReceiveAddress, deriveChangeAddress, isValidPHICoinAddress } from '@/services/addressDerivation';
+import { deriveAddress, deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, isValidPHICoinAddress } from '@/services/addressDerivation';
 import { seedToHDKey } from '@/services/HDWallet';
 
 describe('Address Derivation', () => {
@@ -59,6 +59,39 @@ describe('Address Derivation', () => {
       const receive = deriveReceiveAddress(hdKey, 'mainnet', 0);
       const change = deriveChangeAddress(hdKey, 'mainnet', 0);
       expect(receive.address).not.toBe(change.address);
+    });
+  });
+
+  describe('deriveAddressRange', () => {
+    // SAFETY: the batched deriver (chain node derived once) MUST produce byte-for-byte
+    // the same addresses/paths as per-index derivation, or the pool would miss funds.
+    it('matches deriveReceiveAddress for every index in the range', () => {
+      const range = deriveAddressRange(hdKey, 'mainnet', false, 0, 25);
+      for (let i = 0; i < 25; i++) {
+        const single = deriveReceiveAddress(hdKey, 'mainnet', i);
+        expect(range[i].address).toBe(single.address);
+        expect(range[i].path).toBe(single.path);
+        expect(range[i].index).toBe(i);
+        expect(range[i].isChange).toBe(false);
+      }
+    });
+
+    it('matches deriveChangeAddress for every index in the range', () => {
+      const range = deriveAddressRange(hdKey, 'mainnet', true, 0, 25);
+      for (let i = 0; i < 25; i++) {
+        const single = deriveChangeAddress(hdKey, 'mainnet', i);
+        expect(range[i].address).toBe(single.address);
+        expect(range[i].path).toBe(single.path);
+        expect(range[i].isChange).toBe(true);
+      }
+    });
+
+    it('honors a non-zero start index', () => {
+      const range = deriveAddressRange(hdKey, 'mainnet', false, 17, 5);
+      expect(range).toHaveLength(5);
+      expect(range[0].index).toBe(17);
+      expect(range[0].address).toBe(deriveReceiveAddress(hdKey, 'mainnet', 17).address);
+      expect(range[4].address).toBe(deriveReceiveAddress(hdKey, 'mainnet', 21).address);
     });
   });
 

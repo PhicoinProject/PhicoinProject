@@ -273,6 +273,53 @@ export class RpcClient {
     }
   }
 
+  /**
+   * Execute many JSON-RPC calls in a SINGLE HTTP request (JSON-RPC 2.0 batch).
+   *
+   * The daemon accepts an array of request objects and returns an array of
+   * responses (httprpc.cpp routes arrays to JSONRPCExecBatch). This collapses N
+   * HTTP round-trips into one, bypassing the browser's ~6-connections-per-host
+   * limit — the difference between a fluid asset page and a ~20s freeze when a
+   * page needs dozens of per-address / per-asset lookups (each fast on the daemon
+   * but serialized by the connection pool when fired as separate requests).
+   *
+   * Results are returned in the SAME order as `calls`, matched by id. A per-call
+   * error (or missing/short response) yields null for that slot, mirroring the
+   * `.catch(() => null)` resilience callers used with individual requests. Large
+   * batches are chunked so one oversized request can't be rejected wholesale.
+   */
+  async rawBatch<T = unknown>(
+    calls: { method: string; params?: unknown[] }[],
+    chunkSize = 50
+  ): Promise<(T | null)[]> {
+    if (calls.length === 0) return [];
+    for (const c of calls) this.assertAllowedMethod(c.method);
+
+    const out: (T | null)[] = [];
+    for (let i = 0; i < calls.length; i += chunkSize) {
+      const chunk = calls.slice(i, i + chunkSize);
+      const requests: RpcRequest[] = chunk.map((c) => ({
+        jsonrpc: '2.0',
+        id: String(++this.idCounter),
+        method: c.method,
+        params: c.params ?? [],
+      }));
+      try {
+        const res = await this.client.post<RpcResponse<T>[]>('/', requests);
+        const data = Array.isArray(res.data) ? res.data : [];
+        const byId = new Map<string, RpcResponse<T>>();
+        for (const r of data) byId.set(String(r.id), r);
+        for (const req of requests) {
+          const r = byId.get(req.id);
+          out.push(r && !r.error ? r.result : null);
+        }
+      } catch {
+        for (let k = 0; k < chunk.length; k++) out.push(null);
+      }
+    }
+    return out;
+  }
+
   // ---- Address index queries ----
 
   /**
