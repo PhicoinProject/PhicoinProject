@@ -90,7 +90,10 @@ public:
     bool AssetDir(std::vector<CDatabasedAssetData>& assets, const std::string filter, const size_t count, const long start);
     bool AssetDir(std::vector<CDatabasedAssetData>& assets);
 
-    bool AddressDir(std::vector<std::pair<std::string, CAmount> >& vecAssetAmount, int& totalEntries, const bool& fGetTotal, const std::string& address, const size_t count, const long start);
+    // fFlush: when true (default, preserving all existing callers) AddressDir flushes
+    // chain state to disk before reading. A multi-address RPC can flush ONCE and then
+    // pass fFlush=false for each address to avoid one full FLUSH_STATE_ALWAYS per address.
+    bool AddressDir(std::vector<std::pair<std::string, CAmount> >& vecAssetAmount, int& totalEntries, const bool& fGetTotal, const std::string& address, const size_t count, const long start, const bool fFlush = true);
     bool AssetAddressDir(std::vector<std::pair<std::string, CAmount> >& vecAddressAmount, int& totalEntries, const bool& fGetTotal, const std::string& assetName, const size_t count, const long start);
 };
 

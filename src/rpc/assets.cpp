@@ -751,14 +751,20 @@ UniValue listassetbalancesbyaddress(const JSONRPCRequest& request)
             "\nReturns a list of all asset balances for an address.\n"
 
             "\nArguments:\n"
-            "1. \"address\"                  (string, required) a phicoin address\n"
+            "1. \"address\"                  (string or object, required) a phicoin address, OR an object {\"addresses\":[\"addr1\",\"addr2\",...]} to look up many addresses in ONE call (max 1000)\n"
             "2. \"onlytotal\"                (boolean, optional, default=false) when false result is just a list of assets balances -- when true the result is just a single number representing the number of assets\n"
             "3. \"count\"                    (integer, optional, default=50000, MAX=50000) truncates results to include only the first _count_ assets found\n"
             "4. \"start\"                    (integer, optional, default=0) results skip over the first _start_ assets found (if negative it skips back from the end)\n"
 
-            "\nResult:\n"
+            "\nResult (single address):\n"
             "{\n"
             "  (asset_name) : (quantity),\n"
+            "  ...\n"
+            "}\n"
+
+            "\nResult (when called with {\"addresses\":[...]}):\n"
+            "{\n"
+            "  (address) : { (asset_name) : (quantity), ... },\n"
             "  ...\n"
             "}\n"
 
@@ -767,19 +773,53 @@ UniValue listassetbalancesbyaddress(const JSONRPCRequest& request)
             + HelpExampleCli("listassetbalancesbyaddress", "\"myaddress\" false 2 0")
             + HelpExampleCli("listassetbalancesbyaddress", "\"myaddress\" true")
             + HelpExampleCli("listassetbalancesbyaddress", "\"myaddress\"")
+            + HelpExampleCli("listassetbalancesbyaddress", "'{\"addresses\":[\"addr1\",\"addr2\"]}'")
         );
 
     ObserveSafeMode();
 
-    std::string address = request.params[0].get_str();
-    CTxDestination destination = DecodeDestination(address);
-    if (!IsValidDestination(destination)) {
-        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid PHICOIN address: ") + address);
+    // Accept EITHER a single address string (legacy) OR an object {"addresses":[...]}
+    // for a multi-address lookup. The multi-address form lets a wallet fetch balances
+    // for its whole address pool in ONE call, amortizing a single LOCK(cs_main) over N
+    // addresses instead of N separate RPCs that each re-acquire cs_main. Additive,
+    // backward-compatible, RPC-layer only: touches no consensus/index/validation code
+    // (it only reads passetsdb through the existing AddressDir).
+    const bool fMultiAddress = request.params[0].isObject();
+    std::vector<std::string> vecAddresses;
+    if (fMultiAddress) {
+        const UniValue& addressValues = find_value(request.params[0].get_obj(), "addresses");
+        if (!addressValues.isArray())
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "\"addresses\" is expected to be an array");
+        const std::vector<UniValue>& values = addressValues.getValues();
+        if (values.empty())
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "\"addresses\" must not be empty");
+        // DoS guard (1 of 2): bound the number of addresses per call.
+        const size_t MAX_ADDRESSES = 1000;
+        if (values.size() > MAX_ADDRESSES)
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "too many addresses in one call (max 1000)");
+        for (const UniValue& v : values) {
+            if (!v.isStr())
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "each entry in \"addresses\" must be a string");
+            vecAddresses.push_back(v.get_str());
+        }
+    } else {
+        vecAddresses.push_back(request.params[0].get_str());
+    }
+
+    // Validate every address up front (same check as the legacy single-address path).
+    for (const std::string& addr : vecAddresses) {
+        if (!IsValidDestination(DecodeDestination(addr)))
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, std::string("Invalid PHICOIN address: ") + addr);
     }
 
     bool fOnlyTotal = false;
     if (request.params.size() > 1)
         fOnlyTotal = request.params[1].get_bool();
+
+    // The onlytotal summary returns a bare integer; mixing that with per-address objects
+    // would give an inconsistent multi-address result shape, so disallow the combination.
+    if (fMultiAddress && fOnlyTotal)
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "onlytotal is not supported together with multiple addresses");
 
     size_t count = INT_MAX;
     if (request.params.size() > 2) {
@@ -797,21 +837,46 @@ UniValue listassetbalancesbyaddress(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_INTERNAL_ERROR, "asset db unavailable.");
 
     LOCK(cs_main);
-    std::vector<std::pair<std::string, CAmount> > vecAssetAmounts;
-    int nTotalEntries = 0;
-    if (!passetsdb->AddressDir(vecAssetAmounts, nTotalEntries, fOnlyTotal, address, count, start))
-        throw JSONRPCError(RPC_INTERNAL_ERROR, "couldn't retrieve address asset directory.");
 
-    // If only the number of addresses is wanted return it
-    if (fOnlyTotal) {
-        return nTotalEntries;
-    }
+    // Flush chain state to disk ONCE for the whole call. We hold cs_main, so no new asset
+    // writes occur during the loop and a single flush keeps every per-address read
+    // consistent. We then pass fFlush=false to AddressDir so it does NOT do a
+    // (FLUSH_STATE_ALWAYS) disk flush per address — which for a large batch would stall
+    // block validation. Net effect for the legacy single-address path is unchanged: one
+    // flush, then one read.
+    FlushStateToDisk();
 
+    // DoS guard (2 of 2): bound total entries materialized across all addresses (each
+    // address may hold up to MAX_DATABASE_RESULTS=50000 assets; 1000 addresses could
+    // otherwise be 50M pairs in a single response).
+    const size_t MAX_TOTAL_ENTRIES = 200000;
+    size_t totalReturned = 0;
+
+    // Query one address: its {asset:amount} map, or its asset count when fOnlyTotal.
+    auto queryOne = [&](const std::string& addr) -> UniValue {
+        std::vector<std::pair<std::string, CAmount> > vecAssetAmounts;
+        int nTotalEntries = 0;
+        if (!passetsdb->AddressDir(vecAssetAmounts, nTotalEntries, fOnlyTotal, addr, count, start, /*fFlush=*/false))
+            throw JSONRPCError(RPC_INTERNAL_ERROR, "couldn't retrieve address asset directory.");
+        if (fOnlyTotal)
+            return UniValue(nTotalEntries);
+        totalReturned += vecAssetAmounts.size();
+        if (totalReturned > MAX_TOTAL_ENTRIES)
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "result too large; query fewer addresses or set a smaller 'count'");
+        UniValue assets(UniValue::VOBJ);
+        for (auto& pair : vecAssetAmounts)
+            assets.push_back(Pair(pair.first, UnitValueFromAmount(pair.second, pair.first)));
+        return assets;
+    };
+
+    // Legacy single-address input → return the legacy shape, unchanged.
+    if (!fMultiAddress)
+        return queryOne(vecAddresses[0]);
+
+    // Multi-address input → { "address": {asset:amount}, ... }, all under one cs_main + one flush.
     UniValue result(UniValue::VOBJ);
-    for (auto& pair : vecAssetAmounts) {
-        result.push_back(Pair(pair.first, UnitValueFromAmount(pair.second, pair.first)));
-    }
-
+    for (const std::string& addr : vecAddresses)
+        result.push_back(Pair(addr, queryOne(addr)));
     return result;
 }
 

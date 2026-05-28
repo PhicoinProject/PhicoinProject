@@ -244,9 +244,10 @@ bool CAssetsDB::AssetDir(std::vector<CDatabasedAssetData>& assets, const std::st
     return true;
 }
 
-bool CAssetsDB::AddressDir(std::vector<std::pair<std::string, CAmount> >& vecAssetAmount, int& totalEntries, const bool& fGetTotal, const std::string& address, const size_t count, const long start)
+bool CAssetsDB::AddressDir(std::vector<std::pair<std::string, CAmount> >& vecAssetAmount, int& totalEntries, const bool& fGetTotal, const std::string& address, const size_t count, const long start, const bool fFlush)
 {
-    FlushStateToDisk();
+    if (fFlush)
+        FlushStateToDisk();
 
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
     pcursor->Seek(std::make_pair(ADDRESS_ASSET_QUANTITY_FLAG, std::make_pair(address, std::string())));

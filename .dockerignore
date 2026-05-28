@@ -9,3 +9,26 @@ autom4te.cache/
 configure
 config.log
 config.status
+# Build hygiene: the daemon image (C++ only) needs none of these; excluding them
+# keeps the build context small (.cache holds multi-GB chain data + backups).
+.cache/
+newUI/
+release_test/
+**/node_modules/
+*.log
+*.zip
+*.tar.gz
+# Build artifacts: the Dockerfile runs a fresh autogen+configure+make, so copying
+# stale host objects/binaries in would risk make skipping a recompile (wrong binary)
+# and bloats the context. Force a clean compile.
+*.o
+*.a
+*.lo
+*.la
+.libs/
+src/phicoind
+src/phicoin-cli
+src/phicoin-tx
+src/qt/phicoin-qt
+src/test/test_phicoin
+src/bench/bench_phicoin
