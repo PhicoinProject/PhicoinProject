@@ -303,7 +303,7 @@ export const ImportWallet: React.FC = () => {
             <button
               onClick={handleFileImport}
               disabled={loading || !jsonInput}
-              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? 'Importing...' : 'Import Wallet'}
             </button>
@@ -363,7 +363,7 @@ export const ImportWallet: React.FC = () => {
             <button
               type="submit"
               disabled={loading || !mnemonic || !userSeed || !password}
-              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {loading ? 'Importing...' : 'Restore Wallet'}
             </button>

@@ -406,7 +406,7 @@ export const RPCConsole: React.FC = () => {
             />
             <button
               type="submit"
-              className="rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Run
             </button>

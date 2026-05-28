@@ -238,7 +238,12 @@ test.describe('Address Book', () => {
       test.skip(true, 'Delete button not found');
       return;
     }
+    // Deleting is now a two-step confirmation (destructive action): the row Delete button
+    // opens a confirmation Modal; the actual removal happens on the modal's Delete button.
     await deleteBtn.click();
+    const confirmBtn = page.locator(`${MODAL_SEL} button:has-text("Delete")`).last();
+    await expect(confirmBtn).toBeVisible({ timeout: 5000 });
+    await confirmBtn.click();
     await page.waitForTimeout(500);
 
     await expect(page.locator('text=Delete Me')).not.toBeVisible({ timeout: 8000 });

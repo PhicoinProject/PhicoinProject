@@ -369,7 +369,7 @@ export const CreateWallet: React.FC = () => {
                 <button
                   type="submit"
                   disabled={loading || password.length < 12 || password !== confirmPassword}
-                  className="flex-1 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex-1 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   {loading ? 'Creating...' : 'Create Wallet'}
                 </button>
@@ -381,7 +381,7 @@ export const CreateWallet: React.FC = () => {
                     (step === 'mnemonic' && !confirmedBackup) ||
                     (step === 'seed' && userSeed.length < 8)
                   }
-                  className="flex-1 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+                  className="flex-1 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   Next
                 </button>
@@ -393,7 +393,7 @@ export const CreateWallet: React.FC = () => {
             <button
               type="button"
               onClick={checkQuiz}
-              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
             >
               Verify & Complete
             </button>

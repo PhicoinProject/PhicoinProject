@@ -51,6 +51,34 @@ export const Overview: React.FC = () => {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-gray-900 dark:text-dark-text md:text-2xl">Dashboard</h1>
 
+      {/* Global offline banner: node unreachable (getBlockCount/getNetworkInfo failed) */}
+      {netError && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="flex items-start gap-3 rounded-lg border border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-800 dark:text-amber-300"
+        >
+          <svg
+            className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500 dark:text-amber-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z"
+            />
+          </svg>
+          <p>
+            Cannot reach the PHICOIN node — balances and history may be stale. Check that your node
+            is running.
+          </p>
+        </div>
+      )}
+
       {/* Top-level error banner */}
       {error && (
         <div className="rounded-lg border border-red-200 dark:border-red-600 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-400">

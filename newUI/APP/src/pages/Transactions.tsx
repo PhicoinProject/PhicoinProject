@@ -11,6 +11,7 @@ import {
 } from '@/services/txHistory';
 import { Button } from '@/components/common/Button';
 import { Modal } from '@/components/common/Modal';
+import { Spinner } from '@/components/common/Spinner';
 import { truncate, formatConfirmations, formatDate } from '@/utils/format';
 import { TRANSACTION_POLL_INTERVAL, DATA_STALE_TIME } from '@/utils/constants';
 
@@ -151,12 +152,14 @@ export const Transactions: React.FC = () => {
         <input
           type="text"
           placeholder="Search by txid or address..."
+          aria-label="Search by txid or address"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 min-w-48 rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
         />
         <select
           value={filterDirection}
+          aria-label="Filter by direction"
           onChange={(e) => setFilterDirection(e.target.value as TxDirection | 'all')}
           className="rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-700 dark:text-dark-secondary"
         >
@@ -168,12 +171,14 @@ export const Transactions: React.FC = () => {
         </select>
         <input
           type="date"
+          aria-label="Start date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
           className="rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-700 dark:text-dark-secondary"
         />
         <input
           type="date"
+          aria-label="End date"
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
           className="rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-700 dark:text-dark-secondary"
@@ -237,6 +242,14 @@ export const Transactions: React.FC = () => {
                     <tr
                       key={tx.txid}
                       onClick={() => openDetail(tx.txid)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          openDetail(tx.txid);
+                        }
+                      }}
                       className={`border-b border-gray-100 dark:border-dark-border ${i % 2 === 0 ? 'bg-white dark:bg-dark-surface' : 'bg-gray-50 dark:bg-dark-elevated'} hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer`}
                     >
                       <td className="px-4 py-3 text-gray-900 dark:text-dark-text">
@@ -306,6 +319,14 @@ export const Transactions: React.FC = () => {
                 <div
                   key={tx.txid}
                   onClick={() => openDetail(tx.txid)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      openDetail(tx.txid);
+                    }
+                  }}
                   className="rounded-lg border border-gray-200 dark:border-dark-border p-3 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -408,24 +429,7 @@ const TransactionDetailModal: React.FC<TransactionDetailModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Transaction Details">
       {loading ? (
-        <div className="flex items-center justify-center py-8">
-          <svg className="h-8 w-8 animate-spin text-phi-primary" viewBox="0 0 24 24">
-            <circle
-              className="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="4"
-              fill="none"
-            />
-            <path
-              className="opacity-75"
-              fill="currentColor"
-              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-            />
-          </svg>
-        </div>
+        <Spinner size="md" className="py-8" />
       ) : !tx ? (
         <p className="text-sm text-gray-500 dark:text-dark-mutedText">
           Transaction not found or could not be loaded.

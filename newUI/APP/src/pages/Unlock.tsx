@@ -111,19 +111,27 @@ export const Unlock: React.FC = () => {
               }}
               className="w-full rounded-md border border-gray-300 dark:border-dark-muted bg-white dark:bg-dark-elevated px-3 py-2 text-sm text-gray-900 dark:text-dark-text focus:border-phi-primary focus:outline-none focus:ring-1 focus:ring-phi-primary"
               placeholder="Enter passphrase"
-              autoComplete="off"
+              autoComplete="current-password"
               disabled={loading || cooldown > 0}
             />
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="rounded-md bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-400"
+            >
               {error}
             </div>
           )}
 
           {cooldown > 0 && (
-            <div className="rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-700 dark:text-amber-400">
+            <div
+              role="status"
+              aria-live="polite"
+              className="rounded-md bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-700 dark:text-amber-400"
+            >
               Locked for {cooldown}s — too many failed attempts.
             </div>
           )}
@@ -131,7 +139,7 @@ export const Unlock: React.FC = () => {
           <button
             type="submit"
             disabled={loading || !passphrase || cooldown > 0}
-            className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            className="w-full rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {loading ? 'Unlocking...' : 'Unlock Wallet'}
           </button>

@@ -24,6 +24,9 @@ export const AddressBook: React.FC = () => {
 
   const [error, setError] = useState<string | null>(null);
 
+  // Pending delete confirmation: null = no confirmation open; otherwise the entry to delete.
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; label: string } | null>(null);
+
   // Address book store (localStorage backed)
   const { addEntry, updateLabel, deleteEntry, findByAddress, setLabel } = useAddressBookStore();
   // Subscribe to the entries slice itself (a stable ref that changes only when the
@@ -143,6 +146,13 @@ export const AddressBook: React.FC = () => {
     showToast('Address removed from address book', 'success');
   };
 
+  // Perform the actual deletion after the user confirms in the modal.
+  const handleConfirmDelete = () => {
+    if (!pendingDelete) return;
+    handleDelete(pendingDelete.id);
+    setPendingDelete(null);
+  };
+
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
     showToast('Address copied to clipboard', 'success');
@@ -235,9 +245,17 @@ export const AddressBook: React.FC = () => {
       {activeTab === 'receiving' && (
         <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-sm">
           {loadingReceiving ? (
-            <p className="p-6 text-sm text-gray-500 dark:text-dark-mutedText">
-              Loading addresses...
-            </p>
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="animate-pulse flex items-center gap-4">
+                  <div className="h-4 w-28 rounded bg-gray-200 dark:bg-dark-muted" />
+                  <div className="h-4 w-48 rounded bg-gray-200 dark:bg-dark-muted" />
+                  <div className="h-4 w-16 rounded bg-gray-200 dark:bg-dark-muted" />
+                  <div className="ml-auto h-4 w-20 rounded bg-gray-200 dark:bg-dark-muted" />
+                  <div className="h-4 w-16 rounded bg-gray-200 dark:bg-dark-muted" />
+                </div>
+              ))}
+            </div>
           ) : (
             <table className="w-full text-left text-sm">
               <thead className="border-b bg-gray-50 dark:bg-dark-elevated text-gray-500 dark:text-dark-mutedText">
@@ -352,7 +370,7 @@ export const AddressBook: React.FC = () => {
                         Edit
                       </button>
                       <button
-                        onClick={() => handleDelete(entry.id)}
+                        onClick={() => setPendingDelete({ id: entry.id, label: entry.label })}
                         className="text-xs text-red-600 dark:text-red-400 hover:underline"
                       >
                         Delete
@@ -431,6 +449,31 @@ export const AddressBook: React.FC = () => {
             </Button>
             <Button onClick={handleModalSave}>
               {modalMode === 'add' ? 'Add' : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title="Delete address?"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600 dark:text-dark-secondary">
+            Remove{' '}
+            <span className="font-medium text-gray-900 dark:text-dark-text">
+              {pendingDelete?.label || '(no label)'}
+            </span>{' '}
+            from your address book? This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setPendingDelete(null)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleConfirmDelete}>
+              Delete
             </Button>
           </div>
         </div>

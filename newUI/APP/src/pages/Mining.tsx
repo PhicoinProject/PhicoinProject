@@ -105,12 +105,12 @@ export const Mining: React.FC = () => {
             {genProcLimit > 0 ? (
               <>
                 <span className="inline-block h-3 w-3 rounded-full bg-green-500" />
-                <span className="text-2xl font-bold text-green-600">Enabled</span>
+                <span className="text-2xl font-bold text-green-600 dark:text-green-400">Enabled</span>
               </>
             ) : (
               <>
                 <span className="inline-block h-3 w-3 rounded-full bg-red-500" />
-                <span className="text-2xl font-bold text-red-600">Disabled</span>
+                <span className="text-2xl font-bold text-red-600 dark:text-red-400">Disabled</span>
               </>
             )}
           </p>

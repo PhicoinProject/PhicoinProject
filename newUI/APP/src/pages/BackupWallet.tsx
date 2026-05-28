@@ -142,7 +142,7 @@ export const BackupWallet: React.FC = () => {
           setError(null);
           generateBackup();
         }}
-        className="mb-4 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        className="mb-4 rounded-md bg-phi-primary px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
       >
         Generate Backup
       </button>
@@ -158,7 +158,7 @@ export const BackupWallet: React.FC = () => {
           <div className="flex gap-3">
             <button
               onClick={exportToFile}
-              className="flex-1 rounded-md bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900"
+              className="flex-1 rounded-md bg-gray-800 dark:bg-dark-elevated px-4 py-2 text-sm font-medium text-white hover:bg-gray-900 dark:hover:bg-dark-muted"
             >
               Download File
             </button>

@@ -162,7 +162,7 @@ export const Assets: React.FC = () => {
               <button
                 onClick={() => handleSendClick(selectedAsset)}
                 disabled={selectedAsset.isOwner}
-                className="rounded-md px-3 py-1.5 text-sm font-medium text-white bg-phi-primary hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-md px-3 py-1.5 text-sm font-medium text-white bg-phi-primary hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={selectedAsset.isOwner ? 'Owner tokens cannot be transferred' : ''}
               >
                 Send
