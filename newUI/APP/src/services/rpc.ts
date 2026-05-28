@@ -361,16 +361,18 @@ export class RpcClient {
    */
   async getAddressBalanceBatch(addresses: string[]): Promise<Record<string, unknown>> {
     if (addresses.length === 0) return {};
-    // Call getaddressbalance individually for each address to get accurate
-    // per-address balances. The batch RPC form returns a combined total that
-    // cannot be correctly distributed per-address.
-    const results: Record<string, unknown> = {};
-    await Promise.all(
-      addresses.map(async (addr) => {
-        try { results[addr] = await this.getAddressBalance(addr); }
-        catch { results[addr] = { balance: 0, received: 0 }; }
-      })
+    // ONE JSON-RPC batch request, not N parallel HTTP requests that serialize behind
+    // the browser's ~6-connection limit (this is the dashboard's balance poll — the
+    // single biggest request burst). Each call stays per-address (the {addresses:[...]}
+    // combined form sums into one total and can't be split per-address); results map
+    // back by array position / id.
+    const batched = await this.rawBatch<unknown>(
+      addresses.map((addr) => ({ method: 'getaddressbalance', params: [addr] }))
     );
+    const results: Record<string, unknown> = {};
+    addresses.forEach((addr, i) => {
+      results[addr] = batched[i] ?? { balance: 0, received: 0 };
+    });
     return results;
   }
 
@@ -417,17 +419,14 @@ export class RpcClient {
    * Calls getaddresstxids for each address.
    */
   async getAddressTxIdsBatch(addresses: string[]): Promise<string[]> {
-    const all: string[] = [];
-    await Promise.all(
-      addresses.map(async (addr) => {
-        try {
-          const txids = await this.getAddressTxIds(addr);
-          all.push(...txids);
-        } catch {
-          // Skip addresses with no txids or errors
-        }
-      })
+    if (addresses.length === 0) return [];
+    // ONE JSON-RPC batch request instead of N parallel HTTP requests (which serialize
+    // behind the browser's ~6-connection limit). Returns the combined txid list.
+    const batched = await this.rawBatch<string[]>(
+      addresses.map((addr) => ({ method: 'getaddresstxids', params: [addr] }))
     );
+    const all: string[] = [];
+    for (const txids of batched) if (txids) all.push(...txids);
     return all;
   }
 

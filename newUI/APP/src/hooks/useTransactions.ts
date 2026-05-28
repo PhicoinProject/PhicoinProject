@@ -12,14 +12,14 @@ export function useTransactions(filters?: TxHistoryFilters) {
   // Use the ASYNC pool (gap-limit RPC discovery), shared with useMyAssets via the
   // ['derivedPoolAsync'] cache key. The old sync pool only covered indices 0-9, so
   // transactions on addresses beyond that window never appeared in history (R2).
-  const { data: poolAddrs = [] } = useQuery({
+  const { data: poolAddrs = [], isLoading: poolLoading } = useQuery({
     queryKey: ['derivedPoolAsync'],
     queryFn: () => walletService.getDerivedAddressPoolAsync(),
     staleTime: DERIVED_POOL_STALE_TIME, // match useMyAssets so the shared query key has one TTL
   });
   const addrList = useMemo(() => poolAddrs.map((a) => a.address), [poolAddrs]);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['transactions', addrList.join(','), JSON.stringify(filters)],
     queryFn: async () => {
       if (!addrList.length) return [];
@@ -29,6 +29,12 @@ export function useTransactions(filters?: TxHistoryFilters) {
     staleTime: DATA_STALE_TIME,
     enabled: addrList.length > 0,
   });
+
+  // While the address pool is still being discovered, the tx query is disabled
+  // (enabled:false ⇒ isLoading:false). Without this, the dashboard rendered
+  // "No transactions yet" prematurely instead of a loading skeleton. Treat pool
+  // discovery as part of loading.
+  return { ...query, isLoading: poolLoading || query.isLoading } as typeof query;
 }
 
 /**

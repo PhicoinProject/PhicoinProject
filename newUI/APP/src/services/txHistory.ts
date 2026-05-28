@@ -70,9 +70,6 @@ export interface TxHistoryFilters {
  */
 const CACHE_CONFIRMATION_DEPTH = 6;
 
-/** Max concurrent getRawTransaction round-trips when fetching a page. */
-const FETCH_CONCURRENCY = 8;
-
 /** Hard cap on cached entries; oldest are evicted first (insertion order). */
 const MAX_CACHE_ENTRIES = 2000;
 
@@ -106,32 +103,6 @@ function cacheConfirmedTx(txid: string, tx: Record<string, unknown>): void {
   }
 }
 
-/**
- * Run an async mapper over `items` with a bounded number of in-flight workers.
- * Results are returned in the same order as `items`. Rejections propagate to the
- * caller (the per-item work below already swallows its own errors).
- */
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T, index: number) => Promise<R>
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    // Each iteration's `nextIndex++` is synchronous (no await between the check and
-    // the increment), so workers never grab the same index — and `current` is always
-    // < length when the loop body runs.
-    while (nextIndex < items.length) {
-      const current = nextIndex++;
-      results[current] = await worker(items[current], current);
-    }
-  });
-
-  await Promise.all(runners);
-  return results;
-}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -166,32 +137,28 @@ export async function getTransactionHistory(
     const currentHeight = await rpc.getBlockCount();
 
     // --- Fetch phase (C2 + C4) -------------------------------------------
-    // For each page txid, resolve its parsed raw tx either from the confirmed
-    // cache (free) or via a fresh getRawTransaction. Uncached, unconfirmed, and
-    // shallow (<6 conf) txs are fetched; the fetches run with bounded
-    // concurrency instead of the old N serial round-trips. A failed single
-    // fetch resolves to null and is skipped (same as the old per-tx try/catch),
-    // never aborting the batch.
-    const fetched = await mapWithConcurrency(
-      recentTxIds,
-      FETCH_CONCURRENCY,
-      async (txid): Promise<{ txid: string; tx: Record<string, unknown> } | null> => {
-        const cached = confirmedTxCache.get(txid);
-        if (cached) return { txid, tx: cached };
-        try {
-          const txData = await rpc.getRawTransaction(txid, 2);
-          const tx = txData as Record<string, unknown>;
-          // Cache only deeply-confirmed (immutable) txs. Confirmations here are
-          // just the gate for caching; the value actually used per entry is
-          // recomputed live below from currentHeight.
-          if (Number(tx.confirmations ?? 0) >= CACHE_CONFIRMATION_DEPTH) {
-            cacheConfirmedTx(txid, tx);
-          }
-          return { txid, tx };
-        } catch {
-          // Skip unparseable / failed transactions.
-          return null;
-        }
+    // Resolve each page txid from the confirmed cache (free), else fetch. ALL
+    // uncached txs are pulled in ONE JSON-RPC batch request (not N requests that
+    // serialize behind the browser's ~6-connection limit and can be starved by the
+    // dashboard's concurrent poll burst — that starvation left Recent Transactions
+    // stuck loading). A per-call failure yields null for that slot and is skipped.
+    const uncachedTxIds = recentTxIds.filter((txid) => !confirmedTxCache.has(txid));
+    const fetchedRaw = await rpc.rawBatch<Record<string, unknown>>(
+      uncachedTxIds.map((txid) => ({ method: 'getrawtransaction', params: [txid, 2] }))
+    );
+    const freshByTxid = new Map<string, Record<string, unknown>>();
+    uncachedTxIds.forEach((txid, i) => {
+      const tx = fetchedRaw[i];
+      if (!tx) return;
+      // Cache only deeply-confirmed (immutable) txs; the per-entry confirmations/
+      // blockHeight are recomputed live below so depth never goes stale.
+      if (Number(tx.confirmations ?? 0) >= CACHE_CONFIRMATION_DEPTH) cacheConfirmedTx(txid, tx);
+      freshByTxid.set(txid, tx);
+    });
+    const fetched: ({ txid: string; tx: Record<string, unknown> } | null)[] = recentTxIds.map(
+      (txid) => {
+        const tx = confirmedTxCache.get(txid) ?? freshByTxid.get(txid);
+        return tx ? { txid, tx } : null;
       }
     );
 

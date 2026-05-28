@@ -197,11 +197,14 @@ export const Overview: React.FC = () => {
                   {txItems.map((tx: TxItem, i) => {
                     const txid = String(tx.txid ?? '');
                     const amount = Number(tx.amount ?? 0);
-                    const time = Number(tx.time ?? tx.blocktime ?? Date.now() / 1000);
+                    // TxEntry fields: `timestamp` (epoch s) and signed `amount`
+                    // (+ received / - sent). The old reads (tx.time/tx.category)
+                    // don't exist on TxEntry, so dates showed "just now" and every
+                    // row showed green "+".
+                    const time = Number(tx.timestamp) || Date.now() / 1000;
                     const confs = Number(tx.confirmations ?? 0);
-                    const category = String(tx.category ?? '');
-                    const isPositive = category !== 'send';
-                    const displayAmount = category === 'generate' ? Math.abs(amount) : amount;
+                    const isPositive = amount >= 0;
+                    const displayAmount = amount;
 
                     return (
                       <tr
@@ -238,11 +241,10 @@ export const Overview: React.FC = () => {
               {txItems.map((tx: TxItem, i) => {
                 const txid = String(tx.txid ?? '');
                 const amount = Number(tx.amount ?? 0);
-                const time = Number(tx.time ?? tx.blocktime ?? Date.now() / 1000);
+                const time = Number(tx.timestamp) || Date.now() / 1000;
                 const confs = Number(tx.confirmations ?? 0);
-                const category = String(tx.category ?? '');
-                const isPositive = category !== 'send';
-                const displayAmount = category === 'generate' ? Math.abs(amount) : amount;
+                const isPositive = amount >= 0;
+                const displayAmount = amount;
 
                 return (
                   <div
