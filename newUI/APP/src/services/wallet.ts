@@ -3,6 +3,7 @@ import { HDKey } from '@scure/bip32';
 import { useWalletHDKeyStore } from '@/stores/hdKeyStore';
 import { deriveReceiveAddress, deriveChangeAddress, deriveAddressRange, deriveScriptPubKeyRange, isValidPHICoinAddress } from './addressDerivation';
 import { buildAndSignOnly, testMempoolAccept, broadcastTx } from './psbt';
+import { planTransaction } from './sendPlanner';
 import { scanChain } from './chainScanner';
 import type { Address, WalletState, UTXO, DerivedAddress, AddressBalanceResult } from '@/types';
 import type { PSBTInput, PSBTOutput } from './psbt';
@@ -278,7 +279,13 @@ export class WalletService {
     addresses: string[],
     recipients: { address: string; value: number }[],
     feeRate = 1,
-    options: { skipPreFlight?: boolean } = {}
+    options: {
+      skipPreFlight?: boolean;
+      /** Subtract the network fee from the (single) recipient amount — used by "Send MAX". */
+      subtractFeeFromAmount?: boolean;
+      /** Coin control: spend ONLY these UTXOs (in order), instead of auto-selecting. */
+      selectedUtxos?: { txid: string; vout: number }[];
+    } = {}
   ): Promise<string> {
     // PHICOIN's relay-fee floor is 0.01 PHI/kB (= 1000 sat/byte). A lower fee rate is
     // rejected by the daemon ("min relay fee not met"), so never go under it.
@@ -308,70 +315,72 @@ export class WalletService {
       throw new Error('All UTXOs are pending in the mempool; wait for a confirmation.');
     }
 
-    const totalOutputSat = recipients.reduce((s, r) => s + Math.round(r.value * 1e8), 0);
-    const psbtInputs: PSBTInput[] = [];
-    let totalInputSat = 0;
+    // Coin control: when the caller passes selectedUtxos, spend ONLY those (in order);
+    // otherwise consider every spendable UTXO.
+    const selKeys =
+      options.selectedUtxos && options.selectedUtxos.length > 0
+        ? new Set(options.selectedUtxos.map((s) => `${s.txid}:${s.vout}`))
+        : null;
 
+    // Build all SIGNABLE candidate inputs (skip any whose signing path can't be derived).
+    const candidates: { input: PSBTInput; valueSat: number }[] = [];
     for (const utxo of utxos) {
       const u = utxo as Record<string, unknown>;
       const txid = String(u.txid ?? u.txHash ?? '');
       const vout = Number(u.vout ?? u.outputIndex ?? 0);
-      // getaddressutxos returns `satoshis` (integer sats). `value`/`amount` (if a fallback
-      // ever applies) are PHI floats, so convert them to sats — otherwise coin selection
-      // would undercount inputs by 1e8 and abort an otherwise-valid send.
-      const valueSat = u.satoshis != null
-        ? Number(u.satoshis)
-        : Math.round(Number(u.value ?? u.amount ?? 0) * 1e8);
+      if (selKeys && !selKeys.has(`${txid}:${vout}`)) continue; // coin control: only chosen UTXOs
+      // getaddressutxos returns `satoshis` (integer sats). value/amount fallbacks are PHI floats.
+      const valueSat =
+        u.satoshis != null ? Number(u.satoshis) : Math.round(Number(u.value ?? u.amount ?? 0) * 1e8);
       const scriptPubKey = String(u.scriptPubKey ?? u.script ?? u.scriptPubKeyHex ?? '');
-
       const path = this.derivePathForAddress(scriptPubKey);
       if (!path) {
         console.warn(`Could not derive path for scriptPubKey: ${scriptPubKey}`);
         continue;
       }
-
-      totalInputSat += valueSat;
-      psbtInputs.push({
-        txid,
-        vout,
-        scriptPubKey,
-        value: valueSat / 1e8,
-        derivationPath: path,
+      candidates.push({
+        input: { txid, vout, scriptPubKey, value: valueSat / 1e8, derivationPath: path },
+        valueSat,
       });
-
-      // Estimate: inputs * 180 + (recipients + 1 change) * 34
-      const estimatedSize = psbtInputs.length * 180 + (recipients.length + 1) * 34;
-      const estimatedFee = estimatedSize * feeRate;
-      if (totalInputSat >= totalOutputSat + estimatedFee + 546) break;
     }
-
-    const estimatedSize = psbtInputs.length * 180 + (recipients.length + 1) * 34;
-    const fee = estimatedSize * feeRate;
-    const changeSat = totalInputSat - totalOutputSat - fee;
-
-    if (changeSat < 0) {
+    if (candidates.length === 0) {
       throw new Error(
-        'Insufficient funds. Need ' +
-          ((totalOutputSat + fee - totalInputSat) / 1e8).toFixed(8) +
-          ' PHI more.'
+        selKeys ? 'None of the selected UTXOs are spendable.' : 'No spendable UTXOs found.'
       );
     }
 
-    const outputs: PSBTOutput[] = recipients.map((r) => ({
-      address: r.address,
-      value: r.value,
-    }));
+    const grossOutputSat = recipients.reduce((s, r) => s + Math.round(r.value * 1e8), 0);
 
-    if (changeSat > 546) {
+    // Pure, unit-tested planner: decides input count, fee, change, and the subtract-fee
+    // delta. Throws a user-facing message on insufficient funds / dust-sized output.
+    const plan = planTransaction({
+      inputsSat: candidates.map((c) => c.valueSat),
+      grossOutputSat,
+      feeRatePerByte: feeRate,
+      outputCount: recipients.length,
+      subtractFee: options.subtractFeeFromAmount === true,
+      forceAllInputs: !!selKeys,
+    });
+
+    const psbtInputs: PSBTInput[] = candidates.slice(0, plan.selectedCount).map((c) => c.input);
+
+    // Recipient outputs. In subtract-fee mode the (single) recipient absorbs the fee.
+    const outputs: PSBTOutput[] = recipients.map((r) => ({ address: r.address, value: r.value }));
+    if (plan.recipientDeltaSat > 0) {
+      const recipSat = Math.round(recipients[0].value * 1e8) - plan.recipientDeltaSat;
+      outputs[0] = { address: recipients[0].address, value: recipSat / 1e8 };
+    }
+
+    if (plan.hasChange) {
       const hdKey = useWalletHDKeyStore.getState().hdKey;
       if (!hdKey) throw new Error('Wallet not unlocked');
 
       const network: 'mainnet' | 'testnet' = 'mainnet';
-      // Use change chain (m/44'/coinType'/0'/1/{n}) for change outputs.
-      // Reuse current change address until fully spent (Electrum model).
+      // Use change chain (m/44'/coinType'/0'/1/{n}); reuse current change address until
+      // fully spent (Electrum model).
       const changeIndex = this.getCurrentChangeIndex(network);
       const changeAddr = deriveChangeAddress(hdKey, network, changeIndex);
-      outputs.push({ address: changeAddr.address, value: changeSat / 1e8, isChange: true });
+      outputs.push({ address: changeAddr.address, value: plan.changeSat / 1e8, isChange: true });
     }
 
     // SECURITY (P5): the input values + scripts above come from the daemon's

@@ -43,16 +43,21 @@ const ConfirmDialog: React.FC<{
   recipients: Recipient[];
   feeRate: number;
   totalFeeEstimate: number;
+  subtractFee: boolean;
   countDown: number;
   onConfirm: () => void;
   onCancel: () => void;
-}> = ({ recipients, feeRate, totalFeeEstimate, countDown, onConfirm, onCancel }) => {
+}> = ({ recipients, feeRate, totalFeeEstimate, subtractFee, countDown, onConfirm, onCancel }) => {
   const recipientTotal = recipients.reduce((sum, r) => {
     const n = parseFloat(r.amount);
     return sum + (isNaN(n) ? 0 : n);
   }, 0);
   const feePhi = totalFeeEstimate / 1e8;
-  const grandTotal = recipientTotal + feePhi;
+  // In subtract-fee mode the fee is taken OUT of the amount, so the wallet debits exactly
+  // `recipientTotal` (and the recipient receives recipientTotal - fee). Otherwise the fee is
+  // added on top.
+  const grandTotal = subtractFee ? recipientTotal : recipientTotal + feePhi;
+  const recipientReceives = subtractFee ? Math.max(0, recipientTotal - feePhi) : recipientTotal;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-full max-w-lg rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-6 shadow-xl">
@@ -88,13 +93,25 @@ const ConfirmDialog: React.FC<{
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-gray-600 dark:text-dark-mutedText">Estimated fee</span>
+            <span className="text-gray-600 dark:text-dark-mutedText">
+              Estimated fee{subtractFee ? ' (subtracted from amount)' : ''}
+            </span>
             <span className="font-medium text-gray-800 dark:text-dark-secondary">
               {feePhi.toFixed(8)} PHI
             </span>
           </div>
+          {subtractFee && (
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 dark:text-dark-mutedText">Recipient receives</span>
+              <span className="font-medium text-gray-800 dark:text-dark-secondary">
+                {recipientReceives.toFixed(8)} PHI
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between border-t border-gray-200 dark:border-dark-border pt-3">
-            <span className="font-semibold text-gray-700 dark:text-dark-secondary">Total (amount + fee)</span>
+            <span className="font-semibold text-gray-700 dark:text-dark-secondary">
+              {subtractFee ? 'Total debited (fee included)' : 'Total (amount + fee)'}
+            </span>
             <span className="font-bold text-phi-primary">
               {grandTotal.toFixed(8)} PHI
             </span>
@@ -335,7 +352,10 @@ export const Send: React.FC = () => {
   }, 0);
 
   const balanceToCheck = form.fromAddress ? selectedAddressBalance : phiBalance;
-  const overBalance = totalRecipientAmount > balanceToCheck && !form.subtractFee;
+  // You can never send MORE than your balance, even with subtract-fee (the fee comes OUT of
+  // the amount, so amount == balance is the maximum). The previous `&& !form.subtractFee`
+  // disabled this client-side guard, letting an over-balance send fail deep in sendToMany.
+  const overBalance = totalRecipientAmount > balanceToCheck;
 
   // Estimate total fee: ~180 per input + ~34 per output (recipients + 1 change)
   const estimatedFeeSat =
@@ -383,7 +403,16 @@ export const Send: React.FC = () => {
         value: parseFloat(r.amount),
       }));
 
-      const txid = await walletService.sendToMany(sendAddresses, recipients, form.feeRate);
+      // Coin control: if the user explicitly selected UTXOs, spend exactly those.
+      const selectedCoins = coins.filter((c) => c.selected);
+      const txid = await walletService.sendToMany(sendAddresses, recipients, form.feeRate, {
+        // Subtract-fee only applies to a single recipient (used by "Send MAX").
+        subtractFeeFromAmount: form.subtractFee && recipients.length === 1,
+        selectedUtxos:
+          selectedCoins.length > 0
+            ? selectedCoins.map((c) => ({ txid: c.txid, vout: c.vout }))
+            : undefined,
+      });
 
       showToast(`Transaction sent: ${txid}`, 'success');
 
@@ -416,11 +445,18 @@ export const Send: React.FC = () => {
 
   const handleMax = () => {
     const max = form.fromAddress ? selectedAddressBalance : phiBalance;
-    // Put max on first recipient, clear others
-    const updated = form.recipients.map((r, i) =>
-      i === 0 ? { ...r, amount: String(max) } : { ...r, amount: '' }
-    );
-    setForm((f) => ({ ...f, recipients: updated }));
+    // "Send MAX" = send the entire (selected) balance to a single recipient with the network
+    // fee subtracted from the amount, so the wallet can actually be emptied. Collapse to one
+    // recipient (keeping its address) and enable subtract-fee; sendToMany/planTransaction then
+    // deducts the fee from the output. (Previously this set the amount to the FULL balance with
+    // the fee added on top, so every MAX send failed with "Insufficient funds".)
+    const firstAddress = form.recipients[0]?.address ?? '';
+    setForm((f) => ({
+      ...f,
+      recipients: [{ address: firstAddress, amount: String(max) }],
+      subtractFee: true,
+    }));
+    setErrors({ recipients: [null] });
   };
 
   // ---- Render helpers ----
@@ -717,12 +753,26 @@ export const Send: React.FC = () => {
           onChange={(e) => setForm((f) => ({ ...f, comment: e.target.value }))}
         />
 
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-dark-secondary">
+        <label
+          className={`flex items-center gap-2 text-sm ${
+            form.recipients.length > 1
+              ? 'text-gray-400 dark:text-dark-muted'
+              : 'text-gray-700 dark:text-dark-secondary'
+          }`}
+          title={
+            form.recipients.length > 1
+              ? 'Subtract fee is only available with a single recipient'
+              : undefined
+          }
+        >
           <input
             type="checkbox"
-            checked={form.subtractFee}
+            // Subtract-fee deducts the network fee from the recipient amount; it is only
+            // well-defined for a single recipient, so disable it for multi-recipient sends.
+            disabled={form.recipients.length > 1}
+            checked={form.subtractFee && form.recipients.length === 1}
             onChange={(e) => setForm((f) => ({ ...f, subtractFee: e.target.checked }))}
-            className="rounded border-gray-300 dark:border-dark-muted"
+            className="rounded border-gray-300 dark:border-dark-muted disabled:opacity-50"
           />
           Subtract fee from amount
         </label>
@@ -763,6 +813,7 @@ export const Send: React.FC = () => {
           recipients={form.recipients}
           feeRate={form.feeRate}
           totalFeeEstimate={estimatedFeeSat}
+          subtractFee={form.subtractFee && form.recipients.length === 1}
           countDown={confirmCountdown}
           onConfirm={handleConfirmSend}
           onCancel={handleCancelConfirm}
