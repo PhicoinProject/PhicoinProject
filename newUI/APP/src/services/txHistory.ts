@@ -61,6 +61,79 @@ export interface TxHistoryFilters {
 }
 
 // ---------------------------------------------------------------------------
+// Internal: confirmed-transaction cache + concurrency helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Number of confirmations after which a transaction is considered immutable
+ * (deep enough that a chain reorg is treated as impossible for caching).
+ */
+const CACHE_CONFIRMATION_DEPTH = 6;
+
+/** Max concurrent getRawTransaction round-trips when fetching a page. */
+const FETCH_CONCURRENCY = 8;
+
+/** Hard cap on cached entries; oldest are evicted first (insertion order). */
+const MAX_CACHE_ENTRIES = 2000;
+
+/**
+ * Module-level cache of parsed raw transactions, keyed by txid.
+ *
+ * Cached data is public, immutable chain data (wallet-agnostic), so no
+ * wallet-change invalidation is needed. IMPORTANT: only the raw decoded tx is
+ * cached. Volatile fields (confirmations, blockHeight) are intentionally NOT
+ * trusted from here — they are always recomputed live from currentHeight on
+ * every call, so a cached tx never reports stale confirmation/height values.
+ *
+ * Only transactions at/above CACHE_CONFIRMATION_DEPTH confirmations are stored,
+ * so unconfirmed/shallow txs are always re-fetched.
+ */
+const confirmedTxCache = new Map<string, Record<string, unknown>>();
+
+/**
+ * Store a parsed raw tx in the cache, evicting the oldest entries if the cap is
+ * exceeded. Map preserves insertion order, so the first keys are the oldest.
+ */
+function cacheConfirmedTx(txid: string, tx: Record<string, unknown>): void {
+  // Refresh insertion order so re-seen txs are treated as most-recent.
+  if (confirmedTxCache.has(txid)) confirmedTxCache.delete(txid);
+  confirmedTxCache.set(txid, tx);
+
+  while (confirmedTxCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = confirmedTxCache.keys().next().value as string | undefined;
+    if (oldest === undefined) break;
+    confirmedTxCache.delete(oldest);
+  }
+}
+
+/**
+ * Run an async mapper over `items` with a bounded number of in-flight workers.
+ * Results are returned in the same order as `items`. Rejections propagate to the
+ * caller (the per-item work below already swallows its own errors).
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    // Each iteration's `nextIndex++` is synchronous (no await between the check and
+    // the increment), so workers never grab the same index — and `current` is always
+    // < length when the loop body runs.
+    while (nextIndex < items.length) {
+      const current = nextIndex++;
+      results[current] = await worker(items[current], current);
+    }
+  });
+
+  await Promise.all(runners);
+  return results;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -91,61 +164,90 @@ export async function getTransactionHistory(
     const recentTxIds = uniqueTxIds.slice(from, from + count);
 
     const currentHeight = await rpc.getBlockCount();
-    const txs: TxEntry[] = [];
 
-    for (const txid of recentTxIds) {
-      try {
-        const txData = await rpc.getRawTransaction(txid, 2);
-        const tx = txData as Record<string, unknown>;
-
-        const confirmations = Number(tx.confirmations ?? 0);
-        const timestamp = Number(tx.time ?? tx.blocktime ?? 0);
-
-        let blockHeight = 0;
-        if (confirmations > 0) {
-          blockHeight = currentHeight - confirmations + 1;
+    // --- Fetch phase (C2 + C4) -------------------------------------------
+    // For each page txid, resolve its parsed raw tx either from the confirmed
+    // cache (free) or via a fresh getRawTransaction. Uncached, unconfirmed, and
+    // shallow (<6 conf) txs are fetched; the fetches run with bounded
+    // concurrency instead of the old N serial round-trips. A failed single
+    // fetch resolves to null and is skipped (same as the old per-tx try/catch),
+    // never aborting the batch.
+    const fetched = await mapWithConcurrency(
+      recentTxIds,
+      FETCH_CONCURRENCY,
+      async (txid): Promise<{ txid: string; tx: Record<string, unknown> } | null> => {
+        const cached = confirmedTxCache.get(txid);
+        if (cached) return { txid, tx: cached };
+        try {
+          const txData = await rpc.getRawTransaction(txid, 2);
+          const tx = txData as Record<string, unknown>;
+          // Cache only deeply-confirmed (immutable) txs. Confirmations here are
+          // just the gate for caching; the value actually used per entry is
+          // recomputed live below from currentHeight.
+          if (Number(tx.confirmations ?? 0) >= CACHE_CONFIRMATION_DEPTH) {
+            cacheConfirmedTx(txid, tx);
+          }
+          return { txid, tx };
+        } catch {
+          // Skip unparseable / failed transactions.
+          return null;
         }
-
-        // Apply date filters
-        if (filters.startDate && filters.endDate) {
-          const txDate = new Date(timestamp * 1000);
-          if (txDate < filters.startDate || txDate > filters.endDate) continue;
-        } else if (filters.startDate && txDateBefore(filters.startDate, timestamp)) {
-          continue;
-        } else if (filters.endDate && txDateAfter(filters.endDate, timestamp)) {
-          continue;
-        }
-
-        const computed = computeTransactionAmount(tx, walletSet);
-        const entry: TxEntry = {
-          txid,
-          blockHeight,
-          confirmations,
-          timestamp,
-          amount: computed.amount,
-          fee: extractFee(tx),
-          direction: computed.direction,
-          addresses: computed.addresses,
-          hex: String(tx.hex ?? ''),
-          vin: extractVinSummary(tx, walletSet),
-          vout: extractVoutSummary(tx),
-          size: Number(tx.size ?? 0),
-          vsize: Number(tx.vsize ?? 0),
-        };
-
-        // Apply direction filter
-        if (
-          filters.direction &&
-          filters.direction !== 'all' &&
-          entry.direction !== filters.direction
-        ) {
-          continue;
-        }
-
-        txs.push(entry);
-      } catch {
-        // Skip unparseable transactions
       }
+    );
+
+    // --- Processing phase (unchanged per-tx logic, run locally) ----------
+    const txs: TxEntry[] = [];
+    for (const item of fetched) {
+      if (!item) continue;
+      const { txid, tx } = item;
+
+      // Recompute volatile fields live from currentHeight every call so cached
+      // txs never report stale confirmations/blockHeight.
+      const confirmations = Number(tx.confirmations ?? 0);
+      const timestamp = Number(tx.time ?? tx.blocktime ?? 0);
+
+      let blockHeight = 0;
+      if (confirmations > 0) {
+        blockHeight = currentHeight - confirmations + 1;
+      }
+
+      // Apply date filters
+      if (filters.startDate && filters.endDate) {
+        const txDate = new Date(timestamp * 1000);
+        if (txDate < filters.startDate || txDate > filters.endDate) continue;
+      } else if (filters.startDate && txDateBefore(filters.startDate, timestamp)) {
+        continue;
+      } else if (filters.endDate && txDateAfter(filters.endDate, timestamp)) {
+        continue;
+      }
+
+      const computed = computeTransactionAmount(tx, walletSet);
+      const entry: TxEntry = {
+        txid,
+        blockHeight,
+        confirmations,
+        timestamp,
+        amount: computed.amount,
+        fee: extractFee(tx),
+        direction: computed.direction,
+        addresses: computed.addresses,
+        hex: String(tx.hex ?? ''),
+        vin: extractVinSummary(tx, walletSet),
+        vout: extractVoutSummary(tx),
+        size: Number(tx.size ?? 0),
+        vsize: Number(tx.vsize ?? 0),
+      };
+
+      // Apply direction filter
+      if (
+        filters.direction &&
+        filters.direction !== 'all' &&
+        entry.direction !== filters.direction
+      ) {
+        continue;
+      }
+
+      txs.push(entry);
     }
 
     txs.sort((a, b) => {
@@ -235,6 +337,52 @@ function extractAddresses(scriptPubKey: Record<string, unknown> | undefined): st
 }
 
 // ---------------------------------------------------------------------------
+// Input (vin) field extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the spent value (in PHI) of a transaction input.
+ *
+ * The PHICOIN daemon attaches the spent value directly on the vin object as
+ * `value` (PHI) and `valueSat` (satoshis). We prefer `value`, fall back to
+ * `valueSat / 1e8`, then finally to the legacy `prevOut.value` shape. Returns 0
+ * (e.g. coinbase inputs which carry no spent value).
+ */
+function extractInputValuePhi(input: Record<string, unknown>): number {
+  if (typeof input.value === 'number') return input.value;
+  if (typeof input.valueSat === 'number') return input.valueSat / 1e8;
+
+  // Legacy fallback: { prevOut: { value } }
+  const prevOut = input.prevOut as Record<string, unknown> | undefined;
+  if (prevOut && typeof prevOut.value === 'number') return prevOut.value;
+
+  return 0;
+}
+
+/**
+ * Extract the address(es) of a transaction input.
+ *
+ * The PHICOIN daemon attaches a single `address` string directly on the vin
+ * object. We also accept an `addresses` array if present, and fall back to the
+ * legacy `prevOut.scriptPubKey` shape.
+ */
+function extractInputAddresses(input: Record<string, unknown>): string[] {
+  const single = input.address as string | undefined;
+  if (single) return [single];
+
+  const arr = input.addresses as string[] | undefined;
+  if (Array.isArray(arr)) return arr.filter(Boolean);
+
+  // Legacy fallback: { prevOut: { scriptPubKey: { addresses | address } } }
+  const prevOut = input.prevOut as Record<string, unknown> | undefined;
+  if (prevOut) {
+    return extractAddresses(prevOut.scriptPubKey as Record<string, unknown> | undefined);
+  }
+
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Amount computation
 // ---------------------------------------------------------------------------
 
@@ -275,24 +423,25 @@ function computeTransactionAmount(
     }
   }
 
-  // Sum of all inputs from wallet addresses (in PHI)
-  // We need the referenced output values to know how much was spent.
-  // For simplicity, use the vin's previous output address if available,
-  // otherwise check if any wallet address appears in the input's redeem script or signatures.
+  // Sum of all inputs from wallet addresses (in PHI).
+  // The PHICOIN daemon's getrawtransaction(verbose) attaches each input's spent
+  // value/address DIRECTLY on the vin object (via the spent index):
+  //   { txid, vout, scriptSig, sequence, value, valueSat, address }
+  // There is no `prevOut` sub-object. Reading `input.prevOut.value` here was the
+  // bug: it was always undefined, so totalSentPhi stayed 0 and sent transactions
+  // were misclassified as received. We read the real fields, with a fallback to
+  // the legacy `prevOut` shape so nothing breaks if a response ever includes it.
   let totalSentPhi = 0;
   for (const input of vin) {
     const txinData = input as Record<string, unknown>;
-    const prevOut = txinData.prevOut as Record<string, unknown> | undefined;
-    if (!prevOut) continue;
-
-    const scriptPubKey = prevOut.scriptPubKey as Record<string, unknown> | undefined;
-    const inputAddrs = extractAddresses(scriptPubKey);
+    const value = extractInputValuePhi(txinData);
+    const inputAddrs = extractInputAddresses(txinData);
 
     for (const inputAddr of inputAddrs) {
       if (walletSet.has(inputAddr)) {
-        const prevValue = Number(prevOut?.value ?? 0);
-        totalSentPhi += prevValue;
+        totalSentPhi += value;
         foundAddresses.add(inputAddr);
+        break; // count each input's value once
       }
     }
   }
@@ -341,22 +490,24 @@ function extractVinSummary(tx: Record<string, unknown>, walletSet: Set<string>):
 
   for (const input of vin) {
     const txinData = input as Record<string, unknown>;
-    const prevOut = txinData.prevOut as Record<string, unknown> | undefined;
-    const addrs: string[] = [];
 
-    if (prevOut) {
-      const scriptPubKey = prevOut.scriptPubKey as Record<string, unknown> | undefined;
-      const prevAddrs = extractAddresses(scriptPubKey);
-      for (const addr of prevAddrs) {
-        if (walletSet.has(addr)) addrs.push(addr);
-      }
-    }
+    // Read the daemon's real vin fields (value/address on the vin itself),
+    // with a fallback to the legacy `prevOut` shape — same as C1 above.
+    const inputAddrs = extractInputAddresses(txinData);
+    const addrs = inputAddrs.filter((addr) => walletSet.has(addr));
+
+    // Preserve undefined when the input carries no spendable value (e.g. coinbase
+    // or a response missing both value/valueSat/prevOut), matching prior behaviour.
+    const hasValue =
+      typeof txinData.value === 'number' ||
+      typeof txinData.valueSat === 'number' ||
+      (txinData.prevOut as Record<string, unknown> | undefined)?.value !== undefined;
 
     result.push({
       txid: String(txinData.txid ?? ''),
       vout: Number(txinData.vout ?? 0),
       addresses: addrs,
-      value: prevOut ? Number(prevOut.value ?? 0) : undefined,
+      value: hasValue ? extractInputValuePhi(txinData) : undefined,
     });
   }
 

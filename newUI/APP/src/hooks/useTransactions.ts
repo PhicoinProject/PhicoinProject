@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { walletService } from '@/services/wallet';
 import { getTransactionHistory } from '@/services/txHistory';
 import type { TxHistoryFilters } from '@/services/txHistory';
-import { TRANSACTION_POLL_INTERVAL, DATA_STALE_TIME, DEFAULT_PAGE_SIZE, ASSET_STALE_TIME } from '@/utils/constants';
+import { TRANSACTION_POLL_INTERVAL, DATA_STALE_TIME, DEFAULT_PAGE_SIZE, DERIVED_POOL_STALE_TIME } from '@/utils/constants';
 
 /** Hook to fetch and filter wallet transactions using the txHistory service */
 export function useTransactions(filters?: TxHistoryFilters) {
@@ -15,7 +15,7 @@ export function useTransactions(filters?: TxHistoryFilters) {
   const { data: poolAddrs = [] } = useQuery({
     queryKey: ['derivedPoolAsync'],
     queryFn: () => walletService.getDerivedAddressPoolAsync(),
-    staleTime: ASSET_STALE_TIME, // match useMyAssets so the shared query key has one TTL
+    staleTime: DERIVED_POOL_STALE_TIME, // match useMyAssets so the shared query key has one TTL
   });
   const addrList = useMemo(() => poolAddrs.map((a) => a.address), [poolAddrs]);
 

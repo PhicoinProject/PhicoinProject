@@ -19,6 +19,7 @@ export const BLOCK_HEIGHT_POLL_INTERVAL = 15_000;
 export const MINING_INFO_POLL_INTERVAL = 30_000;
 export const ASSET_STALE_TIME = 60_000;
 export const DATA_STALE_TIME = 30_000;
+export const DERIVED_POOL_STALE_TIME = 5 * 60_000; // 5 min — the address-pool gap-scan is expensive; cache it longer within a session
 
 // Display
 export const APP_VERSION = 'v0.1.0';

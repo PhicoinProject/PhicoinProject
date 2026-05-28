@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { assetService } from '@/services/assets';
 import { walletService } from '@/services/wallet';
-import { ASSET_STALE_TIME } from '@/utils/constants';
+import { ASSET_STALE_TIME, DERIVED_POOL_STALE_TIME } from '@/utils/constants';
 
 /** Hook to fetch assets owned by the wallet */
 export function useMyAssets(addresses?: string[]) {
@@ -11,7 +11,7 @@ export function useMyAssets(addresses?: string[]) {
   const { data: pool } = useQuery({
     queryKey: ['derivedPoolAsync'],
     queryFn: () => walletService.getDerivedAddressPoolAsync(),
-    staleTime: ASSET_STALE_TIME,
+    staleTime: DERIVED_POOL_STALE_TIME,
     enabled: !useExplicit,
   });
 
