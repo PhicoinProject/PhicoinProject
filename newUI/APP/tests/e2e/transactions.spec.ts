@@ -95,10 +95,12 @@ test.describe('Transaction History', () => {
   });
 
   test('direction filter buttons/select are present', async ({ page }) => {
-    // Filter may be a <select> or a set of buttons
+    // Filter may be a <select> or a set of buttons. Wait for it to appear: during the SPA
+    // route transition the new page's controls mount a beat after its heading, so an
+    // immediate .count() races the render.
     const filterSel = page.locator('select, button:has-text("All"), button:has-text("Sent"), button:has-text("Received")');
-    const count = await filterSel.count();
-    expect(count).toBeGreaterThan(0);
+    await expect(filterSel.first()).toBeVisible({ timeout: 10000 });
+    expect(await filterSel.count()).toBeGreaterThan(0);
   });
 
   test('filtering by "Sent" shows only sent transactions', async ({ page }) => {
@@ -123,9 +125,11 @@ test.describe('Transaction History', () => {
   });
 
   test('date range filter inputs are present', async ({ page }) => {
+    // Wait for the date inputs to mount (SPA transition) before counting — an immediate
+    // .count() races the render.
     const dateInputs = page.locator('input[type="date"]');
-    const count = await dateInputs.count();
-    expect(count).toBeGreaterThanOrEqual(2); // start date + end date
+    await expect(dateInputs.first()).toBeVisible({ timeout: 10000 });
+    expect(await dateInputs.count()).toBeGreaterThanOrEqual(2); // start date + end date
   });
 
   test('CSV export button is visible', async ({ page }) => {
