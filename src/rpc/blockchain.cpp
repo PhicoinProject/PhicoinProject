@@ -39,6 +39,7 @@
 
 #include <boost/thread/thread.hpp> // boost::thread::interrupt
 
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 
@@ -1377,7 +1378,43 @@ static UniValue BIP9SoftForkDesc(const Consensus::Params& consensusParams, Conse
     }
     rv.push_back(Pair("startTime", consensusParams.vDeployments[id].nStartTime));
     rv.push_back(Pair("timeout", consensusParams.vDeployments[id].nTimeout));
-    rv.push_back(Pair("since", VersionBitsTipStateSinceHeight(consensusParams, id)));
+
+    // RPC-only optimization (does NOT affect consensus): the "since" height is
+    // display-only metadata returned by getblockchaininfo. It is never consulted
+    // by block validation, ComputeBlockVersion, or the Are*Deployed() checks,
+    // so caching it here cannot influence consensus or cause a chain split.
+    //
+    // Why this is needed: this chain sets nOverrideMinerConfirmationWindow = 1
+    // for its deployments, so VersionBitsTipStateSinceHeight performs a backward
+    // walk in steps of one block from the tip down to the activation height.
+    // On a multi-million-block chain that is millions of iterations per call and
+    // for every deployment, making getblockchaininfo take several seconds.
+    //
+    // For terminal states (ACTIVE/FAILED) the "since" height is stable, so we
+    // cache it per deployment. If a reorg ever moves a deployment out of a
+    // terminal state, thresholdState will no longer be ACTIVE/FAILED and we fall
+    // through to a fresh computation, so a cached value can never be served for
+    // the wrong state. -1 is the "not yet cached" sentinel (a real height is
+    // always >= 0).
+    static std::atomic<int> cachedSince[Consensus::MAX_VERSION_BITS_DEPLOYMENTS];
+    static std::once_flag cachedSinceInit;
+    std::call_once(cachedSinceInit, []() {
+        for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; i++)
+            cachedSince[i].store(-1, std::memory_order_relaxed);
+    });
+
+    int since;
+    if (thresholdState == THRESHOLD_ACTIVE || thresholdState == THRESHOLD_FAILED) {
+        since = cachedSince[id].load(std::memory_order_relaxed);
+        if (since < 0) {
+            since = VersionBitsTipStateSinceHeight(consensusParams, id);
+            cachedSince[id].store(since, std::memory_order_relaxed);
+        }
+    } else {
+        since = VersionBitsTipStateSinceHeight(consensusParams, id);
+    }
+    rv.push_back(Pair("since", since));
+
     if (THRESHOLD_STARTED == thresholdState)
     {
         UniValue statsUV(UniValue::VOBJ);
