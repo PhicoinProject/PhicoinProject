@@ -1,0 +1,3 @@
+# Placeholder. This file is listed in qt_patches (qt.mk) but is NOT applied by
+# qt_preprocess_cmds -- Qt 5.15.15 already contains the qendian <limits> include
+# fix. It exists only so the depends recipe-hash computation (funcs.mk) succeeds.

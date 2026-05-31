@@ -1,8 +1,8 @@
 package=native_b2
-$(package)_version=1_87_0
-$(package)_download_path=https://archives.boost.io/release/1.87.0/source/
+$(package)_version=1_74_0
+$(package)_download_path=https://archives.boost.io/release/1.74.0/source/
 $(package)_file_name=boost_$($(package)_version).tar.gz
-$(package)_sha256_hash=7b204c1cfa1a41f771361d23a99d3b4d5d677d7b52064eb73f37ba47b2d238bb
+$(package)_sha256_hash=afff36d392885120bcac079148c177d1f6f7730ec3d47233aa51b0afa4db94a5
 $(package)_build_subdir=tools/build/src/engine
 ifneq (,$(findstring clang,$($(package)_cxx)))
 $(package)_toolset_$(host_os)=clang

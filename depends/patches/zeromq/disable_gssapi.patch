@@ -1,0 +1,3 @@
+# Placeholder. Listed in zeromq_patches (zeromq.mk) but NOT applied by
+# zeromq_preprocess_cmds -- GSSAPI is already disabled via --without-gssapi in
+# the zeromq config_opts. Present only for the depends recipe-hash computation.

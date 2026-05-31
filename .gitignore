@@ -71,6 +71,8 @@ src/qt/test/moc*.cpp
 *.o
 *.o-*
 *.patch
+# depends/patches/** are source patches for the cross-compile, not build output
+!depends/patches/**/*.patch
 *.a
 *.pb.cc
 *.pb.h
@@ -89,6 +91,8 @@ phi_depends/
 # Compilation and Qt preprocessor part
 *.qm
 Makefile
+# depends/Makefile is a source file (the cross-compile driver), not a generated one
+!depends/Makefile
 phicoin-qt
 PHICOIN-Qt.app
 

@@ -1,14 +1,14 @@
 package=boost
-$(package)_version=1.87.0
+$(package)_version=1.74.0
 $(package)_download_path=https://archives.boost.io/release/$($(package)_version)/source/
-$(package)_file_name=boost_$($(package)_version).tar.gz
-$(package)_sha256_hash=d6c69e4459eb5d6ec208250291221e7ff4a2affde9af6e49c9303b89c687461f
+$(package)_file_name=boost_$(subst .,_,$($(package)_version)).tar.gz
+$(package)_sha256_hash=afff36d392885120bcac079148c177d1f6f7730ec3d47233aa51b0afa4db94a5
 $(package)_dependencies=native_b2
 
 define $(package)_set_vars
 $(package)_config_opts_release=variant=release
 $(package)_config_opts_debug=variant=debug
-$(package)_config_opts=--layout=tagged --build-type=complete --user-config=user-config.jam
+$(package)_config_opts=--layout=system --user-config=user-config.jam
 $(package)_config_opts+=threading=multi link=static -sNO_COMPRESSION=1
 $(package)_config_opts_linux=target-os=linux threadapi=pthread runtime-link=static
 $(package)_config_opts_darwin=target-os=darwin runtime-link=shared
