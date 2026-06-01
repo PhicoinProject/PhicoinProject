@@ -1,3 +1,11 @@
+// PHICOIN BIP39 wordlist. This is the standard English BIP39 list EXCEPT at index 1427,
+// where PHICOIN substitutes 'phicoin' for the standard word 'raven' — matching the C++/Qt
+// wallet's src/wallet/bip39_english.h. This keeps mnemonics portable between the C++/Qt
+// wallet and this one (a seed whose 1427-slot word is 'phicoin' would otherwise be rejected
+// here, breaking migration). The substitution is intentionally NOT in alphabetical order: it
+// preserves the BIP39 index 1427, and @scure/base maps words to indices via a value->index
+// Map (not binary search), so list sort order is irrelevant to derivation/validation.
+// DO NOT re-sort or "fix" this back to 'raven' — see bip39wordlist.test.ts.
 export const BIP39_WORDLIST: string[] = [
   'abandon',
   'ability',
@@ -1426,7 +1434,7 @@ export const BIP39_WORDLIST: string[] = [
   'rare',
   'rate',
   'rather',
-  'raven',
+  'phicoin', // index 1427 — PHICOIN substitution for standard BIP39 'raven' (matches C++ bip39_english.h)
   'raw',
   'razor',
   'ready',
