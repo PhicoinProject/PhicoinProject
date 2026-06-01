@@ -12,11 +12,18 @@ import type { ChainScanResult } from './chainScanner';
 // Number of addresses to pre-generate for the pool
 const ADDRESS_POOL_SIZE = 10;
 
-// Max address index scanned per chain for BOTH gap-limit discovery and the
-// signing-path scriptPubKey->path lookup. These MUST share one cap: if discovery
-// builds a pool deeper than the signing scan, UTXOs on those addresses can't be
-// signed (path lookup returns null -> input silently dropped -> insufficient funds).
-const DISCOVERY_HARD_CAP = 1000;
+// Sliding gap-limit discovery (matches Electrum / Core keypool / SPV wallets): the scan in
+// getUsedCountForChain keeps going until BATCH consecutive unused addresses, so there is NO
+// fixed usage ceiling — a wallet that used thousands of addresses (e.g. migrated from the
+// C++/Qt wallet whose keypool also has no cap) is fully discovered. This is only a high
+// backstop to bound a pathological/hostile index server; real wallets stop far sooner.
+const DISCOVERY_SAFETY_CAP = 100000;
+// Minimum index range the signing scriptPubKey->path scan covers when the discovered
+// high-water mark isn't known yet. The scan ALWAYS extends to the discovered max so the
+// SIGNING range covers everything DISCOVERY found — and therefore everything sendToMany can
+// spend (which only draws from the discovered pool). Keeping these aligned prevents the
+// "visible balance you can't spend" class of bug.
+const SIGNING_SCAN_FLOOR = 1000;
 
 /**
  * High-level wallet service for the pure frontend wallet.
@@ -39,6 +46,13 @@ export class WalletService {
    */
   private derivePathCache = new Map<string, string>();
   private derivePathCacheKeyRef: HDKey | null = null;
+  // Highest index the derivePathCache reverse-map has been populated to (per the bound
+  // below). -1 = not built. Lets us rebuild only when the discovered range grows.
+  private derivePathCacheBuiltBound = -1;
+  // High-water marks (recvCount/changeCount) from the last getDerivedAddressPoolAsync. The
+  // signing scan extends to these so it always covers the discovered/spendable range.
+  private discoveredMaxReceive = 0;
+  private discoveredMaxChange = 0;
 
   /**
    * Drop the derivation-path cache whenever the active HDKey reference changes
@@ -49,8 +63,19 @@ export class WalletService {
   private syncDerivePathCache(): HDKey | null {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (hdKey !== this.derivePathCacheKeyRef) {
+      // SECURITY: the path cache maps scriptPubKey->path under a SPECIFIC key, so it (and the
+      // "built up to" marker) MUST be cleared so a path derived under a different key is never
+      // served. NOTE: discoveredMaxReceive/Change are deliberately NOT reset here. They are a
+      // scan-DEPTH hint, not key-bound data (the rebuilt map always derives the CURRENT hdKey),
+      // and getDerivedAddressPoolAsync — which runs before any send and recomputes them for the
+      // active wallet — is their sole authority. Resetting them here created an ordering bug:
+      // this method runs at the START of every derivePathForAddress, so the first send of a
+      // session wiped the high-water mark that discovery had just set, collapsing the signing
+      // bound to SIGNING_SCAN_FLOOR and making funds beyond it unsignable. Keeping a stale value
+      // can only ever over-scan (safe), never under-scan.
       this.derivePathCache.clear();
       this.derivePathCacheKeyRef = hdKey;
+      this.derivePathCacheBuiltBound = -1;
     }
     return hdKey;
   }
@@ -133,6 +158,11 @@ export class WalletService {
     ]);
     const recvCount = Math.max(ADDRESS_POOL_SIZE, recvUsed + ADDRESS_POOL_SIZE);
     const changeCount = Math.max(ADDRESS_POOL_SIZE, changeUsed + ADDRESS_POOL_SIZE);
+    // Record how far discovery reached so the signing-path scan (derivePathForAddress)
+    // extends to cover the SAME range — every UTXO sendToMany spends comes from this pool,
+    // so signing can always resolve its path.
+    this.discoveredMaxReceive = recvCount;
+    this.discoveredMaxChange = changeCount;
     // Derive each chain from its chain node once (~1 EC op/address instead of 5).
     return [
       ...deriveAddressRange(hdKey, network, false, 0, recvCount),
@@ -151,9 +181,11 @@ export class WalletService {
     const hdKey = useWalletHDKeyStore.getState().hdKey;
     if (!hdKey) return 0;
     const BATCH = 20; // also the gap limit: a full unused batch ends the scan
-    const HARD_CAP = DISCOVERY_HARD_CAP;
+    // Sliding gap-limit: keep scanning batches as long as each one shows usage; the scan
+    // ends naturally at the first fully-unused batch (the gap). DISCOVERY_SAFETY_CAP is only
+    // a backstop against a hostile/buggy index server, NOT a usage ceiling.
     let lastUsed = -1;
-    for (let start = 0; start < HARD_CAP; start += BATCH) {
+    for (let start = 0; start < DISCOVERY_SAFETY_CAP; start += BATCH) {
       // Derive the whole batch from the chain node once (~1 EC op/address, not 5).
       const batch = deriveAddressRange(hdKey, network, isChange, start, BATCH);
       // ONE JSON-RPC batch request for the whole batch, not BATCH separate HTTP
@@ -786,36 +818,38 @@ export class WalletService {
     const cached = this.derivePathCache.get(scriptPubKey);
     if (cached !== undefined) return cached;
 
-    // PERF: derive each chain's node ONCE and take only the non-hardened leaf per
-    // index (~1 EC op/index) instead of re-deriving the full hardened path per index
-    // (~5 ops). deriveScriptPubKeyRange runs the identical hash160 + scriptPubKey +
-    // toHex pipeline as the old getScriptPubKeyFromPublicKey path, and BIP32
-    // guarantees chainNode.deriveChild(i) === deriving the full path, so the
-    // scriptPubKeyHex (and returned path string) are byte-for-byte unchanged. Network
-    // 'mainnet' -> coinType 0 keeps the path prefix m/44'/0'/0'/{chain}/{i} identical.
+    // Build a scriptPubKey->path reverse map ONCE, covering the SAME range discovery reached
+    // (the high-water mark), with a floor for the pre-discovery case. The signing range thus
+    // always covers everything sendToMany can spend (it only draws from the discovered pool),
+    // so a deep-index UTXO is never silently undroppable. deriveScriptPubKeyRange derives each
+    // chain node once (~1 EC op/index) and yields byte-identical scriptPubKeyHex/path to the
+    // old per-index derivation. Rebuild only when the discovered bound grows; otherwise the
+    // map already holds every relevant scriptPubKey and lookups are O(1).
     const network: 'mainnet' | 'testnet' = 'mainnet';
-
-    // Scan receive chain first (m/44'/0'/0'/0/{i}), then change (m/44'/0'/0'/1/{i}),
-    // each up to DISCOVERY_HARD_CAP — same order and bound as before. The match is
-    // case-sensitive (===) against the exact input string, matching the prior scan.
-    // The try/catch mirrors the old per-index `catch { skip }`: a derivation failure
-    // yields no match (null) rather than propagating.
-    try {
-      for (const isChange of [false, true]) {
-        const range = deriveScriptPubKeyRange(hdKey, network, isChange, 0, DISCOVERY_HARD_CAP);
-        for (const entry of range) {
-          if (entry.scriptPubKeyHex === scriptPubKey) {
-            this.derivePathCache.set(scriptPubKey, entry.path); // memoize for subsequent inputs
-            return entry.path;
+    const bound = Math.max(
+      SIGNING_SCAN_FLOOR,
+      this.discoveredMaxReceive,
+      this.discoveredMaxChange
+    );
+    if (this.derivePathCacheBuiltBound < bound) {
+      try {
+        for (const isChange of [false, true]) {
+          const range = deriveScriptPubKeyRange(hdKey, network, isChange, 0, bound);
+          for (const entry of range) {
+            if (!this.derivePathCache.has(entry.scriptPubKeyHex)) {
+              this.derivePathCache.set(entry.scriptPubKeyHex, entry.path);
+            }
           }
         }
+        this.derivePathCacheBuiltBound = bound;
+      } catch {
+        /* derivation failure → leave the map as-is; the lookup below returns null */
       }
-    } catch { /* derivation failure → treat as no match */ }
+    }
 
-    // Not found: deliberately NOT cached. A negative result is cheap relative to
-    // the funds risk of caching "no path" if the pool/key state later changes,
-    // and avoids unbounded growth from hostile/unrelated scripts.
-    return null;
+    // Hit = ours; miss = a foreign scriptPubKey (not in our derived range). Not cached as a
+    // negative — but the bound marker prevents a wasteful rebuild on the next foreign miss.
+    return this.derivePathCache.get(scriptPubKey) ?? null;
   }
 
   /**

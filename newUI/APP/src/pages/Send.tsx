@@ -7,6 +7,7 @@ import { Button } from '@/components/common/Button';
 import { Input } from '@/components/common/Input';
 import { useToast } from '@/components/common/Toast';
 import { isValidPhicoinAddress } from '@/utils/crypto';
+import { DERIVED_POOL_STALE_TIME } from '@/utils/constants';
 
 // ---- Types ----
 
@@ -185,7 +186,15 @@ export const Send: React.FC = () => {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
-  const addressPool = useMemo(() => walletService.getDerivedAddressPool(), []);
+  // Use the ASYNC discovered pool (shared ['derivedPoolAsync'] cache, same source as the
+  // balance/transaction views) so funds on ANY discovered address are spendable — not just
+  // the first sync-pool window (indices 0-9), which previously left funds on higher indices
+  // visible but unspendable.
+  const { data: addressPool = [] } = useQuery({
+    queryKey: ['derivedPoolAsync'],
+    queryFn: () => walletService.getDerivedAddressPoolAsync(),
+    staleTime: DERIVED_POOL_STALE_TIME,
+  });
   const addressList = useMemo(() => addressPool.map((a) => a.address), [addressPool]);
 
   // Handle phicoin: URIs from deep links / drag-and-drop

@@ -149,6 +149,21 @@ describe('Address Derivation', () => {
         toHex(getScriptPubKeyFromPublicKey(hdKey, "m/44'/0'/0'/1/21"))
       );
     });
+
+    it('stays byte-identical at DEEP indices (>1000) — signing must resolve big wallets', () => {
+      // The signing-path reverse map now extends past the old 1000 cap to the discovered
+      // high-water mark. This guards that deep-index scriptPubKeys/paths are still exactly
+      // what the canonical per-index derivation produces (a drift here = unspendable funds
+      // for a wallet/seed that used >1000 addresses, e.g. migrated from the C++/Qt wallet).
+      for (const idx of [1000, 1427, 2500, 5000]) {
+        const [recv] = deriveScriptPubKeyRange(hdKey, 'mainnet', false, idx, 1);
+        const [chg] = deriveScriptPubKeyRange(hdKey, 'mainnet', true, idx, 1);
+        expect(recv.path).toBe(`m/44'/0'/0'/0/${idx}`);
+        expect(recv.scriptPubKeyHex).toBe(toHex(getScriptPubKeyFromPublicKey(hdKey, recv.path)));
+        expect(chg.path).toBe(`m/44'/0'/0'/1/${idx}`);
+        expect(chg.scriptPubKeyHex).toBe(toHex(getScriptPubKeyFromPublicKey(hdKey, chg.path)));
+      }
+    });
   });
 
   describe('isValidPHICoinAddress', () => {
