@@ -79,6 +79,20 @@ struct Params {
     uint256 defaultAssumeValid;
     bool nSegwitEnabled;
     bool nCSVEnabled;
+    /**
+     * Height from which a PHIHASH block header must declare its own height
+     * correctly, i.e. block.nHeight == pindexPrev->nHeight + 1.
+     *
+     * The declared height feeds the proof-of-work hash and selects the PHIHASH
+     * epoch, and CheckBlockHeader() uses it to decide whether a block may take
+     * the cheap below-checkpoint validation path. Without this binding a block
+     * mined at the tip can claim a historical height, skip the memory-hard
+     * work entirely, and still validate.
+     *
+     * 0 means "enforce for all PHIHASH-active blocks", which is correct when
+     * no forged block exists in the chain being validated.
+     */
+    int nHeaderHeightCheckActivation;
 };
 } // namespace Consensus
 

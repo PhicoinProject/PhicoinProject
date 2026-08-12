@@ -4200,6 +4200,46 @@ static bool ContextualCheckBlockHeader(const CBlockHeader& block, CValidationSta
     if (block.nBits != GetNextWorkRequired(pindexPrev, &block, consensusParams))
         return state.DoS(100, false, REJECT_INVALID, "bad-diffbits", false, "incorrect proof of work");
 
+    // Bind the height a PHIHASH header declares about itself to the height it
+    // actually occupies in the chain.
+    //
+    // block.nHeight is not decorative: it feeds the proof-of-work hash and
+    // selects the PHIHASH epoch. CheckBlockHeader() also uses it to decide
+    // whether a block may take the cheap below-checkpoint validation path,
+    // which verifies only the final hash over the supplied mix_hash and never
+    // checks that mix_hash is a genuine PHIHASH mix.
+    //
+    // Because that decision is taken on the value the block declares ABOUT
+    // ITSELF, a block mined at the current tip can opt into the cheap path
+    // from any position in the chain simply by claiming a height at or below
+    // the last checkpoint. Such a block carries no memory-hard work at all:
+    // producing one costs a plain hash search, orders of magnitude cheaper
+    // than mining honestly at the same difficulty.
+    //
+    // Honest miners already satisfy this rule -- BlockAssembler assigns
+    // pblock->nHeight = nHeight when filling in the header -- so enforcing it
+    // rejects only forged headers.
+    //
+    // This is the same flaw exploited on Ravencoin mainnet from 2026-08-07.
+    if (block.nTime >= nPHIHASHActivationTime &&
+        nHeight >= consensusParams.nHeaderHeightCheckActivation &&
+        block.nHeight != static_cast<uint32_t>(nHeight)) {
+        // DoS score 10, not 100, for the initial deployment.
+        //
+        // Headers propagate ahead of blocks, and Misbehaving() bans whoever
+        // RELAYED the header, not whoever created it. A single forged header
+        // pushed through honest intermediaries would make patched nodes ban
+        // honest peers instantly at score 100 -- a cheap network-partition
+        // amplifier while deployment is partial. The block is still rejected;
+        // only the peer penalty is softened. Raise to 100 once the network has
+        // upgraded. The same reasoning is used by bad-fork-prior-to-
+        // maxreorgdepth above.
+        return state.DoS(10,
+                         error("%s: block height in header (%u) does not match chain position (%d)",
+                               __func__, block.nHeight, nHeight),
+                         REJECT_INVALID, "bad-blk-height");
+    }
+
     // Check against checkpoints
     if (fCheckpointsEnabled) {
         // Don't accept any forks from the main chain prior to last checkpoint.

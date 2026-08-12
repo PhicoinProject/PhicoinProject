@@ -628,11 +628,38 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, CValidationState& state, c
             if (!GetAssetData(coin.out.scriptPubKey, data))
                 return state.DoS(100, false, REJECT_INVALID, "bad-txns-failed-to-get-asset-from-script", false, "", tx.GetHash());
 
+            // Bound every individual asset amount before it is accumulated.
+            //
+            // The reconciliation below compares input and output totals for
+            // exact equality, which is only sound while the accumulation
+            // cannot wrap. CAmount is int64_t and nothing else on the asset
+            // path bounds a single amount: CAssetTransfer::IsValid and
+            // ContextualCheckTransferAsset only reject nAmount <= 0,
+            // CheckAmountWithUnits is a divisibility test, and MoneyRange()
+            // is applied only to native PHI amounts. Without this guard a
+            // holder of a tiny quantity can emit outputs summing past 2^63,
+            // wrap back to the input total, and mint assets from nothing.
+            if (!MoneyRange(data.nAmount))
+                return state.DoS(100, false, REJECT_INVALID, "bad-txns-asset-input-amount-out-of-range", false, "", tx.GetHash());
+
             // Add to the total value of assets in the inputs
-            if (totalInputs.count(data.assetName))
-                totalInputs.at(data.assetName) += data.nAmount;
-            else
+            if (totalInputs.count(data.assetName)) {
+                CAmount& nRunning = totalInputs.at(data.assetName);
+                // Overflow-free form. Writing MoneyRange(nRunning + nAmount)
+                // would compute the sum FIRST: both operands can individually
+                // be MAX_MONEY (5e18), and 2 * MAX_MONEY = 1e19 exceeds
+                // INT64_MAX (9.22e18). Signed overflow is undefined behaviour,
+                // and this tree builds without -fwrapv / -fno-strict-overflow,
+                // so a compiler may assume it cannot happen and delete the
+                // check -- making two nodes built with different compilers
+                // disagree on the same transaction. The subtraction below
+                // cannot overflow because both values are in [0, MAX_MONEY].
+                if (data.nAmount > MAX_MONEY - nRunning)
+                    return state.DoS(100, false, REJECT_INVALID, "bad-txns-asset-input-total-out-of-range", false, "", tx.GetHash());
+                nRunning += data.nAmount;
+            } else {
                 totalInputs.insert(make_pair(data.assetName, data.nAmount));
+            }
 
             if (AreMessagesDeployed()) {
                 mapAddresses.insert(make_pair(data.assetName,EncodeDestination(data.destination)));
@@ -693,11 +720,26 @@ bool Consensus::CheckTxAssets(const CTransaction& tx, CValidationState& state, c
             if (!ContextualCheckTransferAsset(assetCache, transfer, address, strError))
                 return state.DoS(100, false, REJECT_INVALID, strError, false, "", tx.GetHash());
 
+            // Bound the amount before accumulating it. See the matching guard
+            // on the input side above: the totals are compared for exact
+            // equality, so an unbounded accumulation into int64_t lets an
+            // attacker wrap the output total back onto a small input total.
+            if (!MoneyRange(transfer.nAmount))
+                return state.DoS(100, false, REJECT_INVALID, "bad-txns-transfer-asset-amount-out-of-range", false, "", tx.GetHash());
+
             // Add to the total value of assets in the outputs
-            if (totalOutputs.count(transfer.strName))
-                totalOutputs.at(transfer.strName) += transfer.nAmount;
-            else
+            if (totalOutputs.count(transfer.strName)) {
+                CAmount& nRunning = totalOutputs.at(transfer.strName);
+                // Overflow-free form -- see the matching guard on the input
+                // side. MoneyRange(nRunning + nAmount) would evaluate the sum
+                // first and can overflow int64_t, which is undefined behaviour
+                // and may be optimised away by the compiler.
+                if (transfer.nAmount > MAX_MONEY - nRunning)
+                    return state.DoS(100, false, REJECT_INVALID, "bad-txns-transfer-asset-total-out-of-range", false, "", tx.GetHash());
+                nRunning += transfer.nAmount;
+            } else {
                 totalOutputs.insert(make_pair(transfer.strName, transfer.nAmount));
+            }
 
             if (!fRunningUnitTests) {
                 if (IsAssetNameAnOwner(transfer.strName)) {

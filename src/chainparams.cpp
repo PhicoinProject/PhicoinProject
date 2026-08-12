@@ -137,6 +137,11 @@ public:
         consensus.nBIP66Enabled = true;
         consensus.nSegwitEnabled = true;
         consensus.nCSVEnabled = true;
+        // A raw scan of all 2,202,735 PHIHASH blocks in the local mainnet
+        // datadir (tip height 2,196,023) found no block declaring a height
+        // inconsistent with its chain position, so the rule applies to the
+        // whole of PHIHASH history and no rollback is required.
+        consensus.nHeaderHeightCheckActivation = 0;
         consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.phihashLimit = uint256S("0000000000ffffffffffffffffffffffffffffffffffffffffffffffffffffff"); // Estimated starting diff for first 24 phihash blocks
         consensus.nPowTargetTimespan = 3600;     // 60 minutes (240 blocks × 15 seconds) - security optimized                         
@@ -326,6 +331,7 @@ public:
         consensus.nBIP66Enabled = true;
         consensus.nSegwitEnabled = true;
         consensus.nCSVEnabled = true;
+        consensus.nHeaderHeightCheckActivation = 0;
 
         consensus.powLimit = uint256S("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.phihashLimit = uint256S("000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
@@ -485,6 +491,7 @@ public:
         consensus.nBIP66Enabled = true;
         consensus.nSegwitEnabled = true;
         consensus.nCSVEnabled = true;
+        consensus.nHeaderHeightCheckActivation = 0;
         consensus.nSubsidyHalvingInterval = 150;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.phihashLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");

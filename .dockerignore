@@ -21,11 +21,34 @@ release_test/
 # Build artifacts: the Dockerfile runs a fresh autogen+configure+make, so copying
 # stale host objects/binaries in would risk make skipping a recompile (wrong binary)
 # and bloats the context. Force a clean compile.
+#
+# The tree also carries leftover MinGW cross-compile output ("Intel amd64 COFF
+# object file"). Mixing that into a Linux link produces
+#   undefined reference to `operator new(unsigned long long)'   <- Win64 mangling
+#   BFD assertion fail ../../bfd/reloc.c / dangerous relocation
+#   collect2: fatal error: ld terminated with signal 11
+# The extension patterns below match at every depth, which is what removes them.
+#
+# Do NOT add ".libs/" or "**/.libs/": libtool CREATES those directories during
+# the in-container build, and excluding the path makes the link fail with
+# "cannot find univalue/.libs/libunivalue.a: No such file or directory".
 *.o
 *.a
 *.lo
 *.la
-.libs/
+*.Po
+*.exe
+*.dll
+# Prebuilt cross-compile dependency trees. depends/x86_64-w64-mingw32/ holds a
+# full Win64 toolchain output (OpenSSL, boost, ...); configure picks it up and
+# the Linux link then dies on Windows-only symbols:
+#   undefined reference to `__imp_RtlVirtualUnwind'
+# The Dockerfile builds its own deps from apt, so none of depends/ is needed.
+depends/x86_64-w64-mingw32/
+depends/x86_64-apple-darwin*/
+depends/work/
+depends/built/
+depends/sources/
 src/phicoind
 src/phicoin-cli
 src/phicoin-tx

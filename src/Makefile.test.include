@@ -26,6 +26,7 @@ GENERATED_TEST_FILES = $(JSON_TEST_FILES:.json=.json.h) $(RAW_TEST_FILES:.raw=.r
 # test_phicoin binary #
 PHICOIN_TESTS =\
   test/assets/asset_tests.cpp \
+  test/assets/asset_overflow_tests.cpp \
   test/assets/serialization_tests.cpp \
   test/assets/asset_tx_tests.cpp \
   test/assets/cache_tests.cpp \
@@ -96,6 +97,7 @@ PHICOIN_TESTS =\
   test/torcontrol_tests.cpp \
   test/transaction_tests.cpp \
   test/txvalidationcache_tests.cpp \
+  test/validation_block_height_tests.cpp \
   test/versionbits_tests.cpp \
   test/uint256_tests.cpp \
   test/univalue_tests.cpp \

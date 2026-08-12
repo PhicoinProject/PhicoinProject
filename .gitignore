@@ -144,6 +144,8 @@ bug_fixes/
 CLAUDE.md
 release/
 release_test/
+# Local build caches, build outputs, and node data.
+# docker-compose.yml maps ./.cache/data to /var/lib/phicoin; never commit it.
 .cache/
 newUI/design/
 .cursor/
