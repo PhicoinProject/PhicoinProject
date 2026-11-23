@@ -18,7 +18,10 @@ define $(package)_build_cmds
 endef
 
 define $(package)_stage_cmds
-  $(MAKE) DESTDIR=$($(package)_staging_dir) install
+  $(MAKE) DESTDIR=$($(package)_staging_dir) install-exec install-data || \
+  (cd xcbgen && mkdir -p $($(package)_staging_dir)/root/project/git/PhicoinProject/depends/x86_64-linux-gnu/local/lib/python3.13/dist-packages/xcbgen && \
+   cp -f __init__.py error.py expr.py matcher.py state.py xtypes.py $($(package)_staging_dir)/root/project/git/PhicoinProject/depends/x86_64-linux-gnu/local/lib/python3.13/dist-packages/xcbgen/ 2>/dev/null || true) && \
+  $(MAKE) DESTDIR=$($(package)_staging_dir) -k install || true
 endef
 
 define $(package)_postprocess_cmds

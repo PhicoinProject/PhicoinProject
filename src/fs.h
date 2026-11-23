@@ -9,6 +9,11 @@
 #include <stdio.h>
 #include <string>
 
+// Force boost filesystem v3 for compatibility with boost 1.71
+#ifndef BOOST_FILESYSTEM_VERSION
+#define BOOST_FILESYSTEM_VERSION 3
+#endif
+
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
 

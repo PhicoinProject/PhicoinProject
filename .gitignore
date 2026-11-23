@@ -132,3 +132,6 @@ CMakeLists.txt
 community/
 
 .pydevproject
+dev_tools/
+logs.01
+bug_fixes/

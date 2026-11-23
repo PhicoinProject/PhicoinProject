@@ -76,7 +76,7 @@ public:
 
     void CloseDb(const std::string& strFile);
 
-    DbTxn* TxnBegin(int flags = DB_TXN_WRITE_NOSYNC)
+    DbTxn* TxnBegin(int flags = TXN_WRITE_NOSYNC)
     {
         DbTxn* ptxn = nullptr;
         int ret = dbenv->txn_begin(nullptr, &ptxn, flags);

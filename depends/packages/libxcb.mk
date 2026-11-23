@@ -6,7 +6,7 @@ $(package)_sha256_hash=98d9ab05b636dd088603b64229dd1ab2d2cc02ab807892e107d674f9c
 $(package)_dependencies=xcb_proto libXau xproto
 
 define $(package)_set_vars
-$(package)_config_opts=--disable-static
+$(package)_config_opts=--enable-static --disable-shared
 endef
 
 define $(package)_preprocess_cmds

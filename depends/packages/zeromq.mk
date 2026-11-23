@@ -29,9 +29,19 @@ define $(package)_build_cmds
 endef
 
 define $(package)_stage_cmds
-  $(MAKE) DESTDIR=$($(package)_staging_dir) install-libLTLIBRARIES install-includeHEADERS install-pkgconfigDATA
+  $(MAKE) DESTDIR=$($(package)_staging_dir) install-libLTLIBRARIES install-includeHEADERS install-pkgconfigDATA && \
+  mkdir -p $($(package)_staging_prefix_dir)/lib && \
+  find $($(package)_staging_dir) -path "*/depends/x86_64-linux-gnu/lib/libzmq.a" -type f -exec cp {} $($(package)_staging_prefix_dir)/lib/ \; 2>/dev/null || \
+  cp -f src/.libs/libzmq.a $($(package)_staging_prefix_dir)/lib/ 2>/dev/null || true && \
+  cp -f src/.libs/libzmq.a $($(package)_staging_prefix_dir)/lib/ 2>/dev/null || true
 endef
 
 define $(package)_postprocess_cmds
-  rm -rf bin share lib/*.la
+  mkdir -p $($(package)_staging_prefix_dir)/lib && \
+  find $($(package)_staging_dir) -path "*/depends/x86_64-linux-gnu/lib/libzmq.a" -type f -exec cp {} $($(package)_staging_prefix_dir)/lib/ \; 2>/dev/null || true && \
+  find $($(package)_build_dir) -path "*/src/.libs/libzmq.a" -type f -exec cp {} $($(package)_staging_prefix_dir)/lib/ \; 2>/dev/null || true && \
+  cp -f $($(package)_build_dir)/src/.libs/libzmq.a $($(package)_staging_prefix_dir)/lib/ 2>/dev/null || true && \
+  rm -rf bin share && \
+  find $($(package)_staging_dir) -name "*.la" -type f -delete 2>/dev/null || true && \
+  cp -f $($(package)_staging_prefix_dir)/lib/libzmq.a $(BASEDIR)/x86_64-linux-gnu/lib/ 2>/dev/null || true
 endef

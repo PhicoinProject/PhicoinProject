@@ -179,7 +179,7 @@ public:
 
         // The best chain should have at least this much work
 
-        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000000b16f9a17938c5"); // #364901
+        consensus.nMinimumChainWork = uint256S("000000000000000000000000000000000000000000000000002012ea1956e160"); // #1000000
 
         // By default assume that the signatures in ancestors of this block are valid.
         consensus.defaultAssumeValid = uint256S("000000b591270f4349af861f90ec322d330fedc6c207d3357a7d33e941b94659"); // 
@@ -248,6 +248,13 @@ public:
                 {250000, uint256S("000000003ada5f4ed05a229b07a9e9595cff1e60d62b0f04582ee4231eaa56d3")},
                 {300000, uint256S("0000000009d90e386fe3bfd8cce9ab8778c051d6382a731c1d46db3a183c1de8")},
                 {350000, uint256S("0000000012e14a088dd33129955ebef863a6d2686075cebf3adc32eda87e6127")},
+                {400000, uint256S("00000000684927737732c8c78724760893376be881325e54a8fbdd6680af147a")},
+                {500000, uint256S("000000004d6cbb8e9e0a225ce0386af9c9750470a290e359848f02206e437aaa")},
+                {600000, uint256S("000000003c2d0410679e6798cf593581d6473d3ddcc8a1bce21ddf9ef55d4c10")},
+                {700000, uint256S("000000009adb346538be873da0eefa51a8352044ac2e30b3476ebcaeafa0fe77")},
+                {800000, uint256S("0000000006aee0fafdeb0b2e5d7120b39caa2d5de2760b630d463e625fb7a9da")},
+                {900000, uint256S("000000002e7634d4d71cc4dcb180da7b6b465c11c71219f1881d6c59972ac5c0")},
+                {1000000, uint256S("000000005de1964f9250f105da3dae0b596a07853565621868bbc52467f3c766")},
             }};
 
         chainTxData = ChainTxData{

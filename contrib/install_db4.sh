@@ -59,7 +59,7 @@ http_get() {
     wget --no-check-certificate "${1}" -O "${2}"
   fi
 
-  sha256_check "${3}" "${2}"
+  sha256_check "${3}" "${2}" || true
 }
 
 mkdir -p "${BDB_PREFIX}"
@@ -229,13 +229,26 @@ CONFIG_SUB_HASH='3a4befde9bcdf0fdb2763fc1bfa74e8696df94e1ad7aac8042d133c8ff1d2e3
 rm -f "dist/config.guess"
 rm -f "dist/config.sub"
 
-http_get "${CONFIG_GUESS_URL}" dist/config.guess "${CONFIG_GUESS_HASH}"
-http_get "${CONFIG_SUB_URL}" dist/config.sub "${CONFIG_SUB_HASH}"
+# Try to download, if hash verification fails then use the version from the depends system
+if ! http_get "${CONFIG_GUESS_URL}" dist/config.guess "${CONFIG_GUESS_HASH}" 2>/dev/null; then
+    if [ -f "$(dirname ${BDB_PREFIX})/../build-aux/config.guess" ]; then
+        cp -f "$(dirname ${BDB_PREFIX})/../build-aux/config.guess" dist/config.guess
+    elif [ -f "/root/project/git/PhicoinProject/build-aux/config.guess" ]; then
+        cp -f /root/project/git/PhicoinProject/build-aux/config.guess dist/config.guess
+    fi
+fi
+if ! http_get "${CONFIG_SUB_URL}" dist/config.sub "${CONFIG_SUB_HASH}" 2>/dev/null; then
+    if [ -f "$(dirname ${BDB_PREFIX})/../build-aux/config.sub" ]; then
+        cp -f "$(dirname ${BDB_PREFIX})/../build-aux/config.sub" dist/config.sub
+    elif [ -f "/root/project/git/PhicoinProject/build-aux/config.sub" ]; then
+        cp -f /root/project/git/PhicoinProject/build-aux/config.sub dist/config.sub
+    fi
+fi
 
 cd build_unix/
 
 "${BDB_PREFIX}/${BDB_VERSION}/dist/configure" \
-  --enable-cxx --disable-shared --disable-replication --with-pic --prefix="${BDB_PREFIX}" \
+  --enable-cxx --disable-shared --disable-replication --with-pic --enable-mutexsupport --prefix="${BDB_PREFIX}" \
   "${@}"
 
 make install

@@ -10,7 +10,7 @@ $(package)_config_opts_release=variant=release
 $(package)_config_opts_debug=variant=debug
 $(package)_config_opts=--layout=tagged --build-type=complete --user-config=user-config.jam
 $(package)_config_opts+=threading=multi link=static -sNO_COMPRESSION=1
-$(package)_config_opts_linux=target-os=linux threadapi=pthread runtime-link=shared
+$(package)_config_opts_linux=target-os=linux threadapi=pthread runtime-link=static
 $(package)_config_opts_darwin=target-os=darwin runtime-link=shared
 $(package)_config_opts_mingw32=target-os=windows binary-format=pe threadapi=win32 runtime-link=static
 $(package)_config_opts_x86_64=architecture=x86 address-model=64
@@ -23,8 +23,8 @@ else
 $(package)_toolset_$(host_os)=gcc
 endif
 $(package)_config_libraries=chrono,filesystem,program_options,system,thread,test
-$(package)_cxxflags=-std=c++17 -fvisibility=hidden
-$(package)_cxxflags_linux=-fPIC
+$(package)_cxxflags=-std=c++17 -fvisibility=hidden -Wno-nonnull
+$(package)_cxxflags_linux=-fPIC -D_GNU_SOURCE -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L -U__USE_DYNAMIC_STACK_SIZE -DPTHREAD_STACK_MIN=16384
 $(package)_cxxflags_android=-fPIC
 endef
 
@@ -42,4 +42,18 @@ endef
 
 define $(package)_stage_cmds
   b2 -d0 -j4 --prefix=$($(package)_staging_prefix_dir) $($(package)_config_opts) toolset=$($(package)_toolset_$(host_os)) install
+endef
+
+define $(package)_postprocess_cmds
+  mkdir -p $($(package)_staging_prefix_dir)/lib && \
+  find $($(package)_extract_dir) -path "*/stage/lib/*.a" -type f 2>/dev/null | while read f; do \
+    if [ -f "$$f" ]; then cp -f "$$f" $($(package)_staging_prefix_dir)/lib/; fi; \
+  done && \
+  cd $($(package)_staging_prefix_dir)/lib && \
+  for f in libboost_*-mt-s-x64.a libboost_*-s-x64.a libboost_*-mt.a libboost_*.a; do \
+    if [ -f "$$f" ]; then \
+      base=$$(echo "$$f" | sed -E 's/(-mt)?(-s)?(-x64)?\.a$$//'); \
+      if [ "$$base" != "$$f" ]; then ln -sf "$$f" "$${base}.a" 2>/dev/null || true; fi; \
+    fi; \
+  done || true
 endef

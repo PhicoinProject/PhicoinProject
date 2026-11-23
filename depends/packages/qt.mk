@@ -12,7 +12,7 @@ $(package)_patches=fix_qt_pkgconfig.patch mac-qmake.conf fix_no_printer.patch no
 $(package)_patches+= fix_android_qmake_conf.patch fix_android_jni_static.patch dont_hardcode_pwd.patch
 $(package)_patches+= drop_lrelease_dependency.patch no_sdk_version_check.patch
 $(package)_patches+= fix_lib_paths.patch fix_android_pch.patch
-$(package)_patches+= qtbase-moc-ignore-gcc-macro.patch
+$(package)_patches+= qtbase-moc-ignore-gcc-macro.patch fix_qendian_limits.patch
 
 $(package)_qttranslations_file_name=qttranslations-$($(package)_suffix)
 $(package)_qttranslations_sha256_hash=577b0668a777eb2b451c61e8d026d79285371597ce9df06b6dee6c814164b7c3
@@ -30,6 +30,7 @@ $(package)_config_opts_debug = -debug
 $(package)_config_opts_debug += -optimized-tools
 $(package)_config_opts += -bindir $(build_prefix)/bin
 $(package)_config_opts += -c++std c++1z
+$(package)_cxxflags = -Wno-error=deprecated-copy
 $(package)_config_opts += -confirm-license
 $(package)_config_opts += -hostprefix $(build_prefix)
 $(package)_config_opts += -no-pch
@@ -220,6 +221,10 @@ endef
 # 8. Adjust a regex in toolchain.prf, to accommodate Guix's usage of
 # CROSS_LIBRARY_PATH. See #15277.
 define $(package)_preprocess_cmds
+  sed -i '48a#include <limits>' qtbase/src/corelib/global/qendian.h && \
+  sed -i '43a#include <limits>' qtbase/src/corelib/tools/qbytearraymatcher.h && \
+  sed -i '/^#include "generator.h"/a#include <limits>' qtbase/src/tools/moc/generator.cpp && \
+  sed -i '/^#include <xcb\/xcb.h>/i#include <stdio.h>' qtbase/src/3rdparty/xcb/xcb-util/atoms.c && \
   patch -p1 -i $($(package)_patch_dir)/drop_lrelease_dependency.patch && \
   patch -p1 -i $($(package)_patch_dir)/dont_hardcode_pwd.patch && \
   patch -p1 -i $($(package)_patch_dir)/fix_qt_pkgconfig.patch && \

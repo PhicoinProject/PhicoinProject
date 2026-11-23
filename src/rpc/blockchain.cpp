@@ -1463,7 +1463,7 @@ UniValue getblockchaininfo(const JSONRPCRequest& request)
     obj.push_back(Pair("bestblockhash",         chainActive.Tip()->GetBlockHash().GetHex()));
     obj.push_back(Pair("difficulty",            (double)GetDifficulty()));
     if (IsDGWActive(chainActive.Height())) {
-        obj.push_back(Pair("difficulty_algorithm", "DGW-180"));
+        obj.push_back(Pair("difficulty_algorithm", "DGW-240"));
     } else {
         obj.push_back(Pair("difficulty_algorithm", "BTC"));
         obj.push_back(Pair("DGW_activation_height",    (int) GetParams().DGWActivationBlock()));
